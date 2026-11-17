@@ -12,7 +12,7 @@
 //! io.deephaven.engine.table.impl.sources.BitMaskingColumnSource and
 //! io.deephaven.engine.table.impl.sources.CrossJoinRightColumnSource
 
-use oxhaven_column::{Clock, RowRedirection};
+use oxhaven_column::{Clock, RowRedirection, WritableRowRedirection};
 use oxhaven_contracts::graph::{ClockPhase, ClockValue};
 use oxhaven_contracts::rowset::{RowKey, RowSet, NULL_ROW_KEY};
 use std::collections::BTreeMap;
@@ -68,51 +68,75 @@ impl<T: Clone> Versioned<T> {
     }
 }
 
-/// A map with, for the current cycle, what each key it changed held before.
-pub(super) struct VersionedMap<V> {
-    current: BTreeMap<RowKey, V>,
-    /// First-write-wins: what a key held at the end of the previous cycle.
-    prev: BTreeMap<RowKey, Option<V>>,
+/// A value for each slot `0, 1, 2, ...`, with what each slot it changed in the current
+/// cycle held before (first write wins). A slot past the end has no value.
+pub(super) struct VersionedVec<V> {
+    current: Vec<V>,
+    /// What a slot held at the end of the previous cycle; `None` for a slot past the end.
+    prev: BTreeMap<usize, Option<V>>,
     prev_step: Option<u64>,
 }
 
-impl<V: Clone> VersionedMap<V> {
+impl<V: Clone + Default> VersionedVec<V> {
     fn new() -> Self {
         Self {
-            current: BTreeMap::new(),
+            current: Vec::new(),
             prev: BTreeMap::new(),
             prev_step: None,
         }
     }
 
+    /// Slot `s` holds `values[s]`, with no change recorded.
+    pub(super) fn from_vec(values: Vec<V>) -> Self {
+        Self {
+            current: values,
+            ..Self::new()
+        }
+    }
+
     pub(super) fn get(
         &self,
-        key: RowKey,
+        slot: usize,
         use_prev: bool,
         clock: &Option<Arc<dyn Clock>>,
     ) -> Option<&V> {
         if use_prev && self.prev_step.is_some() && updating_step(clock) == self.prev_step {
-            if let Some(before) = self.prev.get(&key) {
+            if let Some(before) = self.prev.get(&slot) {
                 return before.as_ref();
             }
         }
-        self.current.get(&key)
+        self.current.get(slot)
     }
 
-    fn put(&mut self, key: RowKey, value: Option<V>, clock: &Option<Arc<dyn Clock>>) {
+    fn put(&mut self, slot: usize, value: V, clock: &Option<Arc<dyn Clock>>) {
         let step = updating_step(clock);
         if step != self.prev_step {
             self.prev.clear();
             self.prev_step = step;
         }
-        let old = match value {
-            Some(value) => self.current.insert(key, value),
-            None => self.current.remove(&key),
+        let old = if slot < self.current.len() {
+            Some(std::mem::replace(&mut self.current[slot], value))
+        } else {
+            self.current.resize(slot, V::default());
+            self.current.push(value);
+            None
         };
         if step.is_some() {
-            self.prev.entry(key).or_insert(old);
+            self.prev.entry(slot).or_insert(old);
         }
     }
+}
+
+/// The right rows of each slot.
+pub(super) enum RightGroups {
+    /// Of a static right table, which never changes: slot `s` has the rows
+    /// `rows[starts[s]..starts[s + 1]]`, in order; a slot past the end has none.
+    Fixed {
+        starts: Vec<usize>,
+        rows: Vec<RowKey>,
+    },
+    /// Of a refreshing right table.
+    Changing(VersionedVec<RowSet>),
 }
 
 /// What the low bits of a result row key name.
@@ -122,9 +146,9 @@ pub(super) enum Inner {
     /// The position among the right rows of the left row's key.
     Position {
         /// Left row key to the key's slot.
-        left_slot: VersionedMap<RowKey>,
+        left_slot: WritableRowRedirection,
         /// Slot to the right rows that have its key.
-        right_rows: VersionedMap<RowSet>,
+        right_rows: RightGroups,
     },
 }
 
@@ -146,33 +170,101 @@ impl LayoutState {
         }
     }
 
-    pub(super) fn set_left_slot(&mut self, left: RowKey, slot: Option<RowKey>) {
-        let clock = &self.clock;
+    /// Sets the slot of each row of `rows`, in order, as the first state of a layout with
+    /// no left rows yet. Not recorded as a change of the cycle.
+    pub(super) fn start_left_slots(&mut self, rows: &RowSet, slots: Vec<RowKey>) {
         if let Inner::Position { left_slot, .. } = &mut self.inner {
-            left_slot.put(left, slot, clock);
+            *left_slot = WritableRowRedirection::from_rows(rows, slots);
+            if let Some(clock) = &self.clock {
+                left_slot.start_tracking_prev(clock.clone());
+            }
         }
     }
 
+    /// Sets the right rows of every slot as the first state of a layout with no slots yet.
+    /// Not recorded as a change of the cycle.
+    pub(super) fn start_right_rows(&mut self, groups: RightGroups) {
+        if let Inner::Position { right_rows, .. } = &mut self.inner {
+            *right_rows = groups;
+        }
+    }
+
+    pub(super) fn set_left_slot(&mut self, left: RowKey, slot: Option<RowKey>) {
+        if let Inner::Position { left_slot, .. } = &mut self.inner {
+            match slot {
+                Some(slot) => left_slot.put(left, slot),
+                None => left_slot.remove(left),
+            };
+        }
+    }
+
+    /// # Panics
+    /// If the right rows are [`RightGroups::Fixed`].
     pub(super) fn set_right_rows(&mut self, slot: RowKey, rows: RowSet) {
         let clock = &self.clock;
-        if let Inner::Position { right_rows, .. } = &mut self.inner {
-            right_rows.put(slot, Some(rows), clock);
+        match &mut self.inner {
+            Inner::Position {
+                right_rows: RightGroups::Changing(groups),
+                ..
+            } => groups.put(slot as usize, rows, clock),
+            Inner::Position { .. } => panic!("the right rows of a static right table changed"),
+            Inner::RightKey => {}
         }
     }
 
-    pub(super) fn left_slot(&self, left: RowKey, use_prev: bool) -> Option<RowKey> {
+    /// The slot of each of the left rows `rows`, `NULL_ROW_KEY` for a row without one.
+    pub(super) fn left_slots(&self, rows: &[RowKey], use_prev: bool) -> Vec<RowKey> {
         match &self.inner {
-            Inner::Position { left_slot, .. } => {
-                left_slot.get(left, use_prev, &self.clock).copied()
-            }
-            Inner::RightKey => None,
+            Inner::Position { left_slot, .. } => left_slot.redirect(rows, use_prev),
+            Inner::RightKey => vec![NULL_ROW_KEY; rows.len()],
         }
     }
 
+    /// The right rows of `slot` of a refreshing right table.
+    ///
+    /// # Panics
+    /// If the right rows are [`RightGroups::Fixed`].
     pub(super) fn right_rows(&self, slot: RowKey, use_prev: bool) -> Option<&RowSet> {
         match &self.inner {
-            Inner::Position { right_rows, .. } => right_rows.get(slot, use_prev, &self.clock),
+            Inner::Position {
+                right_rows: RightGroups::Changing(groups),
+                ..
+            } => groups.get(slot as usize, use_prev, &self.clock),
+            Inner::Position { .. } => panic!("the right rows of a static right table are fixed"),
             Inner::RightKey => None,
+        }
+    }
+
+    /// The number of right rows of `slot`.
+    pub(super) fn right_size(&self, slot: RowKey, use_prev: bool) -> u64 {
+        match &self.inner {
+            Inner::Position {
+                right_rows: RightGroups::Fixed { starts, .. },
+                ..
+            } => {
+                let slot = slot as usize;
+                match (starts.get(slot), starts.get(slot + 1)) {
+                    (Some(start), Some(end)) => (end - start) as u64,
+                    _ => 0,
+                }
+            }
+            _ => self.right_rows(slot, use_prev).map_or(0, RowSet::size),
+        }
+    }
+
+    /// The right row at `position` among the right rows of `slot`.
+    fn right_row(&self, slot: RowKey, position: u64, use_prev: bool) -> Option<RowKey> {
+        match &self.inner {
+            Inner::Position {
+                right_rows: RightGroups::Fixed { starts, rows },
+                ..
+            } => {
+                let slot = slot as usize;
+                let (&start, &end) = (starts.get(slot)?, starts.get(slot + 1)?);
+                let at = start.checked_add(usize::try_from(position).ok()?)?;
+                (at < end).then(|| rows[at])
+            }
+            _ => self.right_rows(slot, use_prev)?.get(position),
         }
     }
 
@@ -180,19 +272,23 @@ impl LayoutState {
     fn right_keys(&self, keys: &[RowKey], use_prev: bool) -> Vec<RowKey> {
         let bits = self.bits(use_prev);
         let mask = (1i64 << bits) - 1;
+        let Inner::Position { left_slot, .. } = &self.inner else {
+            let right = |&key: &RowKey| if key < 0 { NULL_ROW_KEY } else { key & mask };
+            return keys.iter().map(right).collect();
+        };
+        let lefts: Vec<RowKey> = keys
+            .iter()
+            .map(|&key| if key < 0 { NULL_ROW_KEY } else { key >> bits })
+            .collect();
+        let slots = left_slot.redirect(&lefts, use_prev);
         keys.iter()
-            .map(|&key| {
-                if key < 0 {
+            .zip(slots)
+            .map(|(&key, slot)| {
+                if key < 0 || slot == NULL_ROW_KEY {
                     return NULL_ROW_KEY;
                 }
-                match &self.inner {
-                    Inner::RightKey => key & mask,
-                    Inner::Position { .. } => self
-                        .left_slot(key >> bits, use_prev)
-                        .and_then(|slot| self.right_rows(slot, use_prev))
-                        .and_then(|rows| rows.get((key & mask) as u64))
-                        .unwrap_or(NULL_ROW_KEY),
-                }
+                self.right_row(slot, (key & mask) as u64, use_prev)
+                    .unwrap_or(NULL_ROW_KEY)
             })
             .collect()
     }
@@ -209,8 +305,8 @@ impl Layout {
     pub(super) fn new(bits: u32, keyed: bool, clock: Option<Arc<dyn Clock>>) -> Arc<Self> {
         let inner = if keyed {
             Inner::Position {
-                left_slot: VersionedMap::new(),
-                right_rows: VersionedMap::new(),
+                left_slot: WritableRowRedirection::new(),
+                right_rows: RightGroups::Changing(VersionedVec::new()),
             }
         } else {
             Inner::RightKey
@@ -300,5 +396,30 @@ mod tests {
             [5, 40, 41, -1, -1]
         );
         assert_eq!(LeftRows(layout).redirect(&keys, false), [1, 1, 1, 1, 0]);
+    }
+
+    #[test]
+    fn fixed_right_groups_read_positions_in_the_slot() {
+        let layout = Layout::new(2, true, None);
+        {
+            let mut state = layout.write();
+            // Slot 0 has no rows, slot 1 has 5, 40 and 41, slot 2 has 7.
+            state.start_right_rows(RightGroups::Fixed {
+                starts: vec![0, 0, 3, 4],
+                rows: vec![5, 40, 41, 7],
+            });
+            state.start_left_slots(&RowSet::from_keys([1, 2, 3, 6]), vec![1, 0, 2, 9]);
+            assert_eq!(
+                [0, 1, 2, 3, 9].map(|slot| state.right_size(slot, false)),
+                [0, 3, 1, 0, 0]
+            );
+        }
+        // Left row 1 (slot 1) starts at 4, row 2 (slot 0) at 8, row 3 (slot 2) at 12,
+        // row 6 (slot 9, past the end) at 24, and row 5 has no slot.
+        let keys = [4, 5, 6, 7, 8, 12, 13, 24, 20, -1];
+        assert_eq!(
+            RightRows(layout).redirect(&keys, false),
+            [5, 40, 41, -1, -1, 7, -1, -1, -1, -1]
+        );
     }
 }

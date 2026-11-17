@@ -3,8 +3,8 @@
 //! Rows of both tables are grouped by key into slots. A left row's region holds one result
 //! row per right row of its slot, at the right row's position in the slot. Java keeps
 //! three state managers with their own hash tables (both tables static, only the left
-//! refreshing, the right refreshing); this is one implementation over an ordered map that
-//! keeps the rules in which they differ:
+//! refreshing, the right refreshing); this is one implementation over the one
+//! [`KeyTable`] that keeps the rules in which they differ:
 //!
 //! - which right rows count, and so how many bits the right part of a row key has: every
 //!   right row, except when the left table is static and the right refreshing (only the
@@ -12,13 +12,17 @@
 //!   rows than the right (only the right rows some left row matches);
 //! - the bits start at the reserved number when either table is refreshing and at 1 when
 //!   both are static, grow to fit the largest group the join has seen, and never shrink.
+//!
+//! Keys are numbered a chunk of rows at a time; nothing is kept or looked up per row in an
+//! ordered map.
 
-use super::layout::{min_bits, Layout, LayoutState};
+use super::layout::{min_bits, Layout, LayoutState, RightGroups, VersionedVec};
 use super::region::{Downstream, InnerChange};
 use super::CrossJoinError;
-use crate::ops::join::keys::{Key, KeyColumns};
+use crate::ops::join::keys::KeyColumns;
+use crate::ops::key_table::{KeyTable, NO_SLOT};
 use crate::update::{modified_pre_shift, ModifiedColumnTransformer};
-use oxhaven_contracts::rowset::{RowKey, RowRange, RowSet};
+use oxhaven_contracts::rowset::{RowKey, RowRange, RowSet, NULL_ROW_KEY};
 use oxhaven_contracts::table::{Table, TableFailure};
 use oxhaven_contracts::update::{ModifiedColumnSet, TableUpdate};
 use std::collections::BTreeMap;
@@ -30,39 +34,92 @@ fn failure(message: impl std::fmt::Display) -> TableFailure {
     }
 }
 
+/// The slot a key table reported, or `None` for [`NO_SLOT`].
+fn slot_of(slot: u32) -> Option<RowKey> {
+    (slot != NO_SLOT).then_some(RowKey::from(slot))
+}
+
+/// The rows of `rows` in each slot below `slots`, in row order, given the slot of each row;
+/// rows without a slot are left out.
+fn grouped(rows: &RowSet, row_slots: &[u32], slots: usize) -> Vec<RowSet> {
+    let (starts, sorted) = grouped_flat(rows, row_slots, slots);
+    (0..slots)
+        .map(|slot| RowSet::from_keys(sorted[starts[slot]..starts[slot + 1]].iter().copied()))
+        .collect()
+}
+
+/// As [`grouped`], in one array: slot `s` has `rows[starts[s]..starts[s + 1]]`.
+fn grouped_flat(rows: &RowSet, row_slots: &[u32], slots: usize) -> (Vec<usize>, Vec<RowKey>) {
+    let mut starts = vec![0usize; slots + 1];
+    for &slot in row_slots {
+        if slot != NO_SLOT {
+            starts[slot as usize + 1] += 1;
+        }
+    }
+    for slot in 0..slots {
+        starts[slot + 1] += starts[slot];
+    }
+    let mut next = starts.clone();
+    let mut sorted: Vec<RowKey> = vec![0; starts[slots]];
+    for (row, &slot) in rows.iter().zip(row_slots) {
+        if slot != NO_SLOT {
+            sorted[next[slot as usize]] = row;
+            next[slot as usize] += 1;
+        }
+    }
+    (starts, sorted)
+}
+
 /// The groups of rows that have one key.
-#[derive(Default)]
 struct Slots {
-    ids: BTreeMap<Key, RowKey>,
-    /// The left rows of each slot, by slot id. The right rows are in the layout, where the
-    /// added columns read them.
-    left: Vec<RowSet>,
+    /// A key's slot is its group.
+    keys: Box<KeyTable>,
+    /// The left rows of each slot, by slot; a slot past the end has none. Kept only when
+    /// the right table is refreshing, since only a change of a slot's right rows asks
+    /// which left rows have it. The right rows are in the layout, where the added columns
+    /// read them.
+    left: Option<Vec<RowSet>>,
     /// The size of the largest group of right rows so far.
     largest: u64,
 }
 
 impl Slots {
-    fn find(&self, key: &Key) -> Option<RowKey> {
-        self.ids.get(key).copied()
-    }
-
-    fn find_or_add(&mut self, key: Key) -> RowKey {
-        if let Some(&slot) = self.ids.get(&key) {
-            return slot;
+    /// The slot of the key of each row of `rows` of `table`, in row order; with
+    /// `use_prev`, of the previous values of rows of the previous key space. With `create`
+    /// a key not seen before gets a new slot; without, its rows get [`NO_SLOT`].
+    fn of(
+        &mut self,
+        columns: &KeyColumns,
+        table: &dyn Table,
+        rows: &RowSet,
+        use_prev: bool,
+        create: bool,
+    ) -> Result<Vec<u32>, TableFailure> {
+        if rows.is_empty() {
+            return Ok(Vec::new());
         }
-        let slot = self.left.len() as RowKey;
-        self.ids.insert(key, slot);
-        self.left.push(RowSet::empty());
-        slot
+        let chunks = columns.chunks(table, rows, use_prev)?;
+        let size = rows.size() as usize;
+        Ok(if create {
+            self.keys.insert(&chunks, size)
+        } else {
+            self.keys.find(&chunks, size)
+        })
     }
 
-    fn left_rows(&mut self, slot: RowKey) -> &mut RowSet {
-        &mut self.left[slot as usize]
+    /// The left rows of `slot`, if the left rows are kept.
+    fn left_rows(&mut self, slot: RowKey) -> Option<&mut RowSet> {
+        let left = self.left.as_mut()?;
+        let slot = slot as usize;
+        if left.len() <= slot {
+            left.resize_with(slot + 1, RowSet::empty);
+        }
+        Some(&mut left[slot])
     }
 }
 
 fn right_size(layout: &LayoutState, slot: RowKey) -> u64 {
-    layout.right_rows(slot, false).map_or(0, RowSet::size)
+    layout.right_size(slot, false)
 }
 
 /// Behavior: io.deephaven.engine.table.impl.RightIncrementalChunkedCrossJoinStateManager#validateKeySpaceSize
@@ -132,49 +189,52 @@ impl Keyed {
             super::check_reserve(reserve)?
         };
 
-        let mut slots = Slots::default();
-        let mut state = layout.write();
-        let left_found = left_keys.read(&**left, &left_rows, false)?;
-        let mut left_slots = Vec::with_capacity(left_found.len());
-        let mut members: BTreeMap<RowKey, Vec<RowKey>> = BTreeMap::new();
-        for (row, key) in left_rows.iter().zip(left_found) {
-            let slot = slots.find_or_add(key);
-            members.entry(slot).or_default().push(row);
-            left_slots.push(slot);
+        let mut slots = Slots {
+            keys: Box::default(),
+            left: None,
+            largest: 0,
+        };
+        let left_slots = slots.of(&left_keys, &**left, &left_rows, false, true)?;
+        if right.is_refreshing() {
+            slots.left = Some(grouped(&left_rows, &left_slots, slots.keys.len()));
         }
-        for (slot, rows) in members {
-            *slots.left_rows(slot) = RowSet::from_keys(rows);
-        }
-        let mut grouped: BTreeMap<RowKey, Vec<RowKey>> = BTreeMap::new();
-        let right_found = right_keys.read(&**right, &right_rows, false)?;
-        for (row, key) in right_rows.iter().zip(right_found) {
-            let slot = if all_right {
-                Some(slots.find_or_add(key))
-            } else {
-                slots.find(&key)
-            };
-            if let Some(slot) = slot {
-                grouped.entry(slot).or_default().push(row);
+        let right_slots = slots.of(&right_keys, &**right, &right_rows, false, all_right)?;
+        let (starts, sorted) = grouped_flat(&right_rows, &right_slots, slots.keys.len());
+        drop(right_slots);
+        let sizes: Vec<u64> = starts.windows(2).map(|w| (w[1] - w[0]) as u64).collect();
+        slots.largest = sizes.iter().copied().max().unwrap_or(0);
+        // The right rows of a static right table never change, and are kept in the one
+        // array; those of a refreshing one as a row set per slot.
+        let groups = if right.is_refreshing() {
+            let sets = (0..sizes.len()).map(|slot| {
+                RowSet::from_keys(sorted[starts[slot]..starts[slot + 1]].iter().copied())
+            });
+            RightGroups::Changing(VersionedVec::from_vec(sets.collect()))
+        } else {
+            RightGroups::Fixed {
+                starts,
+                rows: sorted,
             }
-        }
-        for (slot, rows) in grouped {
-            slots.largest = slots.largest.max(rows.len() as u64);
-            state.set_right_rows(slot, RowSet::from_keys(rows));
-        }
+        };
         let bits = start_bits.max(min_bits(slots.largest as RowKey - 1));
         check_key_space(left_rows.last_row_key().unwrap_or(-1), bits, slots.largest)
             .map_err(CrossJoinError::OutOfKeySpace)?;
-        state.set_bits(bits);
 
         let mut ranges = Vec::new();
-        for (row, slot) in left_rows.iter().zip(left_slots) {
-            state.set_left_slot(row, Some(slot));
-            let size = right_size(&state, slot) as RowKey;
+        for (row, &slot) in left_rows.iter().zip(&left_slots) {
+            let size = sizes[slot as usize] as RowKey;
             if size > 0 {
                 let start = row << bits;
                 ranges.push(RowRange::new(start, start + size - 1));
             }
         }
+        let mut state = layout.write();
+        state.set_bits(bits);
+        state.start_right_rows(groups);
+        state.start_left_slots(
+            &left_rows,
+            left_slots.into_iter().map(RowKey::from).collect(),
+        );
         drop(state);
         Ok(Built {
             rows: RowSet::from_ranges(ranges),
@@ -216,20 +276,10 @@ impl Keyed {
         let right = &*self.right;
         let keys = &self.right_keys;
         let mut touched: BTreeMap<RowKey, Touch> = BTreeMap::new();
-        let slot_for = |slots: &mut Slots, key: Key| {
-            if self.all_right {
-                Some(slots.find_or_add(key))
-            } else {
-                slots.find(&key)
-            }
-        };
 
-        for (row, key) in update
-            .removed
-            .iter()
-            .zip(keys.read(right, &update.removed, true)?)
-        {
-            if let Some(slot) = slots.find(&key) {
+        let removed = slots.of(keys, right, &update.removed, true, false)?;
+        for (row, slot) in update.removed.iter().zip(removed) {
+            if let Some(slot) = slot_of(slot) {
                 touched.entry(slot).or_default().removed.push(row);
             }
         }
@@ -237,31 +287,27 @@ impl Keyed {
             let staying = right.prev_row_set().minus(&update.removed);
             for range in update.shifted.ranges() {
                 let rows = staying.sub_set_by_key_range(range.first, range.last);
-                for key in keys.read(right, &rows, true)? {
-                    if let Some(slot) = slots.find(&key) {
+                for slot in slots.of(keys, right, &rows, true, false)? {
+                    if let Some(slot) = slot_of(slot) {
                         touched.entry(slot).or_default();
                     }
                 }
             }
         }
-        for (row, key) in update
-            .added
-            .iter()
-            .zip(keys.read(right, &update.added, false)?)
-        {
-            if let Some(slot) = slot_for(slots, key) {
+        let added = slots.of(keys, right, &update.added, false, self.all_right)?;
+        for (row, slot) in update.added.iter().zip(added) {
+            if let Some(slot) = slot_of(slot) {
                 touched.entry(slot).or_default().added.push(row);
             }
         }
         if !update.modified.is_empty() {
             if update.modified_columns.contains_any(&keys.columns) {
                 let pre = modified_pre_shift(update).map_err(failure)?;
-                let before = keys.read(right, &pre, true)?;
-                let after = keys.read(right, &update.modified, false)?;
+                let before = slots.of(keys, right, &pre, true, false)?;
+                let after = slots.of(keys, right, &update.modified, false, self.all_right)?;
                 let rows = pre.iter().zip(update.modified.iter());
                 for ((pre_row, post_row), (old, new)) in rows.zip(before.into_iter().zip(after)) {
-                    let old_slot = slots.find(&old);
-                    let new_slot = slot_for(slots, new);
+                    let (old_slot, new_slot) = (slot_of(old), slot_of(new));
                     if old_slot != new_slot {
                         if let Some(slot) = old_slot {
                             touched.entry(slot).or_default().removed.push(pre_row);
@@ -274,9 +320,9 @@ impl Keyed {
                     }
                 }
             } else {
-                let found = keys.read(right, &update.modified, false)?;
-                for (row, key) in update.modified.iter().zip(found) {
-                    if let Some(slot) = slots.find(&key) {
+                let found = slots.of(keys, right, &update.modified, false, false)?;
+                for (row, slot) in update.modified.iter().zip(found) {
+                    if let Some(slot) = slot_of(slot) {
                         touched.entry(slot).or_default().modified.push(row);
                     }
                 }
@@ -333,34 +379,45 @@ impl Keyed {
         let left = &*self.left;
         let keys = &self.left_keys;
         let mut change = LeftChange::default();
-        let mut leaving = update.removed.clone();
-        for row in update.removed.iter() {
-            if let Some(slot) = state.left_slot(row, false) {
+        let removed: Vec<RowKey> = update.removed.iter().collect();
+        for (&row, slot) in removed.iter().zip(state.left_slots(&removed, false)) {
+            if slot != NULL_ROW_KEY {
                 change.removed.push((row, slot));
             }
         }
 
-        let mut arriving: Vec<(RowKey, Key)> = Vec::new();
+        // The rows that changed key, before the cycle, and where they are now with their
+        // new slot.
+        let mut rekeyed: Vec<RowKey> = Vec::new();
+        let mut arriving: Vec<(RowKey, RowKey)> = Vec::new();
         let mut in_place = Vec::new();
         if !update.modified.is_empty() && update.modified_columns.contains_any(&keys.columns) {
             let pre = modified_pre_shift(update).map_err(failure)?;
-            let before = keys.read(left, &pre, true)?;
-            let after = keys.read(left, &update.modified, false)?;
-            let rows = pre.iter().zip(update.modified.iter());
-            for ((pre_row, post_row), (old, new)) in rows.zip(before.into_iter().zip(after)) {
+            // Every key a left row had has a slot, so the keys before are only found; the
+            // keys after make the slots of keys not seen before, in row order.
+            let before = slots.of(keys, left, &pre, true, false)?;
+            let after = slots.of(keys, left, &update.modified, false, true)?;
+            let pre_rows: Vec<RowKey> = pre.iter().collect();
+            let pre_slots = state.left_slots(&pre_rows, false);
+            let rows = pre_rows.iter().zip(pre_slots).zip(update.modified.iter());
+            for (((&pre_row, pre_slot), post_row), (old, new)) in
+                rows.zip(before.into_iter().zip(after))
+            {
                 if old == new {
                     in_place.push(post_row);
                 } else {
-                    if let Some(slot) = state.left_slot(pre_row, false) {
-                        change.removed.push((pre_row, slot));
+                    if pre_slot != NULL_ROW_KEY {
+                        change.removed.push((pre_row, pre_slot));
                     }
-                    leaving.insert(&RowSet::from_keys([pre_row]));
-                    arriving.push((post_row, new));
+                    rekeyed.push(pre_row);
+                    arriving.push((post_row, RowKey::from(new)));
                 }
             }
         } else {
             in_place.extend(update.modified.iter());
         }
+        let mut leaving = update.removed.clone();
+        leaving.insert(&RowSet::from_keys(rekeyed));
         change.modified = RowSet::from_keys(in_place);
         change.removed.sort_unstable();
 
@@ -370,18 +427,22 @@ impl Keyed {
             gone.entry(slot).or_default().push(row);
         }
         for (slot, rows) in gone {
-            slots.left_rows(slot).remove(&RowSet::from_keys(rows));
+            if let Some(left_rows) = slots.left_rows(slot) {
+                left_rows.remove(&RowSet::from_keys(rows));
+            }
         }
 
         change.staying_prev = left.prev_row_set().minus(&leaving);
         if !update.shifted.is_empty() {
             let mut moves = Vec::new();
             for range in update.shifted.ranges() {
-                let rows = change
+                let rows: Vec<RowKey> = change
                     .staying_prev
-                    .sub_set_by_key_range(range.first, range.last);
-                for row in rows.iter() {
-                    if let Some(slot) = state.left_slot(row, false) {
+                    .sub_set_by_key_range(range.first, range.last)
+                    .iter()
+                    .collect();
+                for (&row, slot) in rows.iter().zip(state.left_slots(&rows, false)) {
+                    if slot != NULL_ROW_KEY {
                         moves.push((row, row + range.delta, slot));
                     }
                 }
@@ -397,30 +458,31 @@ impl Keyed {
                 state.set_left_slot(new, Some(slot));
             }
             for (slot, (old, new)) in by_slot {
-                let rows = slots.left_rows(slot);
-                rows.remove(&RowSet::from_keys(old));
-                rows.insert(&RowSet::from_keys(new));
+                if let Some(rows) = slots.left_rows(slot) {
+                    rows.remove(&RowSet::from_keys(old));
+                    rows.insert(&RowSet::from_keys(new));
+                }
             }
         }
 
-        let added = keys.read(left, &update.added, false)?;
-        arriving.extend(update.added.iter().zip(added));
+        let added = slots.of(keys, left, &update.added, false, true)?;
+        arriving.extend(update.added.iter().zip(added.into_iter().map(RowKey::from)));
         let mut joining: BTreeMap<RowKey, Vec<RowKey>> = BTreeMap::new();
-        for (row, key) in arriving {
-            let slot = slots.find_or_add(key);
+        for (row, slot) in arriving {
             state.set_left_slot(row, Some(slot));
             joining.entry(slot).or_default().push(row);
             change.arrived.push((row, slot));
         }
         for (slot, rows) in joining {
-            slots.left_rows(slot).insert(&RowSet::from_keys(rows));
+            if let Some(left_rows) = slots.left_rows(slot) {
+                left_rows.insert(&RowSet::from_keys(rows));
+            }
         }
         change.arrived.sort_unstable();
         Ok(change)
     }
 }
 
-/// What the left table's change did to the left rows.
 #[derive(Default)]
 struct LeftChange {
     /// Rows that are gone or left their slot: the row key before the cycle and the slot.
@@ -480,8 +542,15 @@ impl Keyed {
             left_now.minus(&arrived)
         } else {
             let mut visit = left.modified.clone();
-            for slot in changes.keys() {
-                visit.insert(&slots.left[*slot as usize]);
+            if !changes.is_empty() {
+                let Some(left_rows) = &slots.left else {
+                    panic!("the left rows of each slot are kept for a refreshing right table");
+                };
+                for slot in changes.keys() {
+                    if let Some(rows) = left_rows.get(*slot as usize) {
+                        visit.insert(rows);
+                    }
+                }
             }
             for range in shifted.ranges() {
                 let rows = left
@@ -492,10 +561,12 @@ impl Keyed {
             visit.minus(&arrived)
         };
         let back = shifted.inverse();
-        for row in visit.iter() {
-            let Some(slot) = state.left_slot(row, false) else {
+        let visit: Vec<RowKey> = visit.iter().collect();
+        let visit_slots = state.left_slots(&visit, false);
+        for (&row, slot) in visit.iter().zip(visit_slots) {
+            if slot == NULL_ROW_KEY {
                 panic!("left row {row} has no slot");
-            };
+            }
             let unchanged;
             let change = match changes.get(&slot) {
                 Some(change) => change,
