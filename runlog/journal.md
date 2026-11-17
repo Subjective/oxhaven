@@ -1257,3 +1257,7 @@ Seven green checks on head a3b5f9b6. Main is at 572fafbc.
 ## 2026-11-17 21:48 UTC: task 10.4 started
 
 One operator family per agent, as learned from 10.2: the hierarchical tables (R1 to R4, T1, T2). Two builders run (10.3 and 10.4).
+
+## 2026-11-17 22:25 UTC: task 10.4 reported, pull request 158 opened
+
+The agent stopped its workspace test build at 4.3 GB free, as briefed. The checks run the workspace tests; the full-seed engine tests run locally before the merge. Owner question 7 (group and formula combinations in a rollup that Deephaven serves or fails by order and name) goes to review-items-2.md.
