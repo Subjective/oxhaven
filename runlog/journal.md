@@ -1213,3 +1213,7 @@ Partly done. Three different causes: evaluator overhead (fixed), row set constru
 ## 2026-11-17 19:03 UTC: pull request 153 merged, second run of task 9.10 started
 
 Seven green checks. Decision: the second run may add a row set constructor from a bitmap to the contracts crate (an addition, no change to existing signatures); its pull request gets the oracle-change label and Josh reviews it later, under his standing approval for contract changes.
+
+## 2026-11-17 19:24 UTC: task 9.9 reported, pull request 154 opened
+
+All gates including replay passed locally.
