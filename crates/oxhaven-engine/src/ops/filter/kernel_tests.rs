@@ -134,12 +134,45 @@ fn filters(column_type: &ColumnType) -> Vec<Resolved> {
             .map(Key::Float)
             .into_iter()
             .chain([Key::Null])
+            // The other zero, the infinity below everything, the values reserved for null
+            // in `double` and in `float`, the largest value, and values between cells.
+            .chain(
+                [
+                    -0.0,
+                    f64::NEG_INFINITY,
+                    -f64::MAX,
+                    f64::from(-f32::MAX),
+                    f64::MAX,
+                    0.5,
+                    -2.0,
+                    1.25,
+                    f64::MIN_POSITIVE,
+                ]
+                .map(Key::Float),
+            )
             .collect()
     } else {
         [-3, 0, 2, 127, i64::MAX]
             .map(Key::Int)
             .into_iter()
             .chain([Key::Null])
+            // The value reserved for null and the largest value of every type, and the
+            // ends of the small values.
+            .chain(
+                [
+                    i64::MIN,
+                    i64::from(i32::MIN),
+                    i64::from(i32::MAX),
+                    -32768,
+                    32767,
+                    65535,
+                    65534,
+                    -128,
+                    -4,
+                    4,
+                ]
+                .map(Key::Int),
+            )
             .collect()
     };
     let mut filters = Vec::new();
@@ -175,7 +208,17 @@ fn filters(column_type: &ColumnType) -> Vec<Resolved> {
             });
         }
     }
-    for chosen in [&keys[..1], &keys[1..3], &keys[3..], &keys[..]] {
+    // Up to eight values are a typed pass each; more are judged cell by cell.
+    for chosen in [
+        &keys[..1],
+        &keys[1..3],
+        &keys[3..6],
+        &keys[..6],
+        &keys[5..6],
+        &keys[5..12],
+        &keys[6..],
+        &keys[..],
+    ] {
         for (inverted, nan_match) in [(false, false), (true, false), (false, true), (true, true)] {
             filters.push(Resolved::Match {
                 column: 0,
@@ -408,4 +451,73 @@ fn the_row_set_of_a_piece_is_the_kept_keys_of_its_positions() {
             assert!(kept == expected, "seed {seed}, piece {offset}+{length}");
         }
     }
+}
+
+/// Whole pieces of 65536 rows, as a filter cuts them: rows that are one range (the mask is
+/// the bitmap of the kept keys), rows close together in runs shorter and longer than a word
+/// (each run's bits are put at its keys) and rows far apart (joined range by range); from a
+/// first key on a block and inside one; masks of every density, read from the start of a
+/// buffer and from a bit inside it. Against the kept keys picked one at a time.
+#[test]
+fn whole_pieces_keep_the_keys_of_their_set_bits() {
+    use super::filters::kept_of_piece;
+    use arrow::buffer::BooleanBuffer;
+    let mut compared = 0_u64;
+    for seed in test_seeds(0..30) {
+        let mut stream = Stream(seed ^ 0x51ED);
+        // The longest run of rows and the longest gap between runs, in keys.
+        let (run, gap) =
+            [(1, 0), (1, 12), (3, 2), (200, 90), (5000, 1), (2, 400)][seed as usize % 6];
+        let start = [0, 65_536, 77, 65_535, 1 << 33][seed as usize % 5];
+        let mut keys: Vec<i64> = Vec::new();
+        let mut key = start;
+        while keys.len() < 2 * PIECE + 1000 {
+            for _ in 0..1 + stream.next() % run {
+                keys.push(key);
+                key += 1;
+            }
+            if gap > 0 {
+                key += 1 + (stream.next() % gap) as i64;
+            }
+        }
+        let selection = RowSet::from_keys(keys.iter().copied());
+        assert_eq!(selection.as_single_range().is_some(), gap == 0);
+        let density = stream.next() % 6;
+        // Three bits more than the rows, so that a piece's mask can start at bit 3.
+        let bits: Vec<bool> = (0..keys.len() + 3)
+            .map(|_| match density {
+                0 => true,
+                1 => false,
+                2 => stream.next().is_multiple_of(2),
+                3 => stream.next().is_multiple_of(40),
+                4 => !stream.next().is_multiple_of(40),
+                _ => stream.next() % 1000 < 995,
+            })
+            .collect();
+        let buffer = BooleanBuffer::from(bits.clone());
+        for shift in [0, 3] {
+            for (offset, length) in [
+                (0, PIECE),
+                (PIECE, PIECE),
+                (2 * PIECE, keys.len() - 2 * PIECE),
+                (100, 64),
+                (PIECE - 1, 130),
+            ] {
+                let mask = buffer.slice(offset + shift, length);
+                let expected = RowSet::from_keys(
+                    (0..length)
+                        .filter(|&row| bits[offset + shift + row])
+                        .map(|row| keys[offset + row]),
+                );
+                let kept = kept_of_piece(&selection, offset, &mask);
+                kept.check_layout();
+                assert!(
+                    kept == expected,
+                    "seed {seed}, piece {offset}+{length}, mask from bit {shift}"
+                );
+                compared += 1;
+            }
+        }
+    }
+    assert!(compared >= oxhaven_testkit::at_least_for(300, 0..30));
 }

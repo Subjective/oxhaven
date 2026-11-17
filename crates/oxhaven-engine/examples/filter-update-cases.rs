@@ -269,6 +269,17 @@ fn parts(table: &Arc<dyn Table>, rows: i64, reps: usize) {
         });
         black_box(concat_ordered(parts));
     });
+    // The same from the words of the mask (the second part of task 9.10): a dense block
+    // of the row set is those words.
+    time("a row set per piece, of its bitmap", rows, reps, || {
+        let pieces = oxhaven_column::parallel::pieces_of(kept.len(), 1 << 16);
+        let parts = pieces.iter().map(|&(offset, length)| {
+            let piece = kept.slice(offset, length);
+            let words: Vec<u64> = piece.bit_chunks().iter_padded().collect();
+            RowSet::from_bitmap(offset as i64, &words, length)
+        });
+        black_box(concat_ordered(parts));
+    });
     time("pack A >= 20000 && A < 60000", rows, reps, || {
         let low = oxhaven_column::bits::pack(ints.values(), |v| v >= 20_000);
         let high = oxhaven_column::bits::pack(ints.values(), |v| v < 60_000);
