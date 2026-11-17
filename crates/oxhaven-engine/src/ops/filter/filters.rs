@@ -4,6 +4,7 @@
 //! against a definition, as Java's `WhereFilter#init` does, and gives a [`Resolved`] filter
 //! that can select rows.
 
+use super::kernels;
 use super::literal::{convert_value, java_equals_ignore_case, Key};
 use super::pattern::{full_match, Matcher};
 use super::search;
@@ -862,16 +863,6 @@ fn float_key(key: &Key) -> Result<Option<f64>, TableFailure> {
     }
 }
 
-/// The order of two floating point cells: null lowest, then [`compare_floats`].
-fn float_order(value: Option<f64>, end: Option<f64>) -> Ordering {
-    match (value, end) {
-        (None, None) => Ordering::Equal,
-        (None, Some(_)) => Ordering::Less,
-        (Some(_), None) => Ordering::Greater,
-        (Some(value), Some(end)) => compare_floats(value, end),
-    }
-}
-
 /// The rows of one filter read as a column chunk are judged in pieces of this many: 2^16,
 /// as Java's parallel `where` (`QueryTable.parallelWhereRowsPerSegment`).
 const PIECE_ROWS: usize = 1 << 16;
@@ -890,23 +881,7 @@ impl Resolved {
         let floats = |key: &Key| if is_float { float_key(key) } else { Ok(None) };
         match self {
             Resolved::Range { op, pivot, .. } => {
-                let op = *op;
-                let keep = move |order: Ordering| match op {
-                    RangeOp::Less => order == Ordering::Less,
-                    RangeOp::LessOrEqual => order != Ordering::Greater,
-                    RangeOp::Greater => order == Ordering::Greater,
-                    RangeOp::GreaterOrEqual => order != Ordering::Less,
-                };
-                let upward = matches!(op, RangeOp::Greater | RangeOp::GreaterOrEqual);
-                let (int_pivot, float_pivot) = (ints(pivot).ok()?, floats(pivot).ok()?);
-                primitive_mask(
-                    chunk,
-                    &|value: Option<i64>| keep(value.cmp(&int_pivot)),
-                    &|value: Option<f64>| {
-                        keep(float_order(value, float_pivot))
-                            && !(upward && value.is_some_and(f64::is_nan))
-                    },
-                )
+                kernels::range_mask(chunk, *op, ints(pivot).ok()?, floats(pivot).ok()?)
             }
             Resolved::Between {
                 lower,
@@ -914,33 +889,24 @@ impl Resolved {
                 lower_inclusive,
                 upper_inclusive,
                 ..
-            } => {
-                let (lower_inclusive, upper_inclusive) = (*lower_inclusive, *upper_inclusive);
-                let keep = move |from_lower: Ordering, from_upper: Ordering| {
-                    (from_lower == Ordering::Greater
-                        || (lower_inclusive && from_lower == Ordering::Equal))
-                        && (from_upper == Ordering::Less
-                            || (upper_inclusive && from_upper == Ordering::Equal))
-                };
-                let int_ends = (ints(lower).ok()?, ints(upper).ok()?);
-                let float_ends = (floats(lower).ok()?, floats(upper).ok()?);
-                primitive_mask(
-                    chunk,
-                    &|value: Option<i64>| keep(value.cmp(&int_ends.0), value.cmp(&int_ends.1)),
-                    &|value: Option<f64>| {
-                        keep(
-                            float_order(value, float_ends.0),
-                            float_order(value, float_ends.1),
-                        )
-                    },
-                )
-            }
+            } => kernels::between_mask(
+                chunk,
+                (ints(lower).ok()?, ints(upper).ok()?),
+                (floats(lower).ok()?, floats(upper).ok()?),
+                *lower_inclusive,
+                *upper_inclusive,
+            ),
             Resolved::Match { keys, options, .. } => {
                 let options = *options;
                 let int_keys: Vec<Option<i64>> =
                     keys.iter().map(ints).collect::<Result<_, _>>().ok()?;
                 let float_keys: Vec<Option<f64>> =
                     keys.iter().map(floats).collect::<Result<_, _>>().ok()?;
+                if let Some(mask) = kernels::match_mask(chunk, &int_keys, &float_keys, options) {
+                    return Some(mask);
+                }
+                // More values than the typed loop takes a pass for: each cell against the
+                // list.
                 let equal = |a: Option<f64>, b: Option<f64>| match (a, b) {
                     (None, None) => true,
                     (Some(a), Some(b)) if options.nan_match => {

@@ -13,6 +13,7 @@
 mod condition;
 mod factory;
 mod filters;
+mod kernels;
 mod literal;
 mod pattern;
 mod search;
