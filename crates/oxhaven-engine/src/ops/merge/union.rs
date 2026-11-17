@@ -246,7 +246,6 @@ impl MergeOperator {
         let place = |builder: &mut RowSetBuilderRandom, rows: &RowSet, offset: RowKey| {
             builder.add_ranges(
                 rows.ranges()
-                    .iter()
                     .map(|range| RowRange::new(range.first() + offset, range.last() + offset)),
             );
         };
@@ -426,7 +425,6 @@ pub fn merge(tables: &[Arc<dyn Table>]) -> Result<Arc<dyn Table>, MergeError> {
             firsts.push(next_slot(first, key_space_for(own.last_row_key())?)?);
             rows.add_ranges(
                 own.ranges()
-                    .iter()
                     .map(|range| RowRange::new(range.first() + first, range.last() + first)),
             );
         }

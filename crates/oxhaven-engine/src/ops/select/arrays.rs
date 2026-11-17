@@ -432,14 +432,15 @@ fn dirty_positions(source: &RowSet, updated: &RowSet, shift: i64) -> Result<RowS
         }
     } else {
         // The rows after each run, up to the run after it.
-        let ranges = positions.ranges();
-        for pair in ranges.windows(2) {
-            push(
-                pair[0].last() + 1,
-                (pair[1].first() - 1).min(pair[0].last() - shift),
-            );
+        let mut ranges = positions.ranges();
+        let mut run_end = ranges.next().map(|range| range.last());
+        for next in ranges {
+            if let Some(end) = run_end {
+                push(end + 1, (next.first() - 1).min(end - shift));
+            }
+            run_end = Some(next.last());
         }
-        if let Some(end) = ranges.last().map(|range| range.last()) {
+        if let Some(end) = run_end {
             if ((end + 1) as u64) < source.size() {
                 push(end + 1, end - shift);
             }

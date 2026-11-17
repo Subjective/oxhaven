@@ -56,22 +56,13 @@ pub fn intersect(data: &RowSetShiftData, rows: &RowSet) -> RowSetShiftData {
     let kept = data
         .ranges()
         .iter()
-        .filter(|s| has_key_in(rows, s.first, s.last))
+        .filter(|s| rows.overlaps_range(s.first, s.last))
         .copied()
         .collect();
     match RowSetShiftData::new(kept) {
         Ok(kept) => kept,
         Err(e) => panic!("a subset of valid shifts is valid: {e}"),
     }
-}
-
-/// Whether `rows` has a key in `first..=last`. An inverted range holds no key.
-///
-/// Behavior: io.deephaven.engine.rowset.RowSet#overlapsRange
-fn has_key_in(rows: &RowSet, first: RowKey, last: RowKey) -> bool {
-    let ranges = rows.ranges();
-    let i = ranges.partition_point(|r| r.last() < first);
-    first <= last && ranges.get(i).is_some_and(|r| r.first() <= last)
 }
 
 /// Collects shifts one range at a time, in increasing key order.
@@ -158,7 +149,7 @@ impl CoalescingShiftBuilder {
     ///
     /// Behavior: io.deephaven.engine.rowset.RowSetShiftData.SmartCoalescingBuilder#shiftRange
     pub fn shift_range(&mut self, first: RowKey, last: RowKey, delta: i64) {
-        if delta == 0 || last < first || !has_key_in(&self.pre_shift_keys, first, last) {
+        if delta == 0 || last < first || !self.pre_shift_keys.overlaps_range(first, last) {
             return;
         }
         self.shifts.push(ShiftRange { first, last, delta });
@@ -173,7 +164,9 @@ impl CoalescingShiftBuilder {
                 Some(prev)
                     if prev.delta == s.delta
                         && prev.last < s.first
-                        && !has_key_in(&self.pre_shift_keys, prev.last + 1, s.first - 1) =>
+                        && !self
+                            .pre_shift_keys
+                            .overlaps_range(prev.last + 1, s.first - 1) =>
                 {
                     prev.last = s.last;
                 }
@@ -181,24 +174,5 @@ impl CoalescingShiftBuilder {
             }
         }
         RowSetShiftData::new(out)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn has_key_in_checks_the_inclusive_range() {
-        let rows = RowSet::from_keys([5, 6, 20]);
-        assert!(has_key_in(&rows, 0, 5));
-        assert!(has_key_in(&rows, 6, 6));
-        assert!(has_key_in(&rows, 7, 20));
-        assert!(!has_key_in(&rows, 0, 4));
-        assert!(!has_key_in(&rows, 7, 19));
-        assert!(!has_key_in(&rows, 21, 30));
-        // The gap between two ranges that touch is inverted and holds nothing, even when a
-        // range of `rows` spans both of its bounds.
-        assert!(!has_key_in(&rows, 6, 5));
     }
 }

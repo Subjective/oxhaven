@@ -603,7 +603,7 @@ impl Producer {
                         &upstream.shifted,
                         &row_set,
                         &prev_row_set,
-                        *positions,
+                        positions,
                         subscription.reverse_viewport,
                     );
                 }

@@ -8,7 +8,7 @@ use crate::update::modified_pre_shift;
 use arrow::array::{ArrayRef, UInt64Array};
 use oxhaven_column::WritableSource;
 use oxhaven_contracts::graph::locked;
-use oxhaven_contracts::rowset::{RowKey, RowRange, RowSet};
+use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{ColumnSource, Table, TableFailure};
 use oxhaven_contracts::update::{ModifiedColumnSet, TableUpdate};
@@ -155,26 +155,9 @@ fn group(positions: impl Iterator<Item = usize>, slots: &[usize]) -> Grouped {
 
 /// `rows` in pieces of at most [`CHUNK_SIZE`] rows, in order.
 fn chunks(rows: &RowSet) -> impl Iterator<Item = RowSet> + '_ {
-    let ranges = rows.ranges();
-    let mut index = 0;
-    let mut offset = 0u64;
-    std::iter::from_fn(move || {
-        let mut piece = Vec::new();
-        let mut room = CHUNK_SIZE;
-        while room > 0 && index < ranges.len() {
-            let range = ranges[index];
-            let first = range.first() + offset as RowKey;
-            let taken = room.min(range.size() - offset);
-            piece.push(RowRange::new(first, first + taken as RowKey - 1));
-            room -= taken;
-            offset += taken;
-            if offset == range.size() {
-                index += 1;
-                offset = 0;
-            }
-        }
-        (!piece.is_empty()).then(|| RowSet::from_ranges(piece))
-    })
+    (0..rows.size())
+        .step_by(CHUNK_SIZE as usize)
+        .map(|start| rows.sub_set_by_position_range(start, start + CHUNK_SIZE))
 }
 
 fn read(

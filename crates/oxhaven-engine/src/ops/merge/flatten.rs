@@ -41,30 +41,28 @@ pub(crate) fn flattened_shift_data(
     let new_size = prev_size - removed.size() + added.size();
     let before = RowSet::flat(prev_size).minus(removed);
     let after = RowSet::flat(new_size).minus(added);
-    let (from, to) = (before.ranges(), after.ranges());
+    let (mut from, mut to) = (before.ranges(), after.ranges());
     let mut shifts = Vec::new();
-    let (mut i, mut j) = (0, 0);
-    // How much of `from[i]` and `to[j]` earlier pairs have used up.
-    let (mut used_from, mut used_to) = (0, 0);
-    while i < from.len() && j < to.len() {
-        let first = from[i].first() + used_from;
-        let target = to[j].first() + used_to;
-        let length = (from[i].last() - first).min(to[j].last() - target) + 1;
+    // What earlier pairs have left of the current range of each side.
+    let (mut source, mut destination) = (from.next(), to.next());
+    while let (Some(moving), Some(landing)) = (source, destination) {
+        let (first, target) = (moving.first(), landing.first());
+        let length = (moving.last() - first).min(landing.last() - target) + 1;
         shifts.push(ShiftRange {
             first,
             last: first + length - 1,
             delta: target - first,
         });
-        used_from += length;
-        used_to += length;
-        if first + length > from[i].last() {
-            i += 1;
-            used_from = 0;
-        }
-        if target + length > to[j].last() {
-            j += 1;
-            used_to = 0;
-        }
+        source = if first + length > moving.last() {
+            from.next()
+        } else {
+            Some(RowRange::new(first + length, moving.last()))
+        };
+        destination = if target + length > landing.last() {
+            to.next()
+        } else {
+            Some(RowRange::new(target + length, landing.last()))
+        };
     }
     RowSetShiftData::new(shifts).map_err(failure)
 }
@@ -72,16 +70,7 @@ pub(crate) fn flattened_shift_data(
 /// The keys of `rows` at `positions`, in the order given; `NULL_ROW_KEY` for a position
 /// outside `0..rows.size()`. With `reversed`, position 0 is the last key.
 fn keys_at_positions(rows: &RowSet, positions: &[RowKey], reversed: bool) -> Vec<RowKey> {
-    let ranges = rows.ranges();
-    // `ends[i]` is the number of keys in `ranges[..=i]`.
-    let ends: Vec<u64> = ranges
-        .iter()
-        .scan(0u64, |total, range| {
-            *total += range.size();
-            Some(*total)
-        })
-        .collect();
-    let size = ends.last().copied().unwrap_or(0);
+    let size = rows.size();
     positions
         .iter()
         .map(|&position| {
@@ -93,9 +82,10 @@ fn keys_at_positions(rows: &RowSet, positions: &[RowKey], reversed: bool) -> Vec
             } else {
                 position as u64
             };
-            let i = ends.partition_point(|&end| end <= position);
-            let before = if i == 0 { 0 } else { ends[i - 1] };
-            ranges[i].first() + (position - before) as RowKey
+            match rows.get(position) {
+                Some(key) => key,
+                None => panic!("position {position} is below the size {size}"),
+            }
         })
         .collect()
 }
@@ -126,7 +116,6 @@ fn mirror(positions: &RowSet, size: u64) -> RowSet {
     RowSet::from_ranges(
         positions
             .ranges()
-            .iter()
             .map(|range| RowRange::new(last - range.last(), last - range.first())),
     )
 }
@@ -246,9 +235,8 @@ pub(crate) fn pivoted(parent: &Arc<dyn Table>, attributes: TableAttributes) -> A
     let rows = parent.row_set();
     let pivot = pivot(rows.last_row_key().unwrap_or(-1));
     let mirrored = RowSet::from_ranges(
+        // The mirrored ranges come out in decreasing order; `from_ranges` sorts them.
         rows.ranges()
-            .iter()
-            .rev()
             .map(|range| RowRange::new(pivot - range.last(), pivot - range.first())),
     );
     let redirection: Arc<dyn RowRedirection> = Arc::new(PivotRedirection(pivot));

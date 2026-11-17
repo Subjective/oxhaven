@@ -7,8 +7,8 @@
 //!   reference counts and on `validate()`. Those have no counterpart; the observable result is
 //!   compared with a sorted list of keys instead, and every result is checked to be canonical.
 //! - Java's `find` returns `-insertion - 1` for a missing key; that is `Err(insertion)` here.
-//! - The contract row set costs O(ranges) per operation, so the sizes of the randomized tests
-//!   are smaller than in Java. Each test says what it runs.
+//! - The sizes of the randomized tests are Java's. Two of them run a fifth of their rounds
+//!   under the quick seed budget and all of them with `OXHAVEN_TEST_SEEDS=full`; each says so.
 //! - Random inputs come from a small fixed-seed generator, not `java.util.Random`; the expected
 //!   values are computed from a model, so only reproducibility matters.
 //!
@@ -17,6 +17,7 @@
 use oxhaven_rowset::{
     union_all, RowKey, RowRange, RowSet, RowSetBuilderRandom, RowSetBuilderSequential,
 };
+use oxhaven_testkit::test_seeds;
 use std::collections::BTreeSet;
 
 /// `RspArray.BLOCK_SIZE`: the Java tests place keys around multiples of it.
@@ -108,8 +109,12 @@ fn insert_with_shift(rows: &mut RowSet, shift: i64, other: &RowSet) {
     rows.insert(&other.shift(shift).unwrap());
 }
 
+fn ranges(rows: &RowSet) -> Vec<RowRange> {
+    rows.ranges().collect()
+}
+
 fn assert_canonical(rows: &RowSet) {
-    for w in rows.ranges().windows(2) {
+    for w in ranges(rows).windows(2) {
         assert!(w[0].last() + 1 < w[1].first(), "not canonical: {rows:?}");
     }
 }
@@ -162,7 +167,7 @@ fn single_key_and_single_range() {
     assert_eq!(one.iter().collect::<Vec<_>>(), [2]);
 
     let range = RowSet::from_range(3, 100);
-    assert_eq!(range.ranges(), &[RowRange::new(3, 100)]);
+    assert_eq!(ranges(&range), [RowRange::new(3, 100)]);
 }
 
 /// Port of `testRange`, without its reference-count assertions.
@@ -450,14 +455,14 @@ fn minus_simple() {
     );
 }
 
-/// Port of `testMinusRandom`: 16384 slots and 20 runs here, 131072 and 50 in Java.
+/// Port of `testMinusRandom`: 131072 slots and 50 runs, as in Java.
 #[test]
 fn minus_random_keys() {
-    let max_size = 16 * 1024;
+    let max_size = 128 * 1024;
     let mut rng = Rng(42);
     let mut full_set: Vec<bool> = (0..max_size).map(|_| rng.flip()).collect();
     let mut sub_set: Vec<bool> = (0..max_size).map(|_| rng.flip()).collect();
-    for run in 0..20 {
+    for run in 0..50 {
         for slot in full_set.iter_mut().take(rng.below(max_size) as usize) {
             *slot ^= rng.flip();
         }
@@ -477,16 +482,16 @@ fn minus_random_keys() {
     }
 }
 
-/// Port of `testMinusRandomRanges`: 16384 slots and 20 iterations here, 131072 and 50 in Java.
+/// Port of `testMinusRandomRanges`: 131072 slots and 50 iterations, as in Java.
 /// Java means to set whole ranges but writes one slot per range (it indexes with the range
 /// counter); this port sets the ranges, which is the behavior the test is named for.
 #[test]
 fn minus_random_ranges() {
-    let max_size = 16 * 1024;
+    let max_size = 128 * 1024;
     let mut rng = Rng(42);
     let mut full_set: Vec<bool> = (0..max_size).map(|_| rng.flip()).collect();
     let mut sub_set: Vec<bool> = (0..max_size).map(|_| rng.flip()).collect();
-    for iteration in 0..20 {
+    for iteration in 0..50 {
         for set in [&mut full_set, &mut sub_set] {
             for _ in 0..rng.below(100) {
                 let value = rng.flip();
@@ -506,16 +511,17 @@ fn minus_random_ranges() {
 }
 
 /// Port of `testMinusIndexOps`: range inserts and key-by-key removes on both operands before
-/// each subtraction. 1024 slots and 40 iterations here, 65536 and 100 in Java.
+/// each subtraction. 65536 slots and 100 iterations, as in Java; the quick seed budget runs
+/// the first 20 iterations.
 #[test]
 fn minus_after_incremental_inserts_and_removes() {
-    let max_size = 1024;
+    let max_size = 64 * 1024;
     let mut rng = Rng(42);
     let mut full_set: Vec<bool> = (0..max_size).map(|_| rng.flip()).collect();
     let mut sub_set: Vec<bool> = (0..max_size).map(|_| rng.flip()).collect();
     let mut full_rows = row_set(&bools_to_keys(&full_set));
     let mut sub_rows = row_set(&bools_to_keys(&sub_set));
-    for iteration in 0..40 {
+    for iteration in test_seeds(0..100) {
         for (rows, set) in [
             (&mut full_rows, &mut full_set),
             (&mut sub_rows, &mut sub_set),
@@ -544,13 +550,14 @@ fn minus_after_incremental_inserts_and_removes() {
     }
 }
 
-/// Port of `testRandomInsertMinus`: 100 rounds here, 500 in Java.
+/// Port of `testRandomInsertMinus`: 500 rounds, as in Java; the quick seed budget runs the
+/// first 100.
 #[test]
 fn random_insert_remove_then_split_and_rejoin() {
     let mut rng = Rng(1);
     let mut check = RowSet::empty();
     let mut model: BTreeSet<RowKey> = BTreeSet::new();
-    for round in 0..100 {
+    for round in test_seeds(0..500) {
         let mut builder = RowSetBuilderRandom::new();
         let mut operand_keys = BTreeSet::new();
         for _ in 0..128 {
@@ -626,8 +633,8 @@ fn random_builder_merges_overlapping_and_adjacent_ranges() {
     builder.add_range(225, 250);
     builder.add_range(220, 260);
     assert_eq!(
-        builder.build().ranges(),
-        &[
+        ranges(&builder.build()),
+        [
             RowRange::new(10, 110),
             RowRange::new(120, 150),
             RowRange::new(155, 165),
@@ -647,7 +654,7 @@ fn random_builder_collapses_interleaved_keys() {
     builder.add_keys((0..10 * 32).map(|i| 1000 + 2 * i));
     let rows = builder.build();
     assert_eq!(rows.size(), 12 * 32);
-    assert_eq!(rows.ranges()[0], RowRange::new(1, 64));
+    assert_eq!(ranges(&rows)[0], RowRange::new(1, 64));
 }
 
 /// The values shared by the builder tests and `testSubSetForPositions`.
@@ -863,7 +870,7 @@ fn contains_range_around_every_range_boundary() {
     insert_range(&mut rows, 6 * BLOCK_SIZE, 6 * BLOCK_SIZE + BLOCK_LAST);
     insert_range(&mut rows, 10 * BLOCK_SIZE, 20 * BLOCK_SIZE - 1);
     let last_key = rows.last_row_key().unwrap();
-    let ranges = rows.ranges().to_vec();
+    let ranges = ranges(&rows);
     assert_eq!(ranges.len(), 6);
     for (i, range) in ranges.iter().enumerate() {
         let (start, end) = (range.first(), range.last());
@@ -895,7 +902,7 @@ fn overlaps_range_around_every_gap() {
     insert_range(&mut rows, 10 * BLOCK_SIZE, 20 * BLOCK_SIZE - 1);
     let last_key = rows.last_row_key().unwrap();
     let mut prev_end: Option<RowKey> = None;
-    for range in rows.ranges().to_vec() {
+    for range in ranges(&rows) {
         let (start, end) = (range.first(), range.last());
         let Some(before) = prev_end else {
             assert!(!overlaps_range(&rows, 0, start - 1));
@@ -1216,11 +1223,11 @@ fn single_range_insert_row_set_and_range() {
     for (start2, end2, expected) in [(21, 22, (10, 22)), (8, 9, (8, 20))] {
         let mut rows = RowSet::from_range(10, 20);
         rows.insert(&RowSet::from_range(start2, end2));
-        assert_eq!(rows.ranges(), &[RowRange::new(expected.0, expected.1)]);
+        assert_eq!(ranges(&rows), [RowRange::new(expected.0, expected.1)]);
         let mut rows = RowSet::empty();
         insert_range(&mut rows, 10, 20);
         insert_range(&mut rows, start2, end2);
-        assert_eq!(rows.ranges(), &[RowRange::new(expected.0, expected.1)]);
+        assert_eq!(ranges(&rows), [RowRange::new(expected.0, expected.1)]);
     }
 
     let (start, end) = (10, 20);
@@ -1260,15 +1267,15 @@ fn single_range_remove_row_set_range_and_minus_agree() {
 
         let mut rows = RowSet::from_range(10, 20);
         rows.remove(&other);
-        assert_eq!(rows.ranges(), expected, "remove {start2}..={end2}");
+        assert_eq!(ranges(&rows), expected, "remove {start2}..={end2}");
 
         let mut rows = RowSet::empty();
         insert_range(&mut rows, 10, 20);
         remove_range(&mut rows, start2, end2);
-        assert_eq!(rows.ranges(), expected, "remove range {start2}..={end2}");
+        assert_eq!(ranges(&rows), expected, "remove range {start2}..={end2}");
 
         let minus = RowSet::from_range(10, 20).minus(&other);
-        assert_eq!(minus.ranges(), expected, "minus {start2}..={end2}");
+        assert_eq!(ranges(&minus), expected, "minus {start2}..={end2}");
     }
 }
 
@@ -1371,14 +1378,14 @@ fn union_all_matches_pairwise_union() {
 // ---------------------------------------------------------------------------------------------
 
 /// Port of `MixedBuilderTest#testMixedBuilder`: random keys below 2^31 through the random
-/// builder, compared with a sorted set. 100000 keys here, 1048576 in Java, which compares two
+/// builder, compared with a sorted set. 1048576 keys, as in Java, which compares two
 /// internal builders with each other.
 #[test]
 fn random_builder_with_many_scattered_keys() {
     let mut rng = Rng(5);
     let mut builder = RowSetBuilderRandom::new();
     let mut model = BTreeSet::new();
-    for _ in 0..100_000 {
+    for _ in 0..1 << 20 {
         let key = rng.below(1 << 31);
         builder.add_key(key);
         model.insert(key);

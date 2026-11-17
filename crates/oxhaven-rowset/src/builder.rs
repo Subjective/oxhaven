@@ -91,7 +91,13 @@ impl RowSetBuilderSequential {
 #[derive(Clone, Debug, Default)]
 pub struct RowSetBuilderRandom {
     ranges: Vec<RowRange>,
+    /// The row sets added whole that have too many ranges to be worth copying out.
+    rows: RowSet,
 }
+
+/// A row set with more ranges than this is added to a random builder by union, which shares
+/// its blocks, and not range by range.
+const MAX_COPIED_RANGES: usize = 64;
 
 impl RowSetBuilderRandom {
     pub fn new() -> Self {
@@ -133,11 +139,19 @@ impl RowSetBuilderRandom {
 
     /// Behavior: io.deephaven.engine.rowset.RowSetBuilderRandom#addRowSet
     pub fn add_row_set(&mut self, rows: &RowSet) {
-        self.ranges.extend_from_slice(rows.ranges());
+        if rows.range_count() <= MAX_COPIED_RANGES {
+            self.ranges.extend(rows.ranges());
+        } else {
+            self.rows.insert(rows);
+        }
     }
 
     pub fn build(self) -> RowSet {
-        RowSet::from_ranges(self.ranges)
+        let mut rows = self.rows;
+        if !self.ranges.is_empty() {
+            rows.insert(&RowSet::from_ranges(self.ranges));
+        }
+        rows
     }
 }
 

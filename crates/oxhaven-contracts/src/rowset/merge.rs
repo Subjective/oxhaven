@@ -1,11 +1,11 @@
 //! Union, intersection and difference of two row sets, span by span.
 
 use super::container::{combine, Body, Op, BLOCK_KEYS};
-use super::{leading, BlockRowSet, Span};
+use super::{leading, RowSet, Span};
 
 /// A position in the spans `at..end` of a row set, for a walk in block order.
 pub(super) struct Cursor<'a> {
-    set: &'a BlockRowSet,
+    set: &'a RowSet,
     at: usize,
     end: usize,
     /// Blocks of `spans[at]` already passed. Only a span of whole blocks is passed in parts.
@@ -38,7 +38,7 @@ impl<'a> Cursor<'a> {
 
     /// Moves to the first block at or after `limit`. With `out`, the keys passed are added to
     /// it.
-    fn pass(&mut self, limit: u64, mut out: Option<&mut BlockRowSet>) {
+    fn pass(&mut self, limit: u64, mut out: Option<&mut RowSet>) {
         while let Some(block) = self.block().filter(|&b| b < limit) {
             let span = self.span();
             if self.passed == 0 && span.end() <= limit {
@@ -60,7 +60,7 @@ impl<'a> Cursor<'a> {
     }
 }
 
-impl BlockRowSet {
+impl RowSet {
     pub(super) fn all(&self) -> Cursor<'_> {
         self.window(0, self.spans.len())
     }
@@ -77,7 +77,7 @@ impl BlockRowSet {
     /// `self = self op other`, for an `op` that keeps the keys of `self` in blocks where
     /// `other` has none (union and minus). Only the spans of `self` among the blocks of
     /// `other` are rebuilt.
-    pub(super) fn merge_in_place(&mut self, op: Op, other: &BlockRowSet) {
+    pub(super) fn merge_in_place(&mut self, op: Op, other: &RowSet) {
         debug_assert!(op != Op::Intersect);
         let (Some(first), Some(last)) = (other.spans.first(), other.spans.last()) else {
             return;
@@ -121,8 +121,8 @@ impl BlockRowSet {
 }
 
 /// `a op b` over the spans the two cursors cover.
-pub(super) fn merge(op: Op, mut a: Cursor<'_>, mut b: Cursor<'_>) -> BlockRowSet {
-    let mut out = BlockRowSet::empty();
+pub(super) fn merge(op: Op, mut a: Cursor<'_>, mut b: Cursor<'_>) -> RowSet {
+    let mut out = RowSet::empty();
     // Whether the keys of one side stay where the other side has no block.
     let (keep_a, keep_b) = (op != Op::Intersect, op == Op::Union);
     loop {

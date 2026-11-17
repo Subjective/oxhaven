@@ -1043,7 +1043,7 @@ impl State {
         let mut keys = Vec::new();
         for bucket in self.states.values_mut() {
             let rows = bucket.selected(&mut self.trackers)?;
-            keys.extend(rows.ranges().iter().copied());
+            keys.extend(rows.ranges());
         }
         selected.insert(&RowSet::from_ranges(keys));
         Ok(selected)
