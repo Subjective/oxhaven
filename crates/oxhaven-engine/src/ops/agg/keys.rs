@@ -1,11 +1,11 @@
 //! Group keys to slots.
 
 use super::values::failure;
-use crate::ops::group_keys::GroupKeys;
+use crate::ops::key_table::KeyTable as GroupKeys;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::TableFailure;
 
-pub(crate) use crate::ops::group_keys::canonical_floats;
+pub(crate) use crate::ops::key_table::canonical_floats;
 use arrow::array::ArrayRef;
 
 /// The slot of every key seen so far. Slots are handed out in the order keys are first
@@ -33,7 +33,7 @@ impl KeyTable {
         }
         let data_types: Vec<_> = key_types.iter().map(ColumnType::arrow_type).collect();
         Ok(KeyTable {
-            keys: GroupKeys::new(&data_types)?,
+            keys: GroupKeys::for_types(&data_types)?,
         })
     }
 
@@ -59,7 +59,7 @@ impl KeyTable {
     /// means the parent reported a row that the aggregation was never given.
     pub fn find(&mut self, key_columns: &[ArrayRef]) -> Result<Vec<usize>, TableFailure> {
         let mut slots = Vec::new();
-        if self.keys.find(key_columns, &mut slots)? {
+        if self.keys.find_all(key_columns, &mut slots)? {
             Ok(slots)
         } else {
             Err(failure(

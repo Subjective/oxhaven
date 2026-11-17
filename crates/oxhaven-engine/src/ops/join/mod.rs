@@ -9,7 +9,6 @@
 //! `io.deephaven.server.table.ops.JoinTablesGrpcImpl.LeftJoinTablesGrpcImpl#doJoin` answers
 //! it with `UNIMPLEMENTED`. There is nothing in the engine to port for it.
 
-pub mod key_table;
 pub(crate) mod keys;
 pub(crate) mod natural;
 

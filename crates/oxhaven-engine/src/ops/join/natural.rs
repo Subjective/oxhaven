@@ -22,9 +22,9 @@
 //! table; then the keys the right table touched), because that order decides which
 //! combinations of changes fail.
 
-use super::key_table::{KeyTable, NO_SLOT};
 use super::keys::{key_text, Key, KeyColumns};
 use super::{JoinAddition, JoinError, JoinMatch, NaturalJoinType};
+use crate::ops::key_table::{KeyTable, NO_SLOT};
 use crate::table::{reads_through, MergedOperator, QueryTable, TableSpec};
 use crate::update::{modified_pre_shift, ModifiedColumnTransformer};
 use oxhaven_column::{Clock, RedirectedSource, RowRedirection, WritableRowRedirection};
