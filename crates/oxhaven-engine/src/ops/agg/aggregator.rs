@@ -3,7 +3,7 @@
 use super::keys::KeyTable;
 use super::operator::{AggOperator, Effect, GroupReader};
 use super::slot_source::ResultColumn;
-use super::values::{failure, Run, Values};
+use super::values::{failure, Run, Runs, Values};
 use crate::update::modified_pre_shift;
 use arrow::array::{ArrayRef, UInt64Array};
 use oxhaven_contracts::graph::locked;
@@ -584,18 +584,20 @@ impl Aggregator {
         add: bool,
     ) -> Result<(), TableFailure> {
         let decoded = self.decode(rows, use_prev, |_| true)?;
+        let mut effects = Vec::with_capacity(grouped.runs.len());
         for column in &mut self.ops {
             let values = values_of(&decoded, column.plan.input);
             let weights = values_of(&decoded, column.plan.weight);
-            for (slot, range) in &grouped.runs {
-                let run =
-                    Run::new(values, row_keys, &grouped.order[range.clone()]).with_weights(weights);
-                let effect = if add {
-                    column.plan.op.add(*slot, &run)
-                } else {
-                    column.plan.op.remove(*slot, &run)
-                };
-                column.marks.note(*slot, effect);
+            let runs = Runs::new(values, weights, row_keys, &grouped.order, &grouped.runs);
+            effects.clear();
+            if add {
+                column.plan.op.add_runs(&runs, &mut effects);
+            } else {
+                column.plan.op.remove_runs(&runs, &mut effects);
+            }
+            assert_eq!(effects.len(), grouped.runs.len(), "one effect per group");
+            for ((slot, _), effect) in grouped.runs.iter().zip(&effects) {
+                column.marks.note(*slot, *effect);
             }
         }
         self.check_operators()?;

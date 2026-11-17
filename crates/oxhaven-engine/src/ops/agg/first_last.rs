@@ -2,7 +2,7 @@
 
 use super::operator::{AggOperator, Effect, GroupReader};
 use super::slot_source::SlotSource;
-use super::values::{build, failure, Run, Scalar, Values};
+use super::values::{build, failure, Run, Runs, Scalar, Values};
 use arrow::array::{Array, ArrayRef};
 use oxhaven_contracts::rowset::{RowKey, RowSet, NULL_ROW_KEY};
 use oxhaven_contracts::schema::ColumnType;
@@ -53,6 +53,37 @@ impl FirstLast {
         }
     }
 
+    /// What the first or last row (`row_key`, whose value `value` gives) of rows that
+    /// joined `slot` does to the group.
+    #[inline]
+    fn offer(&mut self, slot: usize, row_key: RowKey, value: impl FnOnce() -> Scalar) -> Effect {
+        let current = self.row_key[slot];
+        let takes = match self.mode {
+            // Behavior: FirstOrLastChunkedOperator#updateRedirections, which reports the
+            // group modified when the row it shows is another one, whatever its value.
+            FirstLastMode::Tracked => {
+                let beyond = current == NULL_ROW_KEY
+                    || if self.first {
+                        row_key < current
+                    } else {
+                        row_key > current
+                    };
+                return Effect {
+                    modified: beyond,
+                    recompute: true,
+                };
+            }
+            FirstLastMode::ByRowKey if self.first => current == NULL_ROW_KEY || row_key < current,
+            FirstLastMode::ByRowKey => current == NULL_ROW_KEY || row_key > current,
+            FirstLastMode::Arrival => !self.first || current == NULL_ROW_KEY,
+        };
+        if takes {
+            self.row_key[slot] = row_key;
+            self.value[slot] = value();
+        }
+        Effect::modified_if(takes)
+    }
+
     /// Whether the rows of `run`, which leave group `slot`, include the row it shows.
     ///
     /// Behavior: FirstOrLastChunkedOperator#updateRedirections
@@ -95,31 +126,20 @@ impl AggOperator for FirstLast {
         let Some((row_key, value)) = run.end(self.first) else {
             return Effect::UNCHANGED;
         };
-        let current = self.row_key[slot];
-        let takes = match self.mode {
-            // Behavior: FirstOrLastChunkedOperator#updateRedirections, which reports the
-            // group modified when the row it shows is another one, whatever its value.
-            FirstLastMode::Tracked => {
-                let beyond = current == NULL_ROW_KEY
-                    || if self.first {
-                        row_key < current
-                    } else {
-                        row_key > current
-                    };
-                return Effect {
-                    modified: beyond,
-                    recompute: true,
-                };
-            }
-            FirstLastMode::ByRowKey if self.first => current == NULL_ROW_KEY || row_key < current,
-            FirstLastMode::ByRowKey => current == NULL_ROW_KEY || row_key > current,
-            FirstLastMode::Arrival => !self.first || current == NULL_ROW_KEY,
-        };
-        if takes {
-            self.row_key[slot] = row_key;
-            self.value[slot] = value;
+        self.offer(slot, row_key, || value)
+    }
+
+    fn add_runs(&mut self, runs: &Runs<'_>, effects: &mut Vec<Effect>) {
+        let ends = runs.ends(self.first);
+        effects.extend(ends.map(|(slot, p)| self.offer(slot, runs.row_key(p), || runs.scalar(p))));
+    }
+
+    fn remove_runs(&mut self, runs: &Runs<'_>, effects: &mut Vec<Effect>) {
+        if self.mode == FirstLastMode::Tracked {
+            effects.extend(runs.iter().map(|(slot, run)| self.leaves(slot, &run)));
+        } else {
+            effects.resize(effects.len() + runs.len(), Effect::UNCHANGED);
         }
-        Effect::modified_if(takes)
     }
 
     fn remove(&mut self, slot: usize, run: &Run<'_>) -> Effect {
@@ -229,6 +249,38 @@ impl FirstLastCell {
 }
 
 impl FirstLastCell {
+    /// What the first or last row `row_key` of rows that joined `slot` does to the
+    /// group.
+    #[inline]
+    fn offer(&mut self, slot: usize, row_key: RowKey) -> Effect {
+        let current = self.row_key[slot];
+        let takes = match self.mode {
+            // Behavior: FirstOrLastChunkedOperator#updateRedirections, which reports the
+            // group modified when the row it shows is another one, whatever its value.
+            FirstLastMode::Tracked => {
+                let beyond = current == NULL_ROW_KEY
+                    || if self.first {
+                        row_key < current
+                    } else {
+                        row_key > current
+                    };
+                return Effect {
+                    modified: beyond,
+                    recompute: true,
+                };
+            }
+            FirstLastMode::ByRowKey if self.first => current == NULL_ROW_KEY || row_key < current,
+            FirstLastMode::ByRowKey => current == NULL_ROW_KEY || row_key > current,
+            FirstLastMode::Arrival => !self.first || current == NULL_ROW_KEY,
+        };
+        if !takes {
+            return Effect::UNCHANGED;
+        }
+        self.row_key[slot] = row_key;
+        // The cell is read once the chunk's rows are all seen.
+        Effect::RECOMPUTE
+    }
+
     /// Whether the rows of `run`, which leave group `slot`, include the row it shows.
     ///
     /// Behavior: FirstOrLastChunkedOperator#updateRedirections
@@ -275,32 +327,20 @@ impl AggOperator for FirstLastCell {
         let Some(row_key) = candidate else {
             return Effect::UNCHANGED;
         };
-        let current = self.row_key[slot];
-        let takes = match self.mode {
-            // Behavior: FirstOrLastChunkedOperator#updateRedirections, which reports the
-            // group modified when the row it shows is another one, whatever its value.
-            FirstLastMode::Tracked => {
-                let beyond = current == NULL_ROW_KEY
-                    || if self.first {
-                        row_key < current
-                    } else {
-                        row_key > current
-                    };
-                return Effect {
-                    modified: beyond,
-                    recompute: true,
-                };
-            }
-            FirstLastMode::ByRowKey if self.first => current == NULL_ROW_KEY || row_key < current,
-            FirstLastMode::ByRowKey => current == NULL_ROW_KEY || row_key > current,
-            FirstLastMode::Arrival => !self.first || current == NULL_ROW_KEY,
-        };
-        if !takes {
-            return Effect::UNCHANGED;
+        self.offer(slot, row_key)
+    }
+
+    fn add_runs(&mut self, runs: &Runs<'_>, effects: &mut Vec<Effect>) {
+        let ends = runs.ends(self.first);
+        effects.extend(ends.map(|(slot, p)| self.offer(slot, runs.row_key(p))));
+    }
+
+    fn remove_runs(&mut self, runs: &Runs<'_>, effects: &mut Vec<Effect>) {
+        if self.mode == FirstLastMode::Tracked {
+            effects.extend(runs.iter().map(|(slot, run)| self.leaves(slot, &run)));
+        } else {
+            effects.resize(effects.len() + runs.len(), Effect::UNCHANGED);
         }
-        self.row_key[slot] = row_key;
-        // The cell is read once the chunk's rows are all seen.
-        Effect::RECOMPUTE
     }
 
     fn remove(&mut self, slot: usize, run: &Run<'_>) -> Effect {
@@ -377,5 +417,98 @@ impl AggOperator for FirstLastCell {
         self.cells
             .chunk_by_keys(&slot_keys, false)
             .expect("cells of the column's type")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arrow::array::Int64Array;
+    use oxhaven_column::FlatSource;
+    use std::ops::Range;
+
+    type Chunk = (Vec<RowKey>, Vec<usize>, Vec<(usize, Range<usize>)>);
+
+    /// Two chunks of rows of three groups. In each chunk group 0 has three rows, group 1
+    /// one and group 2 two; the second chunk's rows of group 0 come before the first's,
+    /// those of group 2 after, so a first and a last operator each take some groups and
+    /// keep others.
+    fn chunks() -> Vec<Chunk> {
+        let runs = vec![(0, 0..3), (1, 3..4), (2, 4..6)];
+        vec![
+            (
+                vec![10, 12, 14, 16, 18, 20],
+                vec![0, 2, 5, 1, 3, 4],
+                runs.clone(),
+            ),
+            (vec![2, 4, 6, 30, 32, 34], vec![0, 1, 2, 3, 4, 5], runs),
+        ]
+    }
+
+    const MODES: [FirstLastMode; 3] = [
+        FirstLastMode::ByRowKey,
+        FirstLastMode::Arrival,
+        FirstLastMode::Tracked,
+    ];
+
+    /// Gives the chunks to `batched` a chunk at a time and to `single` a group at a time,
+    /// added or removed, and returns the effects of each.
+    fn feed(
+        batched: &mut dyn AggOperator,
+        single: &mut dyn AggOperator,
+        values: Option<&Values>,
+        add: bool,
+    ) -> (Vec<Effect>, Vec<Effect>) {
+        let (mut by_chunk, mut by_group) = (Vec::new(), Vec::new());
+        for (row_keys, order, runs) in chunks() {
+            let all = Runs::new(values, None, &row_keys, &order, &runs);
+            if add {
+                batched.add_runs(&all, &mut by_chunk);
+            } else {
+                batched.remove_runs(&all, &mut by_chunk);
+            }
+            for (slot, range) in &runs {
+                let run = Run::new(values, &row_keys, &order[range.clone()]);
+                by_group.push(if add {
+                    single.add(*slot, &run)
+                } else {
+                    single.remove(*slot, &run)
+                });
+            }
+        }
+        (by_chunk, by_group)
+    }
+
+    #[test]
+    fn a_chunk_of_groups_at_once_is_a_group_at_a_time() {
+        let values: ArrayRef = Arc::new(Int64Array::from_iter_values(100..106));
+        let decoded = Values::decode(&ColumnType::Long, &values).expect("longs");
+        let source: Arc<dyn ColumnSource> =
+            Arc::new(FlatSource::new(ColumnType::Long, values.clone()).expect("a column"));
+        for mode in MODES {
+            for first in [true, false] {
+                let new = || FirstLast::new(ColumnType::Long, first, mode);
+                let (mut batched, mut single) = (new(), new());
+                batched.ensure_slots(3);
+                single.ensure_slots(3);
+                for add in [true, false] {
+                    let (a, b) = feed(&mut batched, &mut single, Some(&decoded), add);
+                    assert_eq!(a, b, "{mode:?}, first {first}, add {add}");
+                    assert_eq!(batched.row_key, single.row_key);
+                    let slots = [0, 1, 2];
+                    assert_eq!(&batched.results(&slots), &single.results(&slots));
+                }
+
+                let new = || FirstLastCell::new(source.clone(), ColumnType::Long, first, mode);
+                let (mut batched, mut single) = (new(), new());
+                batched.ensure_slots(3);
+                single.ensure_slots(3);
+                for add in [true, false] {
+                    let (a, b) = feed(&mut batched, &mut single, None, add);
+                    assert_eq!(a, b, "cells, {mode:?}, first {first}, add {add}");
+                    assert_eq!(batched.row_key, single.row_key);
+                }
+            }
+        }
     }
 }

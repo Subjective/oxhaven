@@ -1,7 +1,7 @@
 //! The interface between the aggregation framework and one aggregation.
 
 use super::slot_source::ResultColumn;
-use super::values::Run;
+use super::values::{Run, Runs};
 use arrow::array::ArrayRef;
 use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::ColumnType;
@@ -150,6 +150,19 @@ pub trait AggOperator: Send {
     ///
     /// Behavior: IterativeChunkedAggregationOperator#removeChunk
     fn remove(&mut self, slot: usize, run: &Run<'_>) -> Effect;
+
+    /// [`AggOperator::add`] for every group of a chunk, in order, appending the effect on
+    /// each to `effects`. An operator whose work per group is small takes them all in one
+    /// call; the default calls `add` once per group.
+    fn add_runs(&mut self, runs: &Runs<'_>, effects: &mut Vec<Effect>) {
+        effects.extend(runs.iter().map(|(slot, run)| self.add(slot, &run)));
+    }
+
+    /// [`AggOperator::remove`] for every group of a chunk, as
+    /// [`AggOperator::add_runs`] is for `add`.
+    fn remove_runs(&mut self, runs: &Runs<'_>, effects: &mut Vec<Effect>) {
+        effects.extend(runs.iter().map(|(slot, run)| self.remove(slot, &run)));
+    }
 
     /// Rows of `slot` whose input value may have changed: `old` and `new` are the same rows
     /// before and after. Only called when the parent reported the input column modified.

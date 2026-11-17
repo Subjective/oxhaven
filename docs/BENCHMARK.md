@@ -914,3 +914,92 @@ or made cheaper by huge pages. Reads: a scattered read of a refreshing column co
 random memory reads a row (the place, then the value) where a static column costs one,
 120 to 180 ms against 50 to 100 ms on four threads; a previous-value read by keys looks
 each key up in the map of the cycle's changes when the cycle changed anything.
+
+## After task 9.5 (2026-11-17): one key table, the keyed cross join, `last_by` and `group_by`
+
+Task 9.5 (`tasks/9.5-key-table-followups.md`) took the follow-ups that 9.1 and 9.2 left: one
+hash table for every operation that numbers keys, the keyed cross join on it, `last_by`
+without a call through a trait object per group, and `group_by` without copying every value
+twice. Results, row order and incremental behaviour are unchanged.
+
+**How it was measured.** Inside the engine only, release builds of the examples, on the
+machine above with another agent building (the load average is given per run). Java was
+**not** run again and the end-to-end benchmark (`bench/bench.py`) was not run. Raw output:
+`bench/results/2026-11-17-task-9.5-*.txt`; the key table numbers are in the task file.
+
+**The key table** (`examples/key-table-cases.rs`, 1M rows, median of 7, milliseconds, load
+1.9 to 2.3, so differences under about 20% are noise). "join" and "group" are the two
+tables it replaced; each cell is new keys inserted / the same keys found again, in chunks
+of 4,096 rows as an aggregation asks:
+
+| keys | join | group | one table |
+| --- | ---: | ---: | ---: |
+| int, 10 distinct | 3.1 / 3.0 | 2.3 / 2.1 | 1.7 / 1.7 |
+| int, 1M distinct | 63.8 / 28.8 | 68.7 / 20.4 | 62.2 / 12.4 |
+| double, 1M distinct | 66.6 / 25.3 | 70.2 / 25.5 | 66.0 / 15.5 |
+| string, 1M distinct | 163.0 / 46.9 | 118.5 / 60.6 | 88.4 / 41.8 |
+| int and string, 1,000 distinct | 18.5 / 23.8 | 24.2 / 18.5 | 14.7 / 14.9 |
+
+In `examples/aggregation-cases.rs` that change took `select_distinct_two` from 20.4 to
+14.8 ms, `last_by` from 56.7 to 39.5 and `sum_by_low` from 19.1 to 15.4 (medians; the task
+file has every case). Inserting a million new keys did not get faster (60 to 80 ms either
+way); it is the largest part left of `natural_join_large` and of the aggregations by a key
+of 1M values.
+
+**The keyed cross join** (`examples/crossjoin-cases.rs`, 1M left rows, median (min) of 7,
+milliseconds; load 1.8 before, 2.9 after). The first case is the shape of `join_on_key`:
+
+| case | before | after |
+| --- | ---: | ---: |
+| int key, 10,000 right rows, one per key | 562 (483) | 17.2 (15.3) |
+| then reading the added column of every row | 187 (152) | 27.4 (18.7) |
+| int key, 1,000,000 right rows, one per key | 3368 (3222) | 168 (143) |
+| then reading the added column of every row | 357 (328) | 22.7 (21.6) |
+| int key, 1,000 keys, 3 right rows per key | 473 (425) | 9.8 (9.6) |
+| string key, 1,000 right rows, one per key | 451 (389) | 25.9 (24.1) |
+| refreshing left, static right, 10,000 right rows | 618 (494) | 41.7 (40.3) |
+| then 20 cycles that append 1,000 left rows each | 90.1 (66.4) | 50.1 (48.9) |
+| static left, refreshing right | 605 (547) | 54.5 (52.1) |
+
+Timed in parts before the change, the join of the first case spent about 250 ms making a
+`Vec` key per row and numbering it in an ordered map, 100 to 250 ms putting the slot of
+every left row in a second ordered map, and the rest grouping rows by slot in a third; a
+read of the added column looked each row up in two of them. Keys are now numbered a chunk
+at a time by the one key table, the slot of each left row is a row redirection (a flat
+array for dense row keys), and the right rows of a static right table are one array
+grouped by slot. In the case of 1M right keys the rest is mostly the key table inserting
+1M keys and finding 1M (about 80 ms).
+
+**Aggregations** (`examples/aggregation-cases.rs 1000000 9`, two interleaved rounds of
+before and after, median (min), milliseconds; load 5.2 to 5.4 throughout, so only the
+differences that hold in both rounds count):
+
+| case | before, round 1 | after, round 1 | before, round 2 | after, round 2 |
+| --- | ---: | ---: | ---: | ---: |
+| `last_by` | 47.9 (45.1) | 40.8 (37.8) | 46.5 (45.0) | 37.8 (34.4) |
+| `group_by` | 81.1 (74.2) | 63.0 (56.6) | 74.4 (61.8) | 71.5 (58.1) |
+| `group_by_read` | 81.7 (71.7) | 56.3 (55.8) | 78.6 (75.9) | 61.0 (56.2) |
+| `agg_by_multi` | 88.7 (70.3) | 84.1 (81.8) | 66.9 (64.9) | 85.5 (82.7) |
+| `count_by_low` | 15.1 (14.8) | 15.2 (14.9) | 11.6 (11.5) | 15.1 (14.9) |
+| `append_only_cycles` | 2590 | 2390 | 2500 | 2044 |
+
+The `group_by` numbers above 9.2 and 9.5's item 1 (139 and 137 ms) included building the
+1M-row table inside the timing, which was most of them; the example now builds it first,
+and `group_by_read` also reads every vector back. `agg_by_multi` and `count_by_low` vary
+between rounds and runs with no change in their code path; under `valgrind --tool=callgrind`
+the branch runs 3.4% fewer instructions for `agg_by_multi` and the same number for
+`count_by_low`, so their differences here are noise or code layout.
+
+- `last_by` gives an operator every group of a chunk in one call (`AggOperator::add_runs`),
+  which first and last take without making a `Run` per group; the instructions of the
+  aggregation's apply step fell 28%. The operator's own work per group (a row key compared
+  and stored at a random slot) is unchanged, and is now most of it.
+- `group_by` used to gather each column twice: once in group order to read the groups, then
+  again with `take` to make the result. The result is now the first gather itself when the
+  groups are asked for in the order they were read, which is how the framework asks; the
+  result step went from 209M to 8M instructions. What is left, per call: about 260M
+  instructions in the work every aggregation does (numbering keys, grouping a chunk), 195M
+  making each group's row set, and 125M reading the groups' values back through those row
+  sets. Making the vectors lazy, as Java's `AggregateColumnSource` does, would move the last
+  part to the reader rather than remove it, and every reader of the benchmark reads every
+  vector, so it was not done.
