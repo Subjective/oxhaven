@@ -464,12 +464,15 @@ pub(super) fn analyze<S: AsRef<str>>(
                     false => arrays::constant_array_accesses(text, &assignment.expr)
                         .map_err(formula_error)?,
                 };
+                // A column named `X_` is what `X_` reads, and when the formula does not
+                // compile with it, Java's does not either (seen on Java 42.9: `X_[i - 1]`
+                // with an `int` column `X_` fails with `Cannot find method get(int) in int`).
+                let named = |name: &str| scope.iter().any(|named| named.name == name);
                 let rewritten = rewritten.filter(|rewritten| {
                     compiled.is_ok()
-                        || rewritten
-                            .shifts
-                            .iter()
-                            .all(|shift| scope.iter().any(|named| named.name == shift.column))
+                        || rewritten.shifts.iter().all(|shift| {
+                            named(&shift.column) && !named(&format!("{}_", shift.column))
+                        })
                 });
                 if let Some(rewritten) = rewritten {
                     shifted = Some(ShiftedColumn {

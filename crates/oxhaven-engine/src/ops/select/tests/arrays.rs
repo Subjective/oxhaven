@@ -204,6 +204,30 @@ fn a_column_array_in_parentheses_is_no_shift() {
     assert_eq!(values(&*result, "Y"), ["null", "1", "2"]);
 }
 
+/// Seen on Java 42.9: with a column `X_` of `int`s beside `X`, `update("Y = X_[i - 1]")`
+/// fails with `Cannot find method get(int) in int`: `X_` is that column, not a column array.
+#[test]
+fn a_column_named_like_a_column_array_is_not_shifted() {
+    let definition = definition(&[("A", ColumnType::Long), ("A_", ColumnType::Long)]);
+    let rows = RowSet::from_keys([0, 1, 2]);
+    let source = ReferenceTable::new_static(
+        definition.clone(),
+        rows.clone(),
+        vec![longs([1, 2, 3]), longs([7, 8, 9])],
+    );
+    let parent: Arc<dyn Table> = QueryTable::new_static(TableSpec::new(
+        definition,
+        rows,
+        vec![source.column(0), source.column(1)],
+    ));
+    let result = update(&parent, &["Y = A_[i - 1]"], &Compiler);
+    assert!(
+        matches!(result, Err(SelectError::Formula { .. })),
+        "{:?}",
+        result.map(|_| ())
+    );
+}
+
 /// A text that is not the expression's is refused by name rather than read wrongly.
 #[test]
 #[should_panic(
