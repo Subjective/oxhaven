@@ -1193,3 +1193,7 @@ Seven green checks. No new builder started: the end-to-end benchmark rerun again
 ## 2026-11-17 17:18 UTC: second run of task 9.5 reported, pull request 151 opened
 
 All gates including replay passed locally. The agent used 328k tokens of context against a 180k line; the hand-over rule is still not holding on its own.
+
+## 2026-11-17 17:25 UTC: pull request 151 merged, task 9.8 started
+
+Seven green checks. Task 9.8 reruns the whole end-to-end benchmark, Deephaven and Oxhaven, as the only builder on the machine.
