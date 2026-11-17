@@ -18,6 +18,7 @@ use arrow::datatypes::{
 };
 use numeric::{with_null_values, without_null_value, JavaPrimitive};
 pub(crate) use objects::{class_of, is_primitive};
+use oxhaven_column::parallel;
 use oxhaven_contracts::expr::{Formula, Literal, RowVariable};
 use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::ColumnType;
@@ -46,6 +47,9 @@ struct Batch {
     /// One per entry of [`Checked::arrays`]: the columns the formula reads as arrays.
     arrays: Vec<Arc<arrays::ColumnArray>>,
     rows: usize,
+    /// Whether the formula is [`row_by_row`], so that an operator may compute an operand
+    /// for rows that do not need it.
+    row_by_row: bool,
 }
 
 impl Batch {
@@ -72,6 +76,7 @@ impl Batch {
             keys: longs(&self.keys)?,
             arrays: self.arrays.clone(),
             rows: keep.true_count(),
+            row_by_row: self.row_by_row,
         })
     }
 
@@ -87,6 +92,7 @@ impl Batch {
             keys: self.keys.as_ref().map(|values| values.slice(0, 1)),
             arrays: self.arrays.clone(),
             rows: 1,
+            row_by_row: self.row_by_row,
         }
     }
 }
@@ -94,12 +100,88 @@ impl Batch {
 /// A formula ready to evaluate against tables that have the definition it was compiled for.
 pub(crate) struct CompiledFormula {
     checked: Checked,
+    /// Whether the formula is [`row_by_row`].
+    row_by_row: bool,
 }
 
 impl CompiledFormula {
     pub(crate) fn new(checked: Checked) -> Self {
-        Self { checked }
+        let row_by_row = checked.arrays.is_empty() && row_by_row(&checked.root);
+        Self {
+            checked,
+            row_by_row,
+        }
     }
+}
+
+/// The rows of one piece of a formula evaluated in pieces: 2^16, the rows of a segment of
+/// Java's parallel `where` (`QueryTable.parallelWhereRowsPerSegment`). The operands of a
+/// piece stay in the processor's cache.
+pub(crate) const PIECE_ROWS: usize = 1 << 16;
+
+/// Whether the value of `expr` in a row depends on nothing but the values of its columns
+/// and row variables in that row, and computing it has no effect and keeps no state: only
+/// the operators listed here, which excludes every function call. Such a formula gives the
+/// same values whether its rows are evaluated together, in pieces, or on several threads.
+///
+/// Behavior: Java evaluates every formula column in parallel chunks unless it is told not
+/// to (`DhFormulaColumn#isStateless` with `QueryTable.statelessSelectByDefault`, true by
+/// default) or the formula calls Python (`DhFormulaColumn#isParallelizable`,
+/// `ConditionFilter#permitParallelization`), `i`, `ii` and `k` included. Here the random
+/// functions, the clock and functions of other languages stay on the one-pass path, so
+/// that their results do not depend on the number of threads.
+fn row_by_row(expr: &Typed) -> bool {
+    match &expr.node {
+        Node::Column(_) | Node::RowVariable(_) | Node::Literal(_) | Node::Null => true,
+        Node::Negate(operand)
+        | Node::Not(operand)
+        | Node::Cast(operand)
+        | Node::Widen(operand)
+        | Node::IsNull(operand) => row_by_row(operand),
+        Node::Arithmetic { left, right, .. }
+        | Node::Compare { left, right, .. }
+        | Node::Logical { left, right, .. }
+        | Node::BooleanBitwise { left, right, .. }
+        | Node::Concat { left, right } => row_by_row(left) && row_by_row(right),
+        Node::Ternary {
+            condition,
+            if_true,
+            if_false,
+        } => row_by_row(condition) && row_by_row(if_true) && row_by_row(if_false),
+        _ => false,
+    }
+}
+
+/// Evaluates a [`row_by_row`] formula a piece of [`PIECE_ROWS`] rows at a time, on the
+/// threads `oxhaven_column::parallel` allows, and joins the pieces in row order. `None`
+/// when a piece fails: the caller then evaluates all rows in one pass, which reports the
+/// failure that pass has always reported, whichever piece failed first here.
+fn in_pieces(
+    root: &Typed,
+    columns: &[ArrayRef],
+    positions: Option<&Int64Array>,
+    keys: Option<&Int64Array>,
+    rows: usize,
+) -> Option<ArrayRef> {
+    let pieces = parallel::pieces_of(rows, PIECE_ROWS);
+    let results = parallel::map_pieces(pieces.len(), |piece| {
+        let (offset, length) = pieces[piece];
+        let batch = Batch {
+            columns: columns
+                .iter()
+                .map(|column| column.slice(offset, length))
+                .collect(),
+            positions: positions.map(|values| values.slice(offset, length)),
+            keys: keys.map(|values| values.slice(offset, length)),
+            arrays: Vec::new(),
+            rows: length,
+            row_by_row: true,
+        };
+        evaluate(root, &batch).ok()
+    });
+    let results = results.into_iter().collect::<Option<Vec<ArrayRef>>>()?;
+    let results: Vec<&dyn Array> = results.iter().map(|values| values.as_ref()).collect();
+    arrow::compute::concat(&results).ok()
 }
 
 impl Formula for CompiledFormula {
@@ -166,17 +248,24 @@ impl Formula for CompiledFormula {
             } else {
                 table.row_set()
             };
-            let positions = all
-                .invert(rows)
-                .map_err(|_| failure("a formula with i or ii was given rows the table lacks"))?;
-            Some(positions.iter().collect::<Int64Array>())
+            // All the rows of a table whose keys are one range: the positions count up.
+            let whole =
+                rows.as_single_range().is_some() && rows.as_single_range() == all.as_single_range();
+            if whole {
+                Some(Int64Array::from_iter_values(0..size as i64))
+            } else {
+                let positions = all.invert(rows).map_err(|_| {
+                    failure("a formula with i or ii was given rows the table lacks")
+                })?;
+                Some(Int64Array::from_iter_values(positions.iter()))
+            }
         } else {
             None
         };
         let keys = self
             .checked
             .keys
-            .then(|| rows.iter().collect::<Int64Array>());
+            .then(|| Int64Array::from_iter_values(rows.iter()));
         let arrays = self
             .checked
             .arrays
@@ -197,16 +286,27 @@ impl Formula for CompiledFormula {
                 )))
             })
             .collect::<Result<_, TableFailure>>()?;
-        evaluate(
-            &self.checked.root,
-            &Batch {
-                columns,
-                positions,
-                keys,
-                arrays,
-                rows: size,
-            },
-        )
+        let batch = Batch {
+            columns,
+            positions,
+            keys,
+            arrays,
+            rows: size,
+            row_by_row: self.row_by_row,
+        };
+        if self.row_by_row && size > PIECE_ROWS {
+            let pieces = in_pieces(
+                &self.checked.root,
+                &batch.columns,
+                batch.positions.as_ref(),
+                batch.keys.as_ref(),
+                size,
+            );
+            if let Some(values) = pieces {
+                return Ok(values);
+            }
+        }
+        evaluate(&self.checked.root, &batch)
     }
 }
 
@@ -285,6 +385,7 @@ fn elementwise(
             keys: None,
             arrays: Vec::new(),
             rows: total,
+            row_by_row: false,
         },
     )?;
     let DataType::List(field) = result.arrow_type() else {
@@ -687,6 +788,20 @@ fn logical(
     if undecided_rows == 0 {
         return Ok(Arc::new(left.clone()));
     }
+    // A right operand that has no effects can be computed for every row. If that fails or
+    // gives a null, the rows that needed it decide below.
+    if batch.row_by_row && undecided_rows != batch.rows {
+        if let Ok(every) = evaluate(right, batch) {
+            let every = every.as_boolean();
+            if every.null_count() == 0 {
+                let values = match op {
+                    LogicalOp::And => left.values() & every.values(),
+                    LogicalOp::Or => left.values() | every.values(),
+                };
+                return Ok(Arc::new(BooleanArray::new(values, None)));
+            }
+        }
+    }
     let right = if undecided_rows == batch.rows {
         evaluate(right, batch)?
     } else {
@@ -739,6 +854,17 @@ fn ternary(
     if selected == 0 {
         return evaluate(if_false, batch);
     }
+    // Branches that have no effects can be computed for every row and chosen from. If one
+    // fails, the rows that take it decide below.
+    if batch.row_by_row {
+        if let (Ok(a), Ok(b)) = (evaluate(if_true, batch), evaluate(if_false, batch)) {
+            if a.data_type() == b.data_type() {
+                if let Some(chosen) = choose(condition, &a, &b) {
+                    return Ok(chosen);
+                }
+            }
+        }
+    }
     let otherwise = arrow::compute::not(condition).map_err(arrow_failure)?;
     let branches = [
         evaluate(if_true, &batch.filter(condition)?)?,
@@ -757,6 +883,50 @@ fn ternary(
         .collect();
     arrow::compute::interleave(&[branches[0].as_ref(), branches[1].as_ref()], &rows)
         .map_err(arrow_failure)
+}
+
+/// For each row the value of `if_true` where `condition`, which has no nulls, is true and
+/// that of `if_false` elsewhere. `None` for arrays that are not of Java's primitives.
+fn choose(condition: &BooleanArray, if_true: &ArrayRef, if_false: &ArrayRef) -> Option<ArrayRef> {
+    fn of<P: arrow::datatypes::ArrowPrimitiveType>(
+        condition: &BooleanArray,
+        if_true: &ArrayRef,
+        if_false: &ArrayRef,
+    ) -> ArrayRef {
+        let (a, b) = (if_true.as_primitive::<P>(), if_false.as_primitive::<P>());
+        let values: Vec<P::Native> = condition
+            .values()
+            .iter()
+            .zip(a.values().iter().zip(b.values().iter()))
+            .map(|(chosen, (a, b))| if chosen { *a } else { *b })
+            .collect();
+        let nulls = (a.null_count() > 0 || b.null_count() > 0).then(|| {
+            let valid = |array: &arrow::array::PrimitiveArray<P>, row: usize| {
+                array.nulls().is_none_or(|nulls| nulls.is_valid(row))
+            };
+            arrow::buffer::NullBuffer::new(arrow::buffer::BooleanBuffer::collect_bool(
+                condition.len(),
+                |row| {
+                    if condition.value(row) {
+                        valid(a, row)
+                    } else {
+                        valid(b, row)
+                    }
+                },
+            ))
+        });
+        Arc::new(arrow::array::PrimitiveArray::<P>::new(values.into(), nulls))
+    }
+    Some(match if_true.data_type() {
+        DataType::Int8 => of::<Int8Type>(condition, if_true, if_false),
+        DataType::UInt16 => of::<UInt16Type>(condition, if_true, if_false),
+        DataType::Int16 => of::<Int16Type>(condition, if_true, if_false),
+        DataType::Int32 => of::<Int32Type>(condition, if_true, if_false),
+        DataType::Int64 => of::<Int64Type>(condition, if_true, if_false),
+        DataType::Float32 => of::<Float32Type>(condition, if_true, if_false),
+        DataType::Float64 => of::<Float64Type>(condition, if_true, if_false),
+        _ => return None,
+    })
 }
 
 /// `left & right`, `left | right` or `left ^ right` for `Boolean` operands. Both operands

@@ -80,6 +80,26 @@ where
     L::Item: Comparand,
     R::Item: Comparand,
 {
+    if left.null_count() == 0 && right.null_count() == 0 {
+        // Without nulls the operator is all that differs between rows; naming it in each
+        // arm lets the compiler make one loop per operator.
+        macro_rules! present {
+            ($op:expr) => {
+                BooleanBuffer::collect_bool(left.len(), |row| {
+                    decide($op, Some(left.value(row)), Some(right.value(row)), &order)
+                })
+            };
+        }
+        let values = match op {
+            CompareOp::Equal => present!(CompareOp::Equal),
+            CompareOp::NotEqual => present!(CompareOp::NotEqual),
+            CompareOp::Less => present!(CompareOp::Less),
+            CompareOp::LessOrEqual => present!(CompareOp::LessOrEqual),
+            CompareOp::Greater => present!(CompareOp::Greater),
+            CompareOp::GreaterOrEqual => present!(CompareOp::GreaterOrEqual),
+        };
+        return BooleanArray::new(values, None);
+    }
     let values = BooleanBuffer::collect_bool(left.len(), |row| {
         let a = left.is_valid(row).then(|| left.value(row));
         let b = right.is_valid(row).then(|| right.value(row));

@@ -3,6 +3,8 @@
 
 use crate::types::{ArithmeticOp, BitwiseOp};
 use arrow::array::{Array, ArrayRef, AsArray, PrimitiveArray};
+use arrow::buffer::{BooleanBuffer, NullBuffer};
+use arrow::datatypes::ArrowNativeType;
 use arrow::datatypes::{
     ArrowPrimitiveType, DataType, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type,
     Int8Type, TimeUnit, TimestampNanosecondType, UInt16Type,
@@ -12,7 +14,7 @@ use std::sync::Arc;
 
 /// A Java primitive numeric type: `byte`, `short`, `char`, `int`, `long`, `float` or
 /// `double`.
-pub(crate) trait JavaPrimitive: Copy + PartialEq + Send + Sync + 'static {
+pub(crate) trait JavaPrimitive: ArrowNativeType + PartialEq {
     type Arrow: ArrowPrimitiveType<Native = Self>;
 
     /// The value Java stores for null. A result equal to it is null.
@@ -150,6 +152,10 @@ java_floating!(f64, Float64Type);
 /// Converts a numeric, char or instant array to `T` with Java's primitive conversions.
 /// Nulls stay null, and no value becomes null.
 pub(crate) fn convert<T: JavaPrimitive>(array: &dyn Array) -> PrimitiveArray<T::Arrow> {
+    // An array of the target type already is the answer; cloning it shares its buffers.
+    if let Some(same) = array.as_primitive_opt::<T::Arrow>() {
+        return same.clone();
+    }
     match array.data_type() {
         DataType::Int8 => array
             .as_primitive::<Int8Type>()
@@ -185,11 +191,6 @@ pub(crate) fn convert<T: JavaPrimitive>(array: &dyn Array) -> PrimitiveArray<T::
     }
 }
 
-/// A computed value, or null when it is the type's null value.
-fn nullable<T: JavaPrimitive>(value: T) -> Option<T> {
-    (value != T::NULL).then_some(value)
-}
-
 /// `(T) operand` for an operand of another primitive type.
 ///
 /// Behavior: `QueryLanguageFunctionUtils#intCast`, `#longCast`, `#byteCast`, `#shortCast`,
@@ -197,10 +198,23 @@ fn nullable<T: JavaPrimitive>(value: T) -> Option<T> {
 /// A result equal to the target type's null value is null, because that is how Java stores
 /// null: `(byte) 128` and `(char) -1` are null.
 pub(crate) fn cast<T: JavaPrimitive>(operand: &dyn Array) -> PrimitiveArray<T::Arrow> {
-    convert::<T>(operand)
-        .iter()
-        .map(|value| value.and_then(nullable))
-        .collect()
+    null_values_to_nulls::<T>(convert::<T>(operand))
+}
+
+/// `array` with every element that holds `T`'s null value made null: a computed value equal
+/// to it is null, because that is how Java stores null.
+fn null_values_to_nulls<T: JavaPrimitive>(
+    array: PrimitiveArray<T::Arrow>,
+) -> PrimitiveArray<T::Arrow> {
+    if !array.values().iter().any(|value| *value == T::NULL) {
+        return array;
+    }
+    let (_, values, nulls) = array.into_parts();
+    let computed = NullBuffer::new(BooleanBuffer::collect_bool(values.len(), |row| {
+        values[row] != T::NULL
+    }));
+    let nulls = NullBuffer::union(nulls.as_ref(), Some(&computed));
+    PrimitiveArray::new(values, nulls)
 }
 
 /// `left op right` with both operands converted to `T`.
@@ -217,18 +231,51 @@ pub(crate) fn arithmetic<T: JavaNumber>(
 ) -> Result<PrimitiveArray<T::Arrow>, TableFailure> {
     let left = convert::<T>(left);
     let right = convert::<T>(right);
-    left.iter()
-        .zip(right.iter())
-        .map(|operands| match operands {
-            (Some(a), Some(b)) => match T::apply(op, a, b) {
-                Some(result) => Ok(nullable(result)),
-                None => Err(TableFailure {
-                    message: "java.lang.ArithmeticException: / by zero".to_string(),
-                }),
-            },
-            _ => Ok(None),
-        })
-        .collect()
+    let nulls = NullBuffer::union(left.nulls(), right.nulls());
+    let (a, b) = (left.values(), right.values());
+    // An operator that cannot fail is computed for every row, also where an operand is
+    // null: the validity of the result hides what that gives. Naming the operator in each
+    // arm lets the compiler make one loop per operator.
+    macro_rules! every_row {
+        ($op:expr) => {
+            a.iter()
+                .zip(b.iter())
+                .map(|(a, b)| T::apply($op, *a, *b).unwrap_or(T::NULL))
+                .collect::<Vec<T>>()
+        };
+    }
+    let values = match op {
+        ArithmeticOp::Add => every_row!(ArithmeticOp::Add),
+        ArithmeticOp::Subtract => every_row!(ArithmeticOp::Subtract),
+        ArithmeticOp::Multiply => every_row!(ArithmeticOp::Multiply),
+        ArithmeticOp::Divide => every_row!(ArithmeticOp::Divide),
+        ArithmeticOp::Bitwise(BitwiseOp::And) => every_row!(ArithmeticOp::Bitwise(BitwiseOp::And)),
+        ArithmeticOp::Bitwise(BitwiseOp::Or) => every_row!(ArithmeticOp::Bitwise(BitwiseOp::Or)),
+        ArithmeticOp::Bitwise(BitwiseOp::Xor) => every_row!(ArithmeticOp::Bitwise(BitwiseOp::Xor)),
+        // The one operator that can fail, and only where neither operand is null.
+        ArithmeticOp::Remainder => {
+            let mut values = Vec::with_capacity(a.len());
+            for (row, (a, b)) in a.iter().zip(b.iter()).enumerate() {
+                if nulls.as_ref().is_some_and(|nulls| nulls.is_null(row)) {
+                    values.push(T::NULL);
+                    continue;
+                }
+                match T::apply(ArithmeticOp::Remainder, *a, *b) {
+                    Some(result) => values.push(result),
+                    None => {
+                        return Err(TableFailure {
+                            message: "java.lang.ArithmeticException: / by zero".to_string(),
+                        })
+                    }
+                }
+            }
+            values
+        }
+    };
+    Ok(null_values_to_nulls::<T>(PrimitiveArray::new(
+        values.into(),
+        nulls,
+    )))
 }
 
 /// `-operand` with the operand converted to `T`.
@@ -236,10 +283,8 @@ pub(crate) fn arithmetic<T: JavaNumber>(
 /// Behavior: `QueryLanguageFunctionUtils#negate`: null in, null out, and a result equal to
 /// the type's null value is null.
 pub(crate) fn negate<T: JavaNumber>(operand: &dyn Array) -> PrimitiveArray<T::Arrow> {
-    convert::<T>(operand)
-        .iter()
-        .map(|value| value.and_then(|v| nullable(v.negate())))
-        .collect()
+    let operand = convert::<T>(operand);
+    null_values_to_nulls::<T>(operand.unary(T::negate))
 }
 
 /// `array` with every valid element equal to `null_value` made null, or `None` when there
@@ -251,6 +296,10 @@ pub(crate) fn without_null_value<P: ArrowPrimitiveType>(
     array: &PrimitiveArray<P>,
     null_value: P::Native,
 ) -> Option<PrimitiveArray<P>> {
+    // Most columns hold the value nowhere, which a pass over the values alone shows.
+    if !array.values().iter().any(|v| *v == null_value) {
+        return None;
+    }
     let is_null_value = |v: Option<P::Native>| v.is_some_and(|v| v == null_value);
     if !array.iter().any(is_null_value) {
         return None;
