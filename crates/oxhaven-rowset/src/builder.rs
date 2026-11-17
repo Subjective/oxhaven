@@ -165,3 +165,79 @@ pub fn union_all<'a>(row_sets: impl IntoIterator<Item = &'a RowSet>) -> RowSet {
     }
     builder.build()
 }
+
+/// The union of row sets that come in key order: every key of one is below every key of the
+/// next. This is the way to join the results of the pieces of one computation, each built
+/// apart (and perhaps on its own thread): no key is looked at again, the blocks of every
+/// part are shared, and only a block that two neighbours both have keys in is rebuilt.
+/// Empty parts are allowed.
+///
+/// # Panics
+/// If a part has a key that is not above every key of the parts before it, as
+/// [`RowSetBuilderSequential`] panics for an append out of order.
+pub fn concat_ordered(parts: impl IntoIterator<Item = RowSet>) -> RowSet {
+    let mut parts = parts.into_iter();
+    let mut rows = parts.next().unwrap_or_else(RowSet::empty);
+    for part in parts {
+        if let (Some(last), Some(first)) = (rows.last_row_key(), part.first_row_key()) {
+            assert!(
+                first > last,
+                "out of order part: last={last} while joining a part that starts at {first}"
+            );
+        }
+        // An insert past the end rebuilds no span of `rows` but, at most, its last.
+        rows.insert(&part);
+    }
+    rows
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Parts cut from `keys` at the given positions, joined again.
+    fn rejoined(keys: &[RowKey], cuts: &[usize]) -> RowSet {
+        let mut parts = Vec::new();
+        let mut start = 0;
+        for &cut in cuts.iter().chain([&keys.len()]) {
+            parts.push(RowSet::from_keys(keys[start..cut].iter().copied()));
+            start = cut;
+        }
+        concat_ordered(parts)
+    }
+
+    #[test]
+    fn ordered_parts_join_to_the_set_of_all_their_keys() {
+        // Runs, single keys, a whole block and a dense stretch that is a bitmap, with cuts
+        // inside a block, at a block's edge, between touching keys and next to empty parts.
+        let mut keys: Vec<RowKey> = (0..10).collect();
+        keys.extend((20..70_000).step_by(3));
+        keys.extend(131_072..131_072 + 65_536);
+        keys.extend((300_000..340_000).filter(|k| k % 7 != 0));
+        keys.push(1 << 40);
+        let whole = RowSet::from_keys(keys.iter().copied());
+        let block_edge = keys
+            .iter()
+            .position(|&k| k >= 65_536)
+            .expect("a second block");
+        for cuts in [
+            vec![],
+            vec![5],
+            vec![0, 5, 5, keys.len()],
+            vec![block_edge],
+            vec![3, block_edge - 1, block_edge + 1, keys.len() - 1],
+            (0..keys.len()).step_by(997).collect(),
+        ] {
+            let joined = rejoined(&keys, &cuts);
+            joined.check_layout();
+            assert_eq!(joined, whole, "cuts {cuts:?}");
+        }
+        assert_eq!(concat_ordered(Vec::new()), RowSet::empty());
+    }
+
+    #[test]
+    #[should_panic(expected = "out of order part")]
+    fn a_part_that_is_not_above_the_one_before_is_refused() {
+        concat_ordered([RowSet::from_range(0, 10), RowSet::from_range(10, 12)]);
+    }
+}
