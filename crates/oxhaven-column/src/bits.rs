@@ -88,27 +88,39 @@ pub fn for_each_run(
             bits &= u64::MAX >> (64 - to % 64);
         }
         let base = index * 64;
+        // The first bit of every run that starts in this word, and the last bit of every
+        // run that ends before the word's last bit. Taking the two a bit at a time pairs
+        // them up in a loop whose only branch is its end, where a walk from run to run
+        // would branch on the length of each: with short runs that is a wrong guess per
+        // run.
+        let mut starts = bits & !(bits << 1);
+        let mut ends = bits & !(bits >> 1) & !(1 << 63);
         if let Some(start) = open {
-            if bits == u64::MAX {
-                continue;
+            if bits & 1 == 0 {
+                // The run ended with the word before.
+                run(start - offset, base - offset);
+                open = None;
+            } else {
+                // Bit 0 continues the run. With no end in this word it fills the word.
+                starts &= !1;
+                if ends != 0 {
+                    let end = ends.trailing_zeros() as usize;
+                    run(start - offset, base + end + 1 - offset);
+                    ends &= ends - 1;
+                    open = None;
+                }
             }
-            // The run ends at the first clear bit of this word.
-            let length = (!bits).trailing_zeros() as usize;
-            run(start - offset, base + length - offset);
-            open = None;
-            bits &= u64::MAX << length;
         }
-        while bits != 0 {
-            let start = bits.trailing_zeros() as usize;
-            // The word with the bits below the run set: its first clear bit ends the run.
-            let above = bits | ((1_u64 << start) - 1);
-            if above == u64::MAX {
-                open = Some(base + start);
-                break;
-            }
-            let end = (!above).trailing_zeros() as usize;
-            run(base + start - offset, base + end - offset);
-            bits &= u64::MAX << end;
+        while ends != 0 {
+            let start = starts.trailing_zeros() as usize;
+            let end = ends.trailing_zeros() as usize;
+            run(base + start - offset, base + end + 1 - offset);
+            starts &= starts - 1;
+            ends &= ends - 1;
+        }
+        // A start left over is that of a run that reaches the word's last bit.
+        if starts != 0 {
+            open = Some(base + starts.trailing_zeros() as usize);
         }
     }
     if let Some(start) = open {

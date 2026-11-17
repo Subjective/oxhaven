@@ -16,6 +16,7 @@ use arrow::datatypes::{
     DataType, Date32Type, DurationNanosecondType, Float32Type, Float64Type, Int16Type, Int32Type,
     Int64Type, Int8Type, Time64NanosecondType, TimeUnit, TimestampNanosecondType, UInt16Type,
 };
+use oxhaven_column::bits::for_each_run;
 use oxhaven_column::parallel;
 use oxhaven_column::sentinel::sentinels_to_nulls;
 use oxhaven_contracts::expr::{Formula, FormulaCompiler};
@@ -1064,9 +1065,14 @@ pub(super) fn kept_of_piece(selection: &RowSet, offset: usize, mask: &BooleanBuf
     if let Some(range) = selection.as_single_range() {
         // A row's key is known from its position.
         let first = range.first() + offset as RowKey;
-        return RowSet::from_ranges(mask.set_slices().map(|(start, end)| {
-            RowRange::new(first + start as RowKey, first + end as RowKey - 1)
-        }));
+        let mut kept = Vec::new();
+        for_each_run(mask, 0, mask.len(), |start, end| {
+            kept.push(RowRange::new(
+                first + start as RowKey,
+                first + end as RowKey - 1,
+            ));
+        });
+        return RowSet::from_ranges(kept);
     }
     let rows = selection.sub_set_by_position_range(offset as u64, (offset + mask.len()) as u64);
     // The ranges of the piece's rows and the kept stretches of positions, walked together.
