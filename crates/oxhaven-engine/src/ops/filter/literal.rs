@@ -20,6 +20,13 @@ pub(super) enum Key {
         nanos: i64,
         zone: String,
     },
+    /// A `BigInteger`, as a cell of its column holds it: the fewest two's complement bytes.
+    BigInteger(Vec<u8>),
+    /// A `BigDecimal`: its scale and its unscaled integer as a `BigInteger` is held.
+    BigDecimal {
+        scale: i32,
+        unscaled: Vec<u8>,
+    },
 }
 
 /// The value of `function` (`parseLocalDate`, `parseLocalTime`, `parseLocalDateTime`,
@@ -594,6 +601,19 @@ fn convert_literal_with(
             Some(index) => Ok(Key::Int(index as i64 + 1)),
             None => Err(format!("No enum constant java.time.DayOfWeek.{text}")),
         },
+        // Behavior: the `BigInteger` and `BigDecimal` convertors, `new BigInteger(str)` and
+        // `new BigDecimal(str)`.
+        ColumnType::BigInteger => match text {
+            "null" => Ok(Key::Null),
+            _ => Ok(Key::BigInteger(parse_big_integer(text)?)),
+        },
+        ColumnType::BigDecimal => match text {
+            "null" => Ok(Key::Null),
+            _ => {
+                let (scale, unscaled) = parse_big_decimal(text)?;
+                Ok(Key::BigDecimal { scale, unscaled })
+            }
+        },
         // Behavior: the convertor of every class without one of its own: `null` alone.
         other if class_name(other).is_some() => {
             if text == "null" {
@@ -666,9 +686,334 @@ pub(super) fn convert_value(
         .map_err(|e| failed("literal value", &format!(": {e}")))
 }
 
+// ---------------------------------------------------------------------------------------
+// java.math.BigInteger and java.math.BigDecimal
+// ---------------------------------------------------------------------------------------
+
+/// The decimal digit `c` stands for. A non-ASCII digit, which Java reads by
+/// `Character#digit`, is not ported.
+fn decimal_digit(c: char) -> Option<u8> {
+    if c.is_ascii_digit() {
+        return Some(c as u8 - b'0');
+    }
+    if !c.is_ascii() && c.is_numeric() {
+        unported!("java.lang.Character#digit", "the non-ASCII digit {c:?}");
+    }
+    None
+}
+
+/// The two's complement bytes, most significant first and as few as hold the sign, of the
+/// integer whose magnitude is the decimal `digits`: what `java.math.BigInteger#toByteArray`
+/// gives for it.
+fn twos_complement(negative: bool, digits: &[u8]) -> Vec<u8> {
+    // the magnitude, least significant byte first
+    let mut magnitude: Vec<u8> = Vec::new();
+    for digit in digits {
+        let mut carry = u32::from(*digit);
+        for byte in magnitude.iter_mut() {
+            let value = u32::from(*byte) * 10 + carry;
+            *byte = value as u8;
+            carry = value >> 8;
+        }
+        while carry > 0 {
+            magnitude.push(carry as u8);
+            carry >>= 8;
+        }
+    }
+    magnitude.push(0);
+    if negative {
+        let mut carry = 1u16;
+        for byte in magnitude.iter_mut() {
+            let value = u16::from(!*byte) + carry;
+            *byte = value as u8;
+            carry = value >> 8;
+        }
+    }
+    magnitude.reverse();
+    oxhaven_column::java_values::minimal(&magnitude).to_vec()
+}
+
+/// Behavior: java.math.BigInteger#BigInteger(String), in radix 10: one sign at the start at
+/// the most, and then decimal digits alone.
+pub(super) fn parse_big_integer(text: &str) -> Result<Vec<u8>, String> {
+    let bad = || format!("For input string: \"{text}\" as a BigInteger");
+    let (negative, digits) = match text.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, text.strip_prefix('+').unwrap_or(text)),
+    };
+    let digits: Vec<u8> = digits
+        .chars()
+        .map(decimal_digit)
+        .collect::<Option<_>>()
+        .ok_or_else(bad)?;
+    if digits.is_empty() {
+        return Err("Zero length BigInteger".to_string());
+    }
+    Ok(twos_complement(negative, &digits))
+}
+
+/// The scale and the unscaled integer (as [`twos_complement`] gives it) of `text`.
+///
+/// Behavior: java.math.BigDecimal#BigDecimal(String), which is
+/// `BigDecimal(char[], int, int, MathContext)` with no rounding, and its `parseExp`: a sign,
+/// digits with at most one decimal point, at least one digit, and an exponent of at most ten
+/// digits after leading zeros; the scale is the number of digits after the point less the
+/// exponent, and must fit in an `int`.
+pub(super) fn parse_big_decimal(text: &str) -> Result<(i32, Vec<u8>), String> {
+    let bad = |why: &str| format!("For input string: \"{text}\" as a BigDecimal: {why}");
+    let (negative, body) = match text.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, text.strip_prefix('+').unwrap_or(text)),
+    };
+    let mut digits = Vec::new();
+    let mut scale: i64 = 0;
+    let mut dot = false;
+    let mut chars = body.chars();
+    while let Some(c) = chars.next() {
+        if c == '.' {
+            if dot {
+                return Err(bad("more than one decimal point"));
+            }
+            dot = true;
+        } else if c == 'e' || c == 'E' {
+            let rest = chars.as_str();
+            let (exponent_negative, exponent) = match rest.strip_prefix('-') {
+                Some(rest) => (true, rest),
+                None => (false, rest.strip_prefix('+').unwrap_or(rest)),
+            };
+            let exponent: Vec<u8> = exponent
+                .chars()
+                .map(decimal_digit)
+                .collect::<Option<_>>()
+                .ok_or_else(|| bad("not a digit"))?;
+            if exponent.is_empty() {
+                return Err(bad("no exponent digits"));
+            }
+            let first = exponent
+                .iter()
+                .position(|d| *d != 0)
+                .unwrap_or(exponent.len());
+            let exponent = &exponent[first.min(exponent.len().saturating_sub(10))..];
+            if exponent.len() > 10 {
+                return Err(bad("too many nonzero exponent digits"));
+            }
+            let value = exponent
+                .iter()
+                .fold(0i64, |value, digit| value * 10 + i64::from(*digit));
+            scale -= if exponent_negative { -value } else { value };
+            break;
+        } else {
+            digits.push(decimal_digit(c).ok_or_else(|| bad("not a digit"))?);
+            if dot {
+                scale += 1;
+            }
+        }
+    }
+    if digits.is_empty() {
+        return Err(bad("no digits found"));
+    }
+    let scale = i32::try_from(scale).map_err(|_| bad("exponent overflow"))?;
+    Ok((scale, twos_complement(negative, &digits)))
+}
+
+/// A `BigInteger` or `BigDecimal` as a sign, the decimal digits of its magnitude without
+/// leading zeros (none for zero), and a scale: the value is the digits times `10^-scale`.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct Decimal {
+    negative: bool,
+    digits: Vec<u8>,
+    scale: i64,
+}
+
+impl Decimal {
+    /// The value of the two's complement integer `unscaled` times `10^-scale`.
+    pub(super) fn of(scale: i32, unscaled: &[u8]) -> Decimal {
+        let text = oxhaven_column::java_values::big_integer_text(unscaled);
+        let (negative, magnitude) = match text.strip_prefix('-') {
+            Some(rest) => (true, rest),
+            None => (false, text.as_str()),
+        };
+        let digits: Vec<u8> = magnitude
+            .bytes()
+            .skip_while(|b| *b == b'0')
+            .map(|b| b - b'0')
+            .collect();
+        Decimal {
+            negative: negative && !digits.is_empty(),
+            digits,
+            scale: scale.into(),
+        }
+    }
+
+    /// The other end of the range a search for a plain decimal with this scale stands for:
+    /// one unit of the last decimal place further from zero, zero counting as positive.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.select.AbstractRangeFilter#makeBigDecimalRange
+    pub(super) fn one_further(&self) -> Decimal {
+        let mut digits = self.digits.clone();
+        let mut at = digits.len();
+        loop {
+            if at == 0 {
+                digits.insert(0, 1);
+                break;
+            }
+            at -= 1;
+            if digits[at] == 9 {
+                digits[at] = 0;
+            } else {
+                digits[at] += 1;
+                break;
+            }
+        }
+        Decimal {
+            negative: self.negative,
+            digits,
+            scale: self.scale,
+        }
+    }
+
+    /// Whether the value is below zero.
+    pub(super) fn is_negative(&self) -> bool {
+        self.negative
+    }
+
+    /// The scale and the two's complement unscaled integer of this value.
+    pub(super) fn parts(&self) -> (i32, Vec<u8>) {
+        (
+            self.scale as i32,
+            twos_complement(self.negative, &self.digits),
+        )
+    }
+
+    /// Behavior: java.math.BigDecimal#compareTo and java.math.BigInteger#compareTo, which
+    /// compare values and not scales.
+    pub(super) fn compare(&self, other: &Decimal) -> std::cmp::Ordering {
+        let sign = |d: &Decimal| match (d.digits.is_empty(), d.negative) {
+            (true, _) => 0,
+            (false, true) => -1,
+            (false, false) => 1,
+        };
+        let (a, b) = (sign(self), sign(other));
+        if a != b || a == 0 {
+            return a.cmp(&b);
+        }
+        // Both values have digits: 0.d times 10^e, with the digits' trailing zeros dropped.
+        let exponent = |d: &Decimal| d.digits.len() as i64 - d.scale;
+        let significant = |d: &Decimal| {
+            let end = d
+                .digits
+                .iter()
+                .rposition(|x| *x != 0)
+                .map_or(0, |at| at + 1);
+            d.digits[..end].to_vec()
+        };
+        let magnitude = exponent(self)
+            .cmp(&exponent(other))
+            .then_with(|| significant(self).cmp(&significant(other)));
+        if a < 0 {
+            magnitude.reverse()
+        } else {
+            magnitude
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn big_integers_follow_java_big_integer_of_a_string() {
+        use oxhaven_column::java_values::big_integer_cell;
+        assert_eq!(parse_big_integer("5"), Ok(big_integer_cell(5)));
+        assert_eq!(parse_big_integer("+0127"), Ok(big_integer_cell(127)));
+        assert_eq!(parse_big_integer("128"), Ok(vec![0, 128]));
+        assert_eq!(parse_big_integer("-128"), Ok(vec![128]));
+        assert_eq!(parse_big_integer("-129"), Ok(big_integer_cell(-129)));
+        assert_eq!(parse_big_integer("-0"), Ok(vec![0]));
+        assert_eq!(
+            parse_big_integer("-170141183460469231731687303715884105728"),
+            Ok(big_integer_cell(i128::MIN))
+        );
+        assert_eq!(
+            parse_big_integer("340282366920938463463374607431768211456"),
+            Ok([vec![1], vec![0; 16]].concat())
+        );
+        for bad in [
+            "", "-", "+", "1.0", "1e3", " 1", "1 ", "--1", "+-1", "1-", "0x10",
+        ] {
+            assert!(parse_big_integer(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn big_decimals_follow_java_big_decimal_of_a_string() {
+        use oxhaven_column::java_values::big_integer_cell;
+        let decimal = |unscaled: i128, scale: i32| Ok((scale, big_integer_cell(unscaled)));
+        assert_eq!(parse_big_decimal("1.5"), decimal(15, 1));
+        assert_eq!(parse_big_decimal("1.50"), decimal(150, 2));
+        assert_eq!(parse_big_decimal("-007.50"), decimal(-750, 2));
+        assert_eq!(parse_big_decimal("+.5"), decimal(5, 1));
+        assert_eq!(parse_big_decimal("5."), decimal(5, 0));
+        assert_eq!(parse_big_decimal("1e1"), decimal(1, -1));
+        assert_eq!(parse_big_decimal("1.5E-3"), decimal(15, 4));
+        assert_eq!(parse_big_decimal("1.5e+3"), decimal(15, -2));
+        assert_eq!(parse_big_decimal("-0.00"), decimal(0, 2));
+        // leading zeros of the exponent past ten digits are dropped
+        assert_eq!(parse_big_decimal("1e0000000000003"), decimal(1, -3));
+        assert_eq!(parse_big_decimal("1e2147483648"), decimal(1, i32::MIN));
+        assert_eq!(parse_big_decimal("0.1e-2147483646"), decimal(1, i32::MAX));
+        for bad in [
+            "",
+            "-",
+            ".",
+            "e5",
+            "1e",
+            "1e+",
+            "1.5.1",
+            "1e5.5",
+            "1e1e1",
+            "1 ",
+            "NaN",
+            "1d",
+            // more than ten exponent digits that are not leading zeros
+            "1e10000000000",
+            // a scale beyond an int
+            "1e2147483649",
+            "0.1e-2147483647",
+        ] {
+            assert!(parse_big_decimal(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn big_numbers_compare_by_value() {
+        use std::cmp::Ordering;
+        let of = |text: &str| {
+            let (scale, unscaled) = parse_big_decimal(text).unwrap();
+            Decimal::of(scale, &unscaled)
+        };
+        let order = |a: &str, b: &str| of(a).compare(&of(b));
+        assert_eq!(order("1.5", "1.50"), Ordering::Equal);
+        assert_eq!(order("0", "-0.000"), Ordering::Equal);
+        assert_eq!(order("1e1", "9.99"), Ordering::Greater);
+        assert_eq!(order("-1e1", "-9.99"), Ordering::Less);
+        assert_eq!(order("0.001", "0"), Ordering::Greater);
+        assert_eq!(order("-0.001", "0"), Ordering::Less);
+        assert_eq!(order("12", "1.2e1"), Ordering::Equal);
+        assert_eq!(order("12.0001", "12"), Ordering::Greater);
+        assert_eq!(order("-12.0001", "-12"), Ordering::Less);
+        assert_eq!(order("99", "100"), Ordering::Less);
+        // one unit of the last place further from zero, with the scale kept
+        let further = |text: &str| {
+            let (scale, unscaled) = of(text).one_further().parts();
+            Decimal::of(scale, &unscaled)
+        };
+        assert_eq!(further("1.99"), of("2.00"));
+        assert_eq!(further("-9.9"), of("-10.0"));
+        assert_eq!(further("0"), of("1"));
+        assert_eq!(further("-0.0"), of("0.1"));
+    }
 
     #[test]
     fn integers_follow_java_parse_int() {

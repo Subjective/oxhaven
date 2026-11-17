@@ -6,8 +6,8 @@
 
 use super::filters::{MatchOptions, Resolved};
 use super::literal::{
-    java_equals_ignore_case, parse_instant, parse_java_double, parse_java_float,
-    parse_java_integer, Key,
+    java_equals_ignore_case, parse_big_decimal, parse_big_integer, parse_instant,
+    parse_java_double, parse_java_float, parse_java_integer, Decimal, Key,
 };
 use super::pattern::Matcher;
 use oxhaven_column::sentinel::{NULL_CHAR, NULL_DOUBLE, NULL_FLOAT, NULL_LONG};
@@ -151,6 +151,39 @@ fn quick_filter(
             matcher: Matcher::any(vec![text.to_string()], true),
             invert_pattern: false,
         }),
+        ColumnType::BigInteger => parse_big_integer(text)
+            .ok()
+            .map(|value| matching(column, Key::BigInteger(value))),
+        // Behavior: AbstractRangeFilter#makeBigDecimalRange, which takes the number of
+        // decimal places by `findPrecision` and throws for a text that `new BigDecimal`
+        // reads and that is no plain decimal (`1e3`, `+5`, `.5`): that fails the search.
+        ColumnType::BigDecimal => match parse_big_decimal(text) {
+            Err(_) => None,
+            Ok((scale, unscaled)) => {
+                if decimal_places(text).is_none() {
+                    return Err(format!("The value {text} is not a double"));
+                }
+                let value = Decimal::of(scale, &unscaled);
+                let other = value.one_further();
+                let at_least_zero = !value.is_negative();
+                let key = |decimal: &Decimal| {
+                    let (scale, unscaled) = decimal.parts();
+                    Key::BigDecimal { scale, unscaled }
+                };
+                let (lower, upper) = if at_least_zero {
+                    (key(&value), key(&other))
+                } else {
+                    (key(&other), key(&value))
+                };
+                Some(Resolved::Between {
+                    column,
+                    lower,
+                    upper,
+                    lower_inclusive: at_least_zero,
+                    upper_inclusive: !at_least_zero,
+                })
+            }
+        },
         // `boolean` is only ever the element of an array (`boolean[]`).
         ColumnType::Boolean | ColumnType::PrimitiveBoolean => {
             let is_true = java_equals_ignore_case(text, "true");

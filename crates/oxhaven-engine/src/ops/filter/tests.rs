@@ -1755,3 +1755,226 @@ fn a_search_of_many_vectors_keeps_what_each_row_alone_keeps_on_any_number_of_thr
         }
     }
 }
+
+// ---------------------------------------------------------------------------------------
+// BigInteger and BigDecimal columns
+// ---------------------------------------------------------------------------------------
+
+/// `BigDecimal` cells of these unscaled integers and scales, `None` for null.
+fn big_decimals(cells: &[Option<(i128, i32)>]) -> ArrayRef {
+    use oxhaven_column::java_values::{big_decimal_cell, big_integer_cell};
+    let cells: Vec<Option<Vec<u8>>> = cells
+        .iter()
+        .map(|cell| {
+            cell.map(|(unscaled, scale)| big_decimal_cell(scale, &big_integer_cell(unscaled)))
+        })
+        .collect();
+    Arc::new(arrow::array::BinaryArray::from_iter(cells))
+}
+
+fn big_integers(cells: &[Option<i128>]) -> ArrayRef {
+    use oxhaven_column::java_values::big_integer_cell;
+    let cells: Vec<Option<Vec<u8>>> = cells
+        .iter()
+        .map(|cell| cell.map(big_integer_cell))
+        .collect();
+    Arc::new(arrow::array::BinaryArray::from_iter(cells))
+}
+
+/// 1.5, 1.50, null, 2, -1.5, 10 with scale -1 (`1E+1`), 0.00, 1.6
+fn decimals_table() -> Arc<dyn Table> {
+    let x = big_decimals(&[
+        Some((15, 1)),
+        Some((150, 2)),
+        None,
+        Some((2, 0)),
+        Some((-15, 1)),
+        Some((1, -1)),
+        Some((0, 2)),
+        Some((16, 1)),
+    ]);
+    static_table(vec![("X", ColumnType::BigDecimal, x)])
+}
+
+/// Behavior: MatchFilter's `BigDecimal` convertor (`new BigDecimal(str)`) with
+/// ObjectChunkMatchFilterFactory (`Objects.equals`, which for a `BigDecimal` compares the
+/// scale too).
+#[test]
+fn a_big_decimal_match_compares_value_and_scale() {
+    let t = decimals_table();
+    assert_eq!(kept(&t, &["X == 1.5"]), [0]);
+    assert_eq!(kept(&t, &["X == 1.50"]), [1]);
+    assert_eq!(kept(&t, &["X in 1.50, 2, -1.5"]), [1, 3, 4]);
+    assert_eq!(kept(&t, &["X == +2.0"]), [0i64; 0]);
+    assert_eq!(kept(&t, &["X in +2"]), [3]);
+    assert_eq!(kept(&t, &["X == 2.0"]), [0i64; 0]);
+    assert_eq!(kept(&t, &["X in 1e1"]), [5]);
+    assert_eq!(kept(&t, &["X == 10"]), [0i64; 0]);
+    assert_eq!(kept(&t, &["X == 0.00"]), [6]);
+    assert_eq!(kept(&t, &["X == -0.00"]), [6]);
+    assert_eq!(kept(&t, &["X in 15E-1, .15e1"]), [0]);
+    assert_eq!(kept(&t, &["X == null"]), [2]);
+    assert_eq!(kept(&t, &["X != 1.5"]), [1, 2, 3, 4, 5, 6, 7]);
+    assert_eq!(kept(&t, &["X not in 1.5, null"]), [1, 3, 4, 5, 6, 7]);
+}
+
+/// Behavior: RangeFilter#makeComparableRangeFilter, with ObjectComparisons and
+/// `BigDecimal#compareTo`: by value, null lowest.
+#[test]
+fn a_big_decimal_range_compares_values() {
+    let t = decimals_table();
+    assert_eq!(kept(&t, &["X > 1.5"]), [3, 5, 7]);
+    assert_eq!(kept(&t, &["X >= 1.500"]), [0, 1, 3, 5, 7]);
+    assert_eq!(kept(&t, &["X < 0"]), [2, 4]);
+    assert_eq!(kept(&t, &["X <= 0.0000"]), [2, 4, 6]);
+    assert_eq!(kept(&t, &["X > 9.99999"]), [5]);
+    assert_eq!(kept(&t, &["X < 10.0"]), [0, 1, 2, 3, 4, 6, 7]);
+    assert_eq!(kept(&t, &["X > -1.6"]), [0, 1, 3, 4, 5, 6, 7]);
+}
+
+#[test]
+fn a_big_integer_match_and_range_compare_values() {
+    let y = big_integers(&[
+        Some(5),
+        None,
+        Some(-5),
+        Some(i128::from(i64::MAX) * 4),
+        Some(0),
+        Some(-129),
+    ]);
+    let t = static_table(vec![("Y", ColumnType::BigInteger, y)]);
+    assert_eq!(kept(&t, &["Y == 5"]), [0]);
+    assert_eq!(kept(&t, &["Y in +5"]), [0]);
+    assert_eq!(kept(&t, &["Y == 0005"]), [0]);
+    assert_eq!(kept(&t, &["Y == -0"]), [4]);
+    assert_eq!(kept(&t, &["Y == -129"]), [5]);
+    assert_eq!(kept(&t, &["Y == 36893488147419103228"]), [3]);
+    assert_eq!(kept(&t, &["Y in null, -5"]), [1, 2]);
+    assert_eq!(kept(&t, &["Y > 5"]), [3]);
+    assert_eq!(kept(&t, &["Y < -5"]), [1, 5]);
+    assert_eq!(kept(&t, &["Y >= -129"]), [0, 2, 3, 4, 5]);
+}
+
+#[test]
+fn a_big_number_literal_that_java_cannot_read_is_refused() {
+    let t = decimals_table();
+    for filter in ["X == 1.5.1", "X == 1e", "X == 1e5.5", "X in 1, 2x"] {
+        assert!(is_invalid(&refused(&t, &[filter])), "{filter}");
+    }
+    let y = big_integers(&[Some(5)]);
+    let t = static_table(vec![("Y", ColumnType::BigInteger, y)]);
+    for filter in ["Y in 1e3", "Y in +-1", "Y in 1.5"] {
+        assert!(is_invalid(&refused(&t, &[filter])), "{filter}");
+    }
+}
+
+/// Java compiles the formula of a match that does not fit the column (`Y == 1.5` becomes
+/// the formula `Y == 1.5`, which compares as numbers), which the formula compiler does not
+/// do for a big number yet.
+#[test]
+#[should_panic(expected = "unported: io.deephaven.engine.table.impl.select.ConditionFilter#init")]
+fn the_formula_of_a_big_number_filter_is_not_ported() {
+    let y = big_integers(&[Some(5)]);
+    let t = static_table(vec![("Y", ColumnType::BigInteger, y)]);
+    let _ = unstructured_filter(&t, &["Y == 1.5"], &Compiler);
+}
+
+fn search_of(table: &Arc<dyn Table>, text: &str) -> Result<Vec<i64>, FilterError> {
+    let condition = Condition::Search {
+        search_string: text.to_string(),
+        columns: vec![],
+    };
+    let result = filter(table, &[condition], &Compiler)?;
+    Ok(result.row_set().iter().map(|key| key / 10).collect())
+}
+
+/// Behavior: WhereFilterFactory#createQuickFilterInternal: a `BigInteger` column is
+/// matched with the text read as one, and a `BigDecimal` column takes the range the
+/// plain decimal stands for, AbstractRangeFilter#makeBigDecimalRange; another text that
+/// `new BigDecimal` reads fails the search.
+#[test]
+fn a_search_reads_big_numbers() {
+    let t = decimals_table();
+    // [1.5, 1.6)
+    assert_eq!(search_of(&t, "1.5").unwrap(), [0, 1]);
+    // [1.50, 1.51)
+    assert_eq!(search_of(&t, "1.50").unwrap(), [0, 1]);
+    // [1, 2)
+    assert_eq!(search_of(&t, "1").unwrap(), [0, 1, 7]);
+    assert_eq!(search_of(&t, "1.").unwrap(), [0, 1, 7]);
+    // (-1.6, -1.5]
+    assert_eq!(search_of(&t, "-1.5").unwrap(), [4]);
+    // [0, 1), for -0 too
+    assert_eq!(search_of(&t, "-0").unwrap(), [6]);
+    // [9.9, 10.0)
+    assert_eq!(search_of(&t, "9.9").unwrap(), [0i64; 0]);
+    assert_eq!(search_of(&t, "10").unwrap(), [5]);
+    assert_eq!(search_of(&t, "x").unwrap(), [0i64; 0]);
+    for text in ["1e1", "+1", ".5", "1.5E0"] {
+        assert!(
+            matches!(search_of(&t, text), Err(FilterError::Invalid(_))),
+            "{text}"
+        );
+    }
+
+    let y = big_integers(&[Some(5), None, Some(-5)]);
+    let t = static_table(vec![("Y", ColumnType::BigInteger, y)]);
+    assert_eq!(search_of(&t, "5").unwrap(), [0]);
+    assert_eq!(search_of(&t, "+5").unwrap(), [0]);
+    assert_eq!(search_of(&t, "-5").unwrap(), [2]);
+    assert_eq!(search_of(&t, "5.0").unwrap(), [0i64; 0]);
+}
+
+/// Each cycle checked against the filter made again from the parent's rows.
+#[test]
+fn big_number_filters_follow_a_ticking_parent() {
+    let all: [&'static [&'static str]; 3] =
+        [&["X > 1.5"], &["X in 1.50, null"], &["Y == 5", "X <= 2"]];
+    for filters in all {
+        let stepper = SteppedUpdateGraph::new();
+        let graph: Arc<dyn UpdateGraph> = stepper.clone();
+        let source = ScriptedTable::new(
+            graph,
+            definition(&[("X", ColumnType::BigDecimal), ("Y", ColumnType::BigInteger)]),
+            RowSet::from_keys([0, 1, 2]),
+            vec![
+                big_decimals(&[Some((15, 1)), Some((150, 2)), None]),
+                big_integers(&[Some(5), Some(5), None]),
+            ],
+        );
+        let parent: Arc<dyn Table> = source.table();
+        let operation =
+            move |table: &Arc<dyn Table>| unstructured_filter(table, filters, &Compiler);
+        let result = operation(&parent).unwrap();
+        let (expected, recompute) = (parent.clone(), operation);
+        let checker = ConsistencyChecker::attach_with_recompute(result.clone(), move || {
+            from_scratch(&expected, &recompute)
+        });
+        checker.assert_consistent();
+        let changes = [
+            TableChange::new().add(
+                [3, 4],
+                vec![
+                    big_decimals(&[Some((3, 0)), None]),
+                    big_integers(&[Some(5), Some(6)]),
+                ],
+            ),
+            TableChange::new().modify([0, 3], [(0, big_decimals(&[None, Some((150, 2))]))]),
+            TableChange::new().remove([1]).modify(
+                [2],
+                [
+                    (0, big_decimals(&[Some((2, 0))])),
+                    (1, big_integers(&[Some(5)])),
+                ],
+            ),
+            TableChange::new().shift(2, 4, 3),
+        ];
+        for change in changes {
+            source.push(change);
+            stepper.run_cycle();
+            checker.assert_consistent();
+        }
+        assert!(!result.is_failed());
+        assert!(checker.updates_seen() > 0, "{filters:?}");
+    }
+}
