@@ -66,6 +66,33 @@ pub trait ColumnSource: Send + Sync {
             message: e.to_string(),
         })
     }
+
+    /// The array this source holds its values in, when it is one array in memory that
+    /// never changes. A reader may then look at any rows of it directly, including rows
+    /// between the ones it was asked about, instead of calling [`chunk`](Self::chunk).
+    ///
+    /// No Java counterpart: Java reads every column through `getChunk`. The provided
+    /// implementation returns `None`, which is always correct; a source that computes,
+    /// redirects, or reads its rows from storage keeps it, and so does a source that wraps
+    /// another, unless the promise below holds for the wrapper itself.
+    ///
+    /// A `Some(values)` promises, for as long as the source exists:
+    /// - `values` has the Arrow type `column_type().arrow_type()`, laid out as
+    ///   [`chunk`](Self::chunk) lays out a chunk;
+    /// - the source has the row keys `0..values.len()`, and the value of row key `k` is the
+    ///   element at position `k`, whether or not the owning table has row `k` now: for any
+    ///   `rows` within `0..values.len()`, `chunk(rows)` equals those elements in row-key
+    ///   order;
+    /// - the values never change, so they are the current and the previous values in every
+    ///   phase, the updating phase of a cycle included: `prev_chunk(rows)` equals
+    ///   `chunk(rows)`;
+    /// - reading any of them cannot fail and costs nothing beyond looking at the array;
+    ///   no row of it is computed when it is read.
+    ///
+    /// A row key at or past `values.len()` is not covered: the source may refuse it.
+    fn stored_values(&self) -> Option<ArrayRef> {
+        None
+    }
 }
 
 /// Semantic hints carried by a table and propagated through operations.
@@ -239,6 +266,15 @@ mod tests {
         fn prev_chunk(&self, rows: &RowSet) -> Result<ArrayRef, TableFailure> {
             Ok(Arc::new(Int64Array::from_iter_values(rows.iter())))
         }
+    }
+
+    /// A source that does not say it holds one array in memory is read through `chunk`.
+    #[test]
+    fn a_source_has_no_stored_values_unless_it_says_so() {
+        assert!(TenTimesKey(ColumnType::Long).stored_values().is_none());
+        assert!(KeyTimesKey(ColumnType::vector(ColumnType::Long))
+            .stored_values()
+            .is_none());
     }
 
     #[test]
