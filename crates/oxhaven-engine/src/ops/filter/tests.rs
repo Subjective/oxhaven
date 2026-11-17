@@ -1948,7 +1948,7 @@ fn big_number_filters_follow_a_ticking_parent() {
         let result = operation(&parent).unwrap();
         let (expected, recompute) = (parent.clone(), operation);
         let checker = ConsistencyChecker::attach_with_recompute(result.clone(), move || {
-            from_scratch(&expected, &recompute)
+            from_scratch(&expected, recompute)
         });
         checker.assert_consistent();
         let changes = [
