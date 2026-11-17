@@ -371,6 +371,8 @@ def run(args: argparse.Namespace) -> int:
         "loadavg_start": os.getloadavg(),
         "warmup": args.warmup,
         "reps": args.reps,
+        "warmup_large": args.warmup_large,
+        "reps_large": args.reps_large,
         "servers": dict(servers),
         "done": {c.name: c.done for c in cases},
     }
@@ -388,11 +390,13 @@ def run(args: argparse.Namespace) -> int:
         for case in cases:
             if case.sizes is not None and n not in case.sizes:
                 continue
-            reps = args.reps if n <= 1_000_000 else args.reps_large
-            row = {}
+            large = n > 1_000_000
+            reps = args.reps_large if large else args.reps
+            warmup = args.warmup_large if large else args.warmup
+            row: dict[str, Any] = {"load": os.getloadavg()[0]}
             for name, _ in servers:
-                row[name] = measure(case, ctxs[name], args.warmup, reps)
-            oks = [r for r in row.values() if r["status"] == "ok"]
+                row[name] = measure(case, ctxs[name], warmup, reps)
+            oks = [row[name] for name, _ in servers if row[name]["status"] == "ok"]
             if len(oks) == len(servers) and len(oks) > 1:
                 first = oks[0]["check"]
                 row["match"] = all(same(first, r["check"]) for r in oks[1:])
@@ -475,7 +479,8 @@ def main(argv: list[str]) -> int:
     r = sub.add_parser("run")
     r.add_argument("--server", action="append", required=True, help="name=url; give two, the first is the base of the ratio")
     r.add_argument("--sizes", default="1000000,10000000")
-    r.add_argument("--warmup", type=int, default=2)
+    r.add_argument("--warmup", type=int, default=2, help="untimed repetitions first, up to 1M rows")
+    r.add_argument("--warmup-large", type=int, default=1, help="untimed repetitions first, above 1M rows")
     r.add_argument("--reps", type=int, default=5, help="timed repetitions up to 1M rows")
     r.add_argument("--reps-large", type=int, default=3, help="timed repetitions above 1M rows")
     r.add_argument("--cases", help="comma-separated glob patterns of case names")
