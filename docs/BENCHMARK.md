@@ -1363,3 +1363,67 @@ apply to operators that read values, and splitting the input over threads was no
 Deephaven's end-to-end time at both sizes, and `last_by`, `ungroup` and the low-cardinality
 aggregations are at or under it; whether that holds end to end needs a run of
 `bench/bench.py`.
+
+## After task 9.10, second part (2026-11-17): the row set of a filter, and conjunctions
+
+The second part of task 9.10 (`tasks/9.10-single-thread-filter-formula.md`) took the two
+filters the first part left slower than Deephaven on one thread at 10M rows: `where_range`
+and `where_conj`. Results, row order and failures are unchanged.
+
+**How it was measured.** Inside the engine only, a release build of `filter-update-cases`
+on the machine above, shared with another agent's builds: `-- 10000000 3 1,4` and
+`-- 1000000 5 1,4`. "Before" is `main` at `a3be786f`, "after" the branch. The 1M runs and
+the 10M "after" run were made one after the other at a load average of 3.2; the 10M
+"before" run was made earlier at a load average of 4.9, so its times are high by perhaps a
+fifth (the first part measured the same code at 41 and 75 ms). Deephaven was **not** run
+again and the end-to-end benchmark (`bench/bench.py`) was not run: the Deephaven column
+repeats the second measurement's medians, taken through a server, and is an indication
+only. Raw output: `bench/results/2026-11-17-task-9.10b-engine-*.txt`.
+
+Median milliseconds, before / after.
+
+| case | rows | 1 thread | 4 threads | Deephaven, second measurement |
+| --- | ---: | ---: | ---: | ---: |
+| `where_range` | 1M | 3.7 / 0.9 | 2.8 / 1.2 | 15.6 / 10.1 |
+| `where_range` as two filters | 1M | 16.3 / 0.8 | 9.6 / 1.8 | not measured |
+| `where_conj` | 1M | 8.8 / 1.7 | 7.6 / 2.0 | 18.8 / 12.1 |
+| `where_range` | 10M | 41.2 / 14.3 | 29.9 / 10.3 | 37.0 / 31.3 |
+| `where_range` as two filters | 10M | 208 / 10.8 | 63.7 / 5.0 | not measured |
+| `where_conj` | 10M | 97.3 / 29.2 | 37.0 / 14.1 | 51.4 / 51.9 |
+
+The steps, one thread, 10M rows, each measured after the one before (load average 1.4 to
+1.9 for the last two rows, 4.9 for the first two):
+
+| step | `where_range` | `where_conj` | `K10 = 3` | `B > 50000.0`, 1M rows | `A < 50000`, 650K rows |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| before | 41.2 | 97.3 | 36.7 | 36.1 | 23.4 |
+| a row set from the mask of a contiguous piece | 14.4 | 82.4 | 28.8 | 36.8 | 24.8 |
+| match and range kernels in the column's type | 12.5 | 65.3 | 5.4 | 30.8 | 20.0 |
+| close scattered rows of a stored column judged whole | 13.0 | 27.9 | 4.8 | 8.5 | 5.0 |
+
+**What changed.**
+
+- `RowSet::from_bitmap` (the one addition to the contracts): a row set from the words of a
+  bitmap, a block at a time, in the layout the same runs give. A piece of contiguous rows
+  hands its mask to it. A row set per piece of the kept 40%, joined: 26.5 ms from runs,
+  0.6 ms from the bitmap.
+- The typed kernels of the match, range and between filters reduce the filter to the
+  nulls, the stretch of values and the NaN it keeps, and ask each value that in the
+  column's type with the packing of `oxhaven_column::bits`; a stretch open at one end is
+  one comparison. They judged each cell through an `Option` of a `long` or a `double`.
+- A later filter of a conjunction read its column at the rows left (12.8 ms for 1M of 10M
+  doubles) and then looked up the key of each kept row. For a column that is an array in
+  memory and a filter with a typed kernel, every row from the first selected to the last
+  is now judged and the result intersected with the selection: block against block.
+  Measured for `B > 50000.0` over one row in *n* of 10M, reading the selected rows against
+  judging all: 58.5 / 8.3 ms (*n* = 4), 17.6 / 6.4 (16), 6.0 / 8.2 (64), 1.5 / 6.2 (256),
+  0.3 / 6.0 (1024). So all rows are judged while they are at most 32 times the selected
+  ones, and the selected rows are read otherwise.
+- Scattered rows of any other column that lie close together get their kept bits put at
+  their keys in a bitmap, a range of rows at a time, instead of a range per kept stretch.
+
+**What is left.** `where_range` on one thread is now the evaluation of the formula (8 ms),
+a pass over the column for the reserved null value, and under a millisecond of row set.
+The first write of a new formula result (`update_arith`, `update_cond`) was not touched.
+Reading scattered rows of a column that is not an array in memory still walks the ranges
+of the selection twice, at about 7 ns a range in the row set's iterator.

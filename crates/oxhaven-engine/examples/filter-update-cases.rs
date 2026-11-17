@@ -216,13 +216,27 @@ fn parts(table: &Arc<dyn Table>, rows: i64, reps: usize) {
         unstructured_filter(from, &[filter], &Compiler).expect("where")
     };
     let mut stage = table.clone();
-    for filter in ["K10 = 3", "B > 50000.0", "A < 50000"] {
+    for (filter, column) in [("K10 = 3", 1), ("B > 50000.0", 5), ("A < 50000", 4)] {
         let from = stage.clone();
         let what = format!("{filter}, of {} rows", from.row_set().size());
         time(&what, rows, reps, || {
             black_box(where_one(&from, filter));
         });
+        // What of that is reading the filter's column at the rows left.
+        let (source, left) = (from.column(column), from.row_set());
+        time("  of which reading the column", rows, reps, || {
+            black_box(source.chunk(&left).expect("the column"));
+        });
         stage = where_one(&from, filter);
+    }
+    // A range filter over one row in so many, for the spread of rows up to which judging
+    // every row between the selected ones beats reading the selected ones.
+    for step in [4, 16, 64, 256, 1024] {
+        let from = where_one(table, &format!("Id % {step} == 0"));
+        let what = format!("B > 50000.0, of 1 row in {step}");
+        time(&what, rows, reps, || {
+            black_box(where_one(&from, "B > 50000.0"));
+        });
     }
     // The row set of `where_range`, built by one sequential builder over all the kept
     // ranges, as a filter built it before task 9.6, and as it is built since: a row set
@@ -266,6 +280,17 @@ fn parts(table: &Arc<dyn Table>, rows: i64, reps: usize) {
                 runs.push(RowRange::new(start as i64, end as i64 - 1));
             });
             RowSet::from_ranges(runs)
+        });
+        black_box(concat_ordered(parts));
+    });
+    // The same from the words of the mask (the second part of task 9.10): a dense block
+    // of the row set is those words.
+    time("a row set per piece, of its bitmap", rows, reps, || {
+        let pieces = oxhaven_column::parallel::pieces_of(kept.len(), 1 << 16);
+        let parts = pieces.iter().map(|&(offset, length)| {
+            let piece = kept.slice(offset, length);
+            let words: Vec<u64> = piece.bit_chunks().iter_padded().collect();
+            RowSet::from_bitmap(offset as i64, &words, length)
         });
         black_box(concat_ordered(parts));
     });

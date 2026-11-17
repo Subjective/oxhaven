@@ -400,3 +400,195 @@ fn shifting_past_the_last_key_panics() {
     let rows = RowSet::from_range(RowKey::MAX - 2 * B, RowKey::MAX - 5);
     let _ = rows.shift(B);
 }
+
+/// The row set of a bitmap as it was built before there was a constructor for it: from the
+/// runs of set bits, read a bit at a time.
+fn from_bits_by_ranges(first: RowKey, bits: &[u64], length: usize) -> RowSet {
+    let set = |i: usize| bits[i / 64] >> (i % 64) & 1 == 1;
+    let mut ranges = Vec::new();
+    let mut i = 0;
+    while i < length {
+        if !set(i) {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < length && set(i) {
+            i += 1;
+        }
+        ranges.push(RowRange::new(
+            first + start as RowKey,
+            first + (i - 1) as RowKey,
+        ));
+    }
+    RowSet::from_ranges(ranges)
+}
+
+/// Checks `from_bitmap` against the row set of the same runs, in keys and in layout, and
+/// returns it.
+fn assert_bitmap_is_its_runs(first: RowKey, bits: &[u64], length: usize) -> RowSet {
+    let built = RowSet::from_bitmap(first, bits, length);
+    let expected = from_bits_by_ranges(first, bits, length);
+    // Equality is structural: the same spans, in the same forms, with the same counts.
+    assert_eq!(built, expected, "first {first}, length {length}");
+    assert_eq!(built.check_layout(), expected.check_layout());
+    assert_canonical(&built);
+    built
+}
+
+#[test]
+fn a_bitmap_gives_the_row_set_of_its_runs() {
+    let mut g = Lcg(7);
+    // Where the bits start: on a block, in a word, in the middle and at the end of a block,
+    // and far up the key space.
+    let firsts: [RowKey; 9] = [
+        0,
+        1,
+        63,
+        64,
+        B - 1,
+        B,
+        B + 12_345,
+        5 * B + 64 * 100,
+        (1 << 40) + 77,
+    ];
+    // How many bits: none, within a word, on a word, on a block, and a few blocks with an
+    // end in a word and in a block.
+    let lengths = [
+        0, 1, 63, 64, 65, 1000, 65_535, 65_536, 65_537, 131_072, 200_000,
+    ];
+    // One stretch in `one_in` set, in stretches of up to `stretch` bits of the same value:
+    // run lists, bitmaps, single runs and whole blocks all come out of these.
+    let shapes: [(u64, u64); 7] = [
+        (2, 1),
+        (3, 2),
+        (40, 1),
+        (2, 300),
+        (1000, 1),
+        (2, 70_000),
+        (10, 5000),
+    ];
+    let mut seen = super::SpanCounts::default();
+    for (one_in, stretch) in shapes {
+        for first in firsts {
+            for length in lengths {
+                // Two words more than the bits asked for, to show they are not read.
+                let mut bits = vec![0u64; length / 64 + 3];
+                let mut i = 0;
+                while i < bits.len() * 64 {
+                    let value = g.next(one_in) == 0;
+                    for _ in 0..=g.next(stretch) {
+                        if value && i < bits.len() * 64 {
+                            bits[i / 64] |= 1 << (i % 64);
+                        }
+                        i += 1;
+                    }
+                }
+                let built = assert_bitmap_is_its_runs(first, &bits, length);
+                let counts = built.check_layout();
+                seen.full += counts.full;
+                seen.one += counts.one;
+                seen.runs += counts.runs;
+                seen.bits += counts.bits;
+            }
+        }
+    }
+    // Every form of span was built.
+    assert!(
+        seen.full > 0 && seen.one > 0 && seen.runs > 0 && seen.bits > 0,
+        "{seen:?}"
+    );
+}
+
+#[test]
+fn empty_and_full_bitmaps_are_the_empty_set_and_a_range() {
+    for first in [0, 5, 64, B - 3, B, 3 * B + 100] {
+        for length in [0usize, 1, 64, 100, 65_536, 65_600, 3 * 65_536, 300_000] {
+            let words = length / 64 + 1;
+            assert!(RowSet::from_bitmap(first, &vec![0; words], length).is_empty());
+            let full = assert_bitmap_is_its_runs(first, &vec![!0; words], length);
+            let expected = match length {
+                0 => RowSet::empty(),
+                _ => RowSet::from_range(first, first + length as RowKey - 1),
+            };
+            assert_eq!(full, expected);
+        }
+    }
+    // No words at all hold no bits.
+    assert!(RowSet::from_bitmap(9, &[], 0).is_empty());
+    // Whole blocks from a bitmap are one span, as from a range.
+    let whole = RowSet::from_bitmap(2 * B, &vec![!0; 3 * 1024], 3 * 65_536);
+    assert_eq!(whole.spans.len(), 1);
+    assert_eq!(whole.spans[0].body, Body::Full(3));
+}
+
+#[test]
+fn a_bitmap_block_is_a_bitmap_exactly_when_it_has_more_than_2047_runs() {
+    // Every other bit: `runs` runs of one key each, from a key that is not on a word.
+    let alternate = |runs: usize| {
+        let mut bits = vec![0u64; 1024];
+        for i in 0..runs {
+            bits[2 * i / 64] |= 1 << (2 * i % 64);
+        }
+        RowSet::from_bitmap(B + 3, &bits, 65_000)
+    };
+    let at_limit = alternate(MAX_RUNS);
+    assert!(matches!(at_limit.spans[0].body, Body::Runs(_)));
+    let over = alternate(MAX_RUNS + 1);
+    assert!(matches!(over.spans[0].body, Body::Bits(_)));
+    assert_eq!(over.size(), MAX_RUNS as u64 + 1);
+    assert_eq!(over.first_row_key(), Some(B + 3));
+    assert_eq!(over.last_row_key(), Some(B + 3 + 2 * MAX_RUNS as RowKey));
+}
+
+#[test]
+fn bitmaps_of_neighbouring_pieces_join_to_the_bitmap_of_both() {
+    // Pieces of a mask, cut on and off the blocks, each a row set of its own, then united:
+    // what a filter does with the pieces it judges on several threads.
+    let mut g = Lcg(11);
+    let bits: Vec<u64> = (0..4 * 1024)
+        .map(|_| (g.next(1 << 31) << 32) | g.next(1 << 31))
+        .collect();
+    let length = bits.len() * 64;
+    for first in [0, 100, B - 1] {
+        let whole = assert_bitmap_is_its_runs(first, &bits, length);
+        for piece in [65_536usize, 4096, 100_032] {
+            let mut joined = RowSet::empty();
+            let mut at = 0;
+            while at < length {
+                let end = (at + piece).min(length);
+                // The piece's own words: it starts on a word of `bits`.
+                let part = RowSet::from_bitmap(first + at as RowKey, &bits[at / 64..], end - at);
+                joined.insert(&part);
+                at = end;
+            }
+            assert_eq!(joined, whole, "first {first}, pieces of {piece}");
+            joined.check_layout();
+        }
+    }
+}
+
+#[test]
+#[should_panic(expected = "70 bits asked of 1 words")]
+fn a_bitmap_shorter_than_its_length_panics() {
+    let _ = RowSet::from_bitmap(0, &[!0], 70);
+}
+
+#[test]
+#[should_panic(expected = "invalid bitmap of 2 keys from -1")]
+fn a_bitmap_from_a_negative_key_panics() {
+    let _ = RowSet::from_bitmap(-1, &[!0], 2);
+}
+
+#[test]
+#[should_panic(expected = "invalid bitmap of 7 keys from")]
+fn a_bitmap_past_the_last_key_panics() {
+    let _ = RowSet::from_bitmap(RowKey::MAX - 5, &[!0], 7);
+}
+
+#[test]
+fn a_bitmap_reaches_the_last_key_of_the_key_space() {
+    let rows = assert_bitmap_is_its_runs(RowKey::MAX - 5, &[0b101101], 6);
+    assert_eq!(rows.last_row_key(), Some(RowKey::MAX));
+    assert_eq!(rows.size(), 4);
+}

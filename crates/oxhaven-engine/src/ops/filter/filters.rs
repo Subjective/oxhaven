@@ -4,6 +4,7 @@
 //! against a definition, as Java's `WhereFilter#init` does, and gives a [`Resolved`] filter
 //! that can select rows.
 
+use super::kernels;
 use super::literal::{convert_value, java_equals_ignore_case, Key};
 use super::pattern::{full_match, Matcher};
 use super::search;
@@ -16,13 +17,12 @@ use arrow::datatypes::{
     DataType, Date32Type, DurationNanosecondType, Float32Type, Float64Type, Int16Type, Int32Type,
     Int64Type, Int8Type, Time64NanosecondType, TimeUnit, TimestampNanosecondType, UInt16Type,
 };
-use oxhaven_column::bits::for_each_run;
 use oxhaven_column::parallel;
 use oxhaven_column::sentinel::sentinels_to_nulls;
 use oxhaven_contracts::expr::{Formula, FormulaCompiler};
 use oxhaven_contracts::rowset::{RowKey, RowRange, RowSet};
 use oxhaven_contracts::schema::{ColumnType, TableClass, TableDefinition};
-use oxhaven_contracts::table::{Table, TableFailure};
+use oxhaven_contracts::table::{ColumnSource, Table, TableFailure};
 use oxhaven_rowset::concat_ordered;
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
@@ -863,15 +863,25 @@ fn float_key(key: &Key) -> Result<Option<f64>, TableFailure> {
     }
 }
 
-/// The order of two floating point cells: null lowest, then [`compare_floats`].
-fn float_order(value: Option<f64>, end: Option<f64>) -> Ordering {
-    match (value, end) {
-        (None, None) => Ordering::Equal,
-        (None, Some(_)) => Ordering::Less,
-        (Some(_), None) => Ordering::Greater,
-        (Some(value), Some(end)) => compare_floats(value, end),
-    }
+/// Whether a column of this type is judged by a typed kernel. A column of another type may
+/// be held as numbers too, and is not compared as one.
+fn has_typed_kernel(column_type: &ColumnType) -> bool {
+    matches!(
+        column_type,
+        ColumnType::Byte
+            | ColumnType::Short
+            | ColumnType::Char
+            | ColumnType::Int
+            | ColumnType::Long
+            | ColumnType::Float
+            | ColumnType::Double
+            | ColumnType::Instant
+    )
 }
+
+/// Scattered rows of an array in memory are judged with all the rows between them when the
+/// rows from the first to the last are at most this many times the selected ones.
+const WHOLE_PER_ROW: u64 = 32;
 
 /// The rows of one filter read as a column chunk are judged in pieces of this many: 2^16,
 /// as Java's parallel `where` (`QueryTable.parallelWhereRowsPerSegment`).
@@ -891,23 +901,7 @@ impl Resolved {
         let floats = |key: &Key| if is_float { float_key(key) } else { Ok(None) };
         match self {
             Resolved::Range { op, pivot, .. } => {
-                let op = *op;
-                let keep = move |order: Ordering| match op {
-                    RangeOp::Less => order == Ordering::Less,
-                    RangeOp::LessOrEqual => order != Ordering::Greater,
-                    RangeOp::Greater => order == Ordering::Greater,
-                    RangeOp::GreaterOrEqual => order != Ordering::Less,
-                };
-                let upward = matches!(op, RangeOp::Greater | RangeOp::GreaterOrEqual);
-                let (int_pivot, float_pivot) = (ints(pivot).ok()?, floats(pivot).ok()?);
-                primitive_mask(
-                    chunk,
-                    &|value: Option<i64>| keep(value.cmp(&int_pivot)),
-                    &|value: Option<f64>| {
-                        keep(float_order(value, float_pivot))
-                            && !(upward && value.is_some_and(f64::is_nan))
-                    },
-                )
+                kernels::range_mask(chunk, *op, ints(pivot).ok()?, floats(pivot).ok()?)
             }
             Resolved::Between {
                 lower,
@@ -915,33 +909,24 @@ impl Resolved {
                 lower_inclusive,
                 upper_inclusive,
                 ..
-            } => {
-                let (lower_inclusive, upper_inclusive) = (*lower_inclusive, *upper_inclusive);
-                let keep = move |from_lower: Ordering, from_upper: Ordering| {
-                    (from_lower == Ordering::Greater
-                        || (lower_inclusive && from_lower == Ordering::Equal))
-                        && (from_upper == Ordering::Less
-                            || (upper_inclusive && from_upper == Ordering::Equal))
-                };
-                let int_ends = (ints(lower).ok()?, ints(upper).ok()?);
-                let float_ends = (floats(lower).ok()?, floats(upper).ok()?);
-                primitive_mask(
-                    chunk,
-                    &|value: Option<i64>| keep(value.cmp(&int_ends.0), value.cmp(&int_ends.1)),
-                    &|value: Option<f64>| {
-                        keep(
-                            float_order(value, float_ends.0),
-                            float_order(value, float_ends.1),
-                        )
-                    },
-                )
-            }
+            } => kernels::between_mask(
+                chunk,
+                (ints(lower).ok()?, ints(upper).ok()?),
+                (floats(lower).ok()?, floats(upper).ok()?),
+                *lower_inclusive,
+                *upper_inclusive,
+            ),
             Resolved::Match { keys, options, .. } => {
                 let options = *options;
                 let int_keys: Vec<Option<i64>> =
                     keys.iter().map(ints).collect::<Result<_, _>>().ok()?;
                 let float_keys: Vec<Option<f64>> =
                     keys.iter().map(floats).collect::<Result<_, _>>().ok()?;
+                if let Some(mask) = kernels::match_mask(chunk, &int_keys, &float_keys, options) {
+                    return Some(mask);
+                }
+                // More values than the typed loop takes a pass for: each cell against the
+                // list.
                 let equal = |a: Option<f64>, b: Option<f64>| match (a, b) {
                     (None, None) => true,
                     (Some(a), Some(b)) if options.nan_match => {
@@ -968,18 +953,7 @@ impl Resolved {
         column_type: &ColumnType,
         chunk: ArrayRef,
     ) -> Result<BooleanBuffer, TableFailure> {
-        // A column of another type may be held as numbers too, and is not compared as one.
-        let primitive = matches!(
-            column_type,
-            ColumnType::Byte
-                | ColumnType::Short
-                | ColumnType::Char
-                | ColumnType::Int
-                | ColumnType::Long
-                | ColumnType::Float
-                | ColumnType::Double
-                | ColumnType::Instant
-        );
+        let primitive = has_typed_kernel(column_type);
         if let Some(mask) = primitive.then(|| self.primitive_kernel(&chunk)).flatten() {
             return Ok(mask);
         }
@@ -1023,6 +997,56 @@ impl Resolved {
         })
     }
 
+    /// [`Resolved::filter_column`] for scattered rows of a column that is an array in memory,
+    /// when the rows lie close together: every row from the first selected to the last is
+    /// judged, selected or not, and the rows kept are those of them that are selected. A
+    /// pass over the array costs less than a row, where reading scattered rows and finding
+    /// the key of each kept one costs tens of nanoseconds a row. `None` when that does not
+    /// apply, and the rows are then read as any column's.
+    ///
+    /// Only for the typed kernels, which cannot fail, and only for a source that hands out
+    /// its [`ColumnSource::stored_values`], whose rows can all be read: so no failure is
+    /// reported that reading the selected rows alone would not report, and none is missed.
+    /// That method promises the array never changes, so it holds the previous values too.
+    ///
+    /// No Java counterpart: Java reads the selected rows of every column
+    /// (`AbstractFilterExecution#doFilter`); the rows kept are the same.
+    fn filter_stored(&self, source: &Arc<dyn ColumnSource>, selection: &RowSet) -> Option<RowSet> {
+        if selection.as_single_range().is_some() || !has_typed_kernel(source.column_type()) {
+            return None;
+        }
+        let (first, last) = (selection.first_row_key()?, selection.last_row_key()?);
+        let spread = (last - first) as u64 + 1;
+        if spread > WHOLE_PER_ROW * selection.size() {
+            return None;
+        }
+        let values = source.stored_values()?;
+        if last as u64 >= values.len() as u64 {
+            // A row the array does not have: reading the selected rows reports it.
+            return None;
+        }
+        // From the start of the first row's block of the row set, so that each piece is
+        // a block of its own and joining the pieces rebuilds none.
+        let first = first - first % PIECE_ROWS as RowKey;
+        let values = values.slice(first as usize, (last - first) as usize + 1);
+        // Whether there is a kernel depends on the type and the keys, not on the cells.
+        self.primitive_kernel(&values.slice(0, 0))?;
+        let pieces = parallel::pieces_of(values.len(), PIECE_ROWS);
+        let judged = parallel::map_pieces(pieces.len(), |piece| {
+            let (offset, length) = pieces[piece];
+            let mask = self.primitive_kernel(&values.slice(offset, length))?;
+            let words: Vec<u64> = mask.bit_chunks().iter_padded().collect();
+            Some(RowSet::from_bitmap(
+                first + offset as RowKey,
+                &words,
+                length,
+            ))
+        });
+        let judged = concat_ordered(judged.into_iter().collect::<Option<Vec<_>>>()?);
+        // The selected rows among them: block against block, 64 rows at a step.
+        Some(judged.intersect(selection))
+    }
+
     /// The rows of `selection` that this filter, one that reads `column` alone, keeps.
     ///
     /// The column is read once, on the calling thread. Its chunk is then judged in pieces
@@ -1038,6 +1062,9 @@ impl Resolved {
         use_prev: bool,
     ) -> Result<RowSet, TableFailure> {
         let source = table.column(column);
+        if let Some(kept) = self.filter_stored(&source, selection) {
+            return Ok(kept);
+        }
         let chunk = if use_prev {
             source.prev_chunk(selection)?
         } else {
@@ -1058,24 +1085,65 @@ impl Resolved {
     }
 }
 
+/// A piece of scattered rows gets a bitmap of its keys when the keys from its first row to
+/// its last are at most this many times its rows: 8 bytes of bitmap a row at the most.
+/// Rows further apart are joined range by range.
+const SPREAD_PER_ROW: u64 = 64;
+
+/// Puts the `count` bits of `from` that start at bit `from_at` into `to` from bit `to_at`
+/// on, where `to` has no bit set yet. Bit `i` is bit `i % 64` of word `i / 64`.
+fn copy_bits(from: &[u64], from_at: usize, to: &mut [u64], to_at: usize, count: usize) {
+    let mut done = 0;
+    while done < count {
+        let step = (count - done).min(64);
+        let (word, shift) = ((from_at + done) / 64, (from_at + done) % 64);
+        let mut bits = from[word] >> shift;
+        if shift + step > 64 {
+            bits |= from[word + 1] << (64 - shift);
+        }
+        if step < 64 {
+            bits &= (1 << step) - 1;
+        }
+        let (word, shift) = ((to_at + done) / 64, (to_at + done) % 64);
+        to[word] |= bits << shift;
+        if shift + step > 64 {
+            to[word + 1] |= bits >> (64 - shift);
+        }
+        done += step;
+    }
+}
+
 /// What the piece of `selection` that starts at position `offset` keeps, given whether it
 /// keeps each of its rows, as a row set of its own. A piece is made on the thread that
 /// judged it, so the whole result is never built key by key on one thread.
 pub(super) fn kept_of_piece(selection: &RowSet, offset: usize, mask: &BooleanBuffer) -> RowSet {
     if let Some(range) = selection.as_single_range() {
-        // A row's key is known from its position.
+        // A row's key is known from its position, so the mask is the bitmap of the kept
+        // keys: a block that is dense is stored as these words, with no walk of its runs.
         let first = range.first() + offset as RowKey;
-        let mut kept = Vec::new();
-        for_each_run(mask, 0, mask.len(), |start, end| {
-            kept.push(RowRange::new(
-                first + start as RowKey,
-                first + end as RowKey - 1,
-            ));
-        });
-        return RowSet::from_ranges(kept);
+        let words: Vec<u64> = mask.bit_chunks().iter_padded().collect();
+        return RowSet::from_bitmap(first, &words, mask.len());
     }
     let rows = selection.sub_set_by_position_range(offset as u64, (offset + mask.len()) as u64);
-    // The ranges of the piece's rows and the kept stretches of positions, walked together.
+    if let (Some(first), Some(last)) = (rows.first_row_key(), rows.last_row_key()) {
+        let spread = (last - first) as u64 + 1;
+        if spread <= SPREAD_PER_ROW * mask.len() as u64 {
+            // The piece's rows lie close together: the bit of each row is put at the row's
+            // key in a bitmap of the keys from the first row to the last, a range of rows
+            // at a time, and the row set is made of that bitmap.
+            let bits: Vec<u64> = mask.bit_chunks().iter_padded().collect();
+            let mut keys = vec![0_u64; (spread as usize).div_ceil(64)];
+            let mut at = 0;
+            for range in rows.ranges() {
+                let size = range.size() as usize;
+                copy_bits(&bits, at, &mut keys, (range.first() - first) as usize, size);
+                at += size;
+            }
+            return RowSet::from_bitmap(first, &keys, spread as usize);
+        }
+    }
+    // Rows far apart: the ranges of the piece's rows and the kept stretches of positions,
+    // walked together.
     let mut ranges = rows.ranges();
     let mut range = ranges.next();
     // The position within the piece of the first key of `range`.

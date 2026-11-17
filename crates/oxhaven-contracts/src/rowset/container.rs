@@ -252,6 +252,18 @@ impl Piece {
     }
 }
 
+/// The stored form of the keys whose bits are set in `words`, and their number; `None` when
+/// no bit is set. What [`Piece::seal`] gives for the same bitmap, without a bitmap on the
+/// heap for a block that is not stored as one.
+pub(super) fn seal_words(words: &Words) -> Option<(Body, u64)> {
+    if count_runs(words) > MAX_RUNS {
+        let keys = words.iter().map(|w| u64::from(w.count_ones())).sum();
+        Some((Body::Bits(Arc::new(*words)), keys))
+    } else {
+        seal_runs(&BitRuns::new(words).collect::<Vec<Run>>())
+    }
+}
+
 fn seal_runs(runs: &[Run]) -> Option<(Body, u64)> {
     let keys = runs.iter().map(|r| r.len()).sum();
     let body = match runs {

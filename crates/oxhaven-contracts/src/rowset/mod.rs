@@ -54,7 +54,9 @@ mod merge;
 #[cfg(test)]
 mod tests;
 
-use container::{count_runs, BitRuns, BlockRuns, Body, Op, Run, View, BLOCK_KEYS, MAX_RUNS};
+use container::{
+    count_runs, seal_words, BitRuns, BlockRuns, Body, Op, Run, View, BLOCK_KEYS, MAX_RUNS, WORDS,
+};
 use std::fmt;
 
 /// A row key. Valid keys are non-negative, as in Java.
@@ -277,6 +279,74 @@ impl RowSet {
     /// Behavior: io.deephaven.engine.rowset.RowSetFactory#fromKeys
     pub fn from_keys(keys: impl IntoIterator<Item = RowKey>) -> Self {
         Self::from_ranges(keys.into_iter().map(|k| RowRange::new(k, k)))
+    }
+
+    /// The keys `first + i` for every `i` below `length` whose bit is set in `bits`: bit `i`
+    /// is bit `i % 64`, counted from the lowest, of `bits[i / 64]`. Bits at and after
+    /// `length` are not read as keys, whatever they hold.
+    ///
+    /// The result is the row set [`from_ranges`](Self::from_ranges) builds from the runs of
+    /// set bits, in the same layout. It is built a block at a time from the words, with no
+    /// walk of the runs of a block that is stored as a bitmap: for the kept rows of a filter
+    /// over contiguous rows, whose mask is such a bitmap already.
+    ///
+    /// No Java counterpart: Java's filters hand the kept keys of a chunk to a
+    /// `RowSetBuilderSequential`.
+    ///
+    /// # Panics
+    /// If `bits` has fewer than `length` bits, or, with a `length` above zero, if `first` is
+    /// negative or `first + length - 1` is not a row key.
+    pub fn from_bitmap(first: RowKey, bits: &[u64], length: usize) -> Self {
+        if length == 0 {
+            return Self::empty();
+        }
+        assert!(
+            length <= bits.len().saturating_mul(64),
+            "{length} bits asked of {} words",
+            bits.len()
+        );
+        let last = RowKey::try_from(length - 1)
+            .ok()
+            .and_then(|more| first.checked_add(more));
+        let Some(last) = last.filter(|_| first >= 0) else {
+            panic!("invalid bitmap of {length} keys from {first}");
+        };
+        // Bit `i` belongs at place `lead + i`, counted from the first key of the block of
+        // `first`. A word of places is cut from two neighbouring words of `bits`.
+        let lead = usize::from(low(first));
+        let (skip, shift) = (lead / 64, (lead % 64) as u32);
+        let full_words = length / 64;
+        // Word `index` of `bits`, with nothing set from bit `length` on or past the end.
+        let word = |index: usize| -> u64 {
+            match index.cmp(&full_words) {
+                std::cmp::Ordering::Less => bits[index],
+                std::cmp::Ordering::Equal if !length.is_multiple_of(64) => {
+                    bits[index] & (u64::MAX >> (64 - length % 64))
+                }
+                _ => 0,
+            }
+        };
+        let mut out = Self::empty();
+        let mut words = [0u64; WORDS];
+        for (nth, block) in (block_of(first)..=block_of(last)).enumerate() {
+            for (w, place) in words.iter_mut().enumerate() {
+                // Bit `j` of the word of places from `64 * at` on is bit `j - shift` of
+                // word `at - skip` of `bits` and, for `j` below `shift`, one of the top
+                // `shift` bits of the word before that.
+                let at = nth * WORDS + w;
+                let high = if at >= skip { word(at - skip) } else { 0 };
+                *place = if shift == 0 {
+                    high
+                } else {
+                    let low = if at > skip { word(at - skip - 1) } else { 0 };
+                    (high << shift) | (low >> (64 - shift))
+                };
+            }
+            if let Some((body, keys)) = seal_words(&words) {
+                out.push(block, body, keys);
+            }
+        }
+        out
     }
 
     /// The ranges of this set: sorted, and neither overlapping nor adjacent.

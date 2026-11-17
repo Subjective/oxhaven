@@ -102,6 +102,12 @@ impl ColumnSource for FlatSource {
         self.chunk(rows)
     }
 
+    /// The array itself: it never changes, row key `k` is at position `k`, [`FlatSource::new`]
+    /// checked its type, and `chunk` and `prev_chunk` read nothing else.
+    fn stored_values(&self) -> Option<ArrayRef> {
+        Some(self.values.clone())
+    }
+
     fn chunk_by_keys(&self, keys: &[RowKey], _use_prev: bool) -> Result<ArrayRef, TableFailure> {
         let gather = |keys: &[RowKey]| {
             if !keys.contains(&NULL_ROW_KEY) {
@@ -234,6 +240,19 @@ mod tests {
         let prev = source.prev_chunk(&rows).unwrap();
         assert_eq!(&prev, &source.chunk(&rows).unwrap());
         assert_eq!(prev.len(), 3);
+    }
+
+    /// The stored array is the one given, and every chunk is a part of it.
+    #[test]
+    fn hands_out_its_array_as_stored_values() {
+        let given: ArrayRef = Arc::new(Int32Array::from(vec![Some(10), None, Some(12)]));
+        let source = FlatSource::new(ColumnType::Int, given.clone()).unwrap();
+        let stored = source.stored_values().expect("a flat source is stored");
+        assert!(Arc::ptr_eq(&stored, &given));
+        let rows = RowSet::from_keys([0, 2]);
+        let expected: ArrayRef = Arc::new(Int32Array::from(vec![Some(10), Some(12)]));
+        assert_eq!(&source.chunk(&rows).unwrap(), &expected);
+        assert_eq!(&source.prev_chunk(&rows).unwrap(), &expected);
     }
 
     #[test]
