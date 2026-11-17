@@ -8,7 +8,11 @@ PARITY.md marks a rule as proposed and not in force, or a claim as UNVERIFIED, i
 The rules, in the order they are applied to one result of one step:
 
 0. Failure (Must match, item 7; A5). If the reference failed to produce the result, the other
-   side must fail too, with the same gRPC status code. The message is not compared.
+   side must fail too, with the same gRPC status code. The message is not compared. A
+   refreshing table that failed in an update cycle is a failure at that step and every later
+   one, with the status code the server refuses a new operation on it with, whatever its
+   snapshot still answers: its contents are not compared, and both sides must have failed by
+   the same step (A11; `runner.failed_in_cycle`).
 1. Schema (Must match, item 1; Wire representation). Column count, names, order and Arrow types
    are exact, and so are the field metadata keys PARITY.md lists as compared
    (`Rules.compared_field_metadata`) and the schema-level table attributes clients act on

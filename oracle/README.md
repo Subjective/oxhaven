@@ -632,7 +632,9 @@ They are in `harness/rules.py` and nowhere else; its module comment is the full 
 cites the section of `PARITY.md` behind each rule. In short:
 
 - Whether a result fails is compared, and the gRPC status code if it does; the message is not
-  (Must match, item 7; A5).
+  (Must match, item 7; A5). A refreshing table that failed in an update cycle is a failure
+  from that step on, with the status code of a new operation on it, whatever its snapshot
+  still answers (A11).
 - Schema: column count, names, order and Arrow types are exact, and so are the Deephaven field
   metadata (`deephaven:type`, `componentType`, the input table key flags and the others listed
   in `rules.py`) and the table attributes `IsFlat`, `AddOnly`, `AppendOnly` and `BlinkTable`
@@ -867,10 +869,13 @@ cycle has completed. `_Barrier` in `harness/runner.py` gives the reasoning and t
   (`empty_table`, `select_distinct` of no columns): pyarrow drops the rows. The comparison
   itself does see the row count of such a table.
 - A ticking table that fails during an update cycle (a duplicate right key arriving in a
-  `natural_join`, a formula that throws in `update`) is not compared after that. Java keeps
-  answering snapshots of such a table, with contents that are not a consistent table (rows of
-  the parent with stale or null values in the added columns). `ticking_error_after_step` defines
-  such tables and compares only the tables around them.
+  `natural_join`, a formula that throws in `update`) is compared by its failure alone from
+  that step on (`PARITY.md` A11): Java keeps answering snapshots of some such tables, with
+  contents that are not a consistent table, so the runner asks each refreshing result for
+  `where("true")` before its snapshot and records the refusal as the result. The recordings
+  in `corpus/` were made before that rule: `ticking_error_after_step` defines such tables and
+  lists only the tables around them, and a recording that holds a failed table's contents
+  has to be made again to hold its failure.
 - A formula over a computed column (`X = Sum / 3`) is compared exactly: `PARITY.md` A1 names
   aggregations and library functions, not arithmetic on their results.
 - The fuzzer keeps float inputs small and few in kind, so sums in generated scenarios do not

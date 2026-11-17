@@ -53,7 +53,8 @@ class ResultSet:
     """The results of one scenario run, keyed by (step, table), in the order produced.
 
     A result is the table's content, or a `Failure` when the server refused the operation that
-    defines the table (or one it depends on) or failed to deliver its snapshot.
+    defines the table (or one it depends on), failed to deliver its snapshot, or refuses new
+    operations on the table because it failed in an update cycle (`runner.failed_in_cycle`).
     """
 
     def __init__(self, scenario: str):

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import math
+from types import SimpleNamespace
 
+import grpc
 import pyarrow as pa
 import pytest
 
 from harness import results as res
-from harness import rules
+from harness import rules, runner
 from harness.results import ResultSet
 
 NAN = math.nan
@@ -476,3 +478,63 @@ def test_compare_uses_the_unordered_set_per_table():
         other.put(0, name, table(I=pa.array([2, 1], pa.int32())))
     found = rules.compare(one, other, unordered={"b"})
     assert {m.table for m in found} == {"a"}
+
+
+# ---------------------------------------------------------------- A11: failed in a cycle
+
+
+class _Refused(grpc.RpcError):
+    def code(self) -> grpc.StatusCode:
+        return grpc.StatusCode.INVALID_ARGUMENT
+
+
+class _Served:
+    """A table as the client holds it: what its snapshot answers, whether it refreshes, and
+    whether the server failed it in an update cycle, after which it refuses new operations."""
+
+    def __init__(self, data: pa.Table, refreshing: bool = True, failed: bool = False):
+        self.data, self.is_refreshing, self.failed = data, refreshing, failed
+        self.probes = 0
+
+    def where(self, _condition: str) -> "_Served":
+        self.probes += 1
+        if self.failed:
+            raise RuntimeError("the client's wrapper") from _Refused()
+        return self
+
+    def to_arrow(self) -> pa.Table:
+        return self.data
+
+
+def _snapshot(**tables: _Served) -> ResultSet:
+    """What the runner records of `tables` at step 1."""
+    scenario = SimpleNamespace(results=[SimpleNamespace(table=name) for name in tables])
+    out = ResultSet("s")
+    runner._snapshot(None, scenario, dict(tables), 1, out)  # noqa: SLF001
+    return out
+
+
+def _ints(*values: int) -> pa.Table:
+    return table(V=pa.array(values, pa.int32()))
+
+
+def test_a_table_that_failed_in_a_cycle_is_compared_by_its_failure_alone():
+    """PARITY.md A11: the rows a failed table still serves are not compared; that it failed,
+    at which step and with which status code, is."""
+    java = _snapshot(t=_Served(_ints(6, 9), failed=True))
+    oxhaven = _snapshot(t=_Served(_ints(6), failed=True))
+    assert java.get(1, "t") == res.Failure("INVALID_ARGUMENT")
+    assert rules.compare(java, oxhaven) == []
+    healthy = _snapshot(t=_Served(_ints(6, 9)))
+    assert kinds(rules.compare(java, healthy)) == [rules.FAILURE_EXPECTED]
+    assert kinds(rules.compare(healthy, oxhaven)) == [rules.FAILURE_UNEXPECTED]
+
+
+def test_a_table_that_has_not_failed_is_compared_by_its_contents():
+    live, static = _Served(_ints(6, 9)), _Served(_ints(6), refreshing=False)
+    result = _snapshot(live=live, static=static)
+    assert result.get(1, "live").equals(live.data)
+    assert result.get(1, "static").equals(static.data)
+    assert (live.probes, static.probes) == (1, 0)  # a static table cannot fail in a cycle
+    other = _snapshot(live=_Served(_ints(6)), static=static)
+    assert kinds(rules.compare(result, other)) == [rules.ROW_COUNT]
