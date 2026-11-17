@@ -1,10 +1,11 @@
 //! Reading a column through a mapping from outer row keys to inner row keys.
 
-use crate::tracked::{Clock, Tracked};
+use crate::tracked::{updating_step, Clock};
 use arrow::array::ArrayRef;
 use oxhaven_contracts::rowset::{RowKey, RowSet, NULL_ROW_KEY};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{ColumnSource, TableFailure};
+use std::collections::BTreeMap;
 use std::sync::{Arc, PoisonError, RwLock};
 
 /// A mapping from the row keys of a result (outer) to the row keys of the data it shows
@@ -21,20 +22,210 @@ pub trait RowRedirection: Send + Sync {
     fn redirect(&self, keys: &[RowKey], use_prev: bool) -> Vec<RowKey>;
 }
 
+/// The least number of mappings a redirection is taken to have when it decides whether its
+/// outer keys are dense: below it, a flat array costs a few kilobytes at most.
+const DENSE_FLOOR: usize = 1024;
+
+/// Whether `mappings` mappings whose largest outer key is `last` are kept in a flat array
+/// indexed by outer key: when the array is at most four times as long as there are
+/// mappings.
+///
+/// Java chooses once, when a join or sort makes its redirection: a flat array for a static
+/// flat table, a sparse array source when that uses at least a quarter of each of its
+/// blocks, and a hash map otherwise. The factor is the same; the forms are two here, and a
+/// redirection changes form when its keys change.
+///
+/// Behavior: io.deephaven.engine.table.impl.JoinControl#getRedirectionType
+fn is_dense(last: RowKey, mappings: usize) -> bool {
+    let room = mappings.max(DENSE_FLOOR).saturating_mul(4);
+    usize::try_from(last).is_ok_and(|last| last < room)
+}
+
+/// The mappings as they are now.
+enum Current {
+    /// The inner key of outer key `k` is `dense[k]`; `NULL_ROW_KEY` where `k` has none.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.util.ContiguousWritableRowRedirection
+    Dense(Vec<RowKey>),
+    /// Behavior: io.deephaven.engine.table.impl.util.WritableRowRedirectionLockFree, as an
+    /// ordered map instead of a hash map
+    Sparse(BTreeMap<RowKey, RowKey>),
+}
+
+impl Current {
+    fn get(&self, outer: RowKey) -> RowKey {
+        match self {
+            Current::Dense(inner) => {
+                let index = usize::try_from(outer).ok();
+                index
+                    .and_then(|index| inner.get(index))
+                    .map_or(NULL_ROW_KEY, |inner| *inner)
+            }
+            Current::Sparse(inner) => inner.get(&outer).map_or(NULL_ROW_KEY, |inner| *inner),
+        }
+    }
+}
+
+struct Mappings {
+    current: Current,
+    /// The number of outer keys that have a mapping.
+    size: usize,
+    /// The size at which sparse mappings are next looked at for having become dense.
+    look_at: usize,
+    /// What each outer key changed in this cycle mapped to when the cycle began: the first
+    /// write wins. `NULL_ROW_KEY` for a key that had no mapping.
+    ///
+    /// Behavior: the `checkpoint` of
+    /// io.deephaven.engine.table.impl.util.ContiguousWritableRowRedirection
+    prev: BTreeMap<RowKey, RowKey>,
+    /// The step `prev` belongs to.
+    prev_step: u64,
+    clock: Option<Arc<dyn Clock>>,
+}
+
+impl Mappings {
+    fn new(current: Current, size: usize) -> Self {
+        Self {
+            current,
+            size,
+            look_at: DENSE_FLOOR,
+            prev: BTreeMap::new(),
+            prev_step: 0,
+            clock: None,
+        }
+    }
+
+    /// Maps `outer`, which is not negative, to `inner`, or to nothing with `NULL_ROW_KEY`,
+    /// and returns what it mapped to. Previous mappings are recorded by the rules of
+    /// [`WritableSource`](crate::WritableSource): only while the clock is updating, and
+    /// the record of an earlier cycle is dropped by the first write after it.
+    fn set(&mut self, outer: RowKey, inner: RowKey) -> RowKey {
+        let step = updating_step(self.clock.as_ref());
+        if step != Some(self.prev_step) {
+            self.prev.clear();
+        }
+        let old = self.replace(outer, inner);
+        if let Some(step) = step {
+            self.prev_step = step;
+            self.prev.entry(outer).or_insert(old);
+        }
+        match (old == NULL_ROW_KEY, inner == NULL_ROW_KEY) {
+            (true, false) => self.size += 1,
+            (false, true) => self.size -= 1,
+            _ => {}
+        }
+        if self.size >= self.look_at {
+            self.look_at = self.size.saturating_mul(2);
+            self.densify();
+        }
+        old
+    }
+
+    fn replace(&mut self, outer: RowKey, inner: RowKey) -> RowKey {
+        match &mut self.current {
+            Current::Dense(dense) => {
+                let index = outer as usize;
+                if index < dense.len() {
+                    return std::mem::replace(&mut dense[index], inner);
+                }
+                if inner == NULL_ROW_KEY {
+                    return NULL_ROW_KEY;
+                }
+                if is_dense(outer, self.size + 1) {
+                    dense.resize(index + 1, NULL_ROW_KEY);
+                    dense[index] = inner;
+                    return NULL_ROW_KEY;
+                }
+                // The keys are no longer dense.
+                let dense = std::mem::take(dense);
+                let mapped = (0..).zip(dense).filter(|(_, inner)| *inner != NULL_ROW_KEY);
+                let mut sparse: BTreeMap<RowKey, RowKey> = mapped.collect();
+                sparse.insert(outer, inner);
+                self.current = Current::Sparse(sparse);
+                NULL_ROW_KEY
+            }
+            Current::Sparse(sparse) => {
+                let old = if inner == NULL_ROW_KEY {
+                    sparse.remove(&outer)
+                } else {
+                    sparse.insert(outer, inner)
+                };
+                old.unwrap_or(NULL_ROW_KEY)
+            }
+        }
+    }
+
+    /// Moves sparse mappings to a flat array if their keys have become dense.
+    fn densify(&mut self) {
+        let Current::Sparse(sparse) = &self.current else {
+            return;
+        };
+        let Some((&last, _)) = sparse.last_key_value() else {
+            return;
+        };
+        if !is_dense(last, self.size) {
+            return;
+        }
+        let mut dense = vec![NULL_ROW_KEY; last as usize + 1];
+        for (&outer, &inner) in sparse {
+            dense[outer as usize] = inner;
+        }
+        self.current = Current::Dense(dense);
+    }
+}
+
 /// A row redirection that can be changed, with previous mappings for the current cycle.
 /// Previous mappings follow the same rules as the previous values of
 /// [`WritableSource`](crate::WritableSource).
 ///
-/// Behavior: io.deephaven.engine.table.impl.util.WritableRowRedirection
+/// The mappings are kept in a flat array indexed by outer key while the outer keys are
+/// dense (at most four array cells per mapping), and in an ordered map otherwise. The
+/// redirection moves between the two by itself as keys come and go, so a caller never
+/// chooses. Mappings changed during a cycle are remembered apart from both, as Java's
+/// redirections remember them.
+///
+/// Behavior: io.deephaven.engine.table.impl.util.WritableRowRedirection, and
+/// io.deephaven.engine.table.impl.JoinRowRedirection#makeRowRedirection for the forms
 pub struct WritableRowRedirection {
-    map: RwLock<Tracked<RowKey>>,
+    map: RwLock<Mappings>,
 }
 
 impl WritableRowRedirection {
     /// An empty redirection that does not track previous mappings.
     pub fn new() -> Self {
         Self {
-            map: RwLock::new(Tracked::new()),
+            map: RwLock::new(Mappings::new(Current::Dense(Vec::new()), 0)),
+        }
+    }
+
+    /// A redirection of the rows `outer`, in order, to `inner`; a row whose `inner` is
+    /// `NULL_ROW_KEY` has no mapping. It does not track previous mappings. This is the way
+    /// to make the redirection of a whole result at once: for the outer keys `0..n` the
+    /// redirection is `inner` itself.
+    ///
+    /// # Panics
+    /// If `inner` does not have one key for every row of `outer`.
+    pub fn from_rows(outer: &RowSet, inner: Vec<RowKey>) -> Self {
+        assert_eq!(outer.size(), inner.len() as u64, "one inner key per row");
+        debug_assert!(inner.iter().all(|inner| *inner >= NULL_ROW_KEY));
+        let size = inner.iter().filter(|inner| **inner != NULL_ROW_KEY).count();
+        let last = outer.last_row_key().unwrap_or(NULL_ROW_KEY);
+        let current = if outer.is_empty() {
+            Current::Dense(Vec::new())
+        } else if outer.first_row_key() == Some(0) && last + 1 == inner.len() as RowKey {
+            Current::Dense(inner)
+        } else if is_dense(last, size) {
+            let mut dense = vec![NULL_ROW_KEY; last as usize + 1];
+            for (outer, inner) in outer.iter().zip(inner) {
+                dense[outer as usize] = inner;
+            }
+            Current::Dense(dense)
+        } else {
+            let mapped = outer.iter().zip(inner);
+            Current::Sparse(mapped.filter(|(_, inner)| *inner != NULL_ROW_KEY).collect())
+        };
+        Self {
+            map: RwLock::new(Mappings::new(current, size)),
         }
     }
 
@@ -43,7 +234,12 @@ impl WritableRowRedirection {
     /// # Panics
     /// If called twice.
     pub fn start_tracking_prev(&self, clock: Arc<dyn Clock>) {
-        self.write().start_tracking_prev(clock);
+        let mut map = self.write();
+        assert!(
+            map.clock.is_none(),
+            "start_tracking_prev called twice on one source"
+        );
+        map.clock = Some(clock);
     }
 
     /// Maps `outer` to `inner` and returns the inner key it mapped to before, or
@@ -58,8 +254,7 @@ impl WritableRowRedirection {
             outer >= 0 && inner >= 0,
             "invalid redirection {outer} -> {inner}"
         );
-        let old = self.write().write().put(outer, Some(inner));
-        old.unwrap_or(NULL_ROW_KEY)
+        self.write().set(outer, inner)
     }
 
     /// Removes the mapping of `outer` and returns the inner key it mapped to, or
@@ -67,11 +262,20 @@ impl WritableRowRedirection {
     ///
     /// Behavior: io.deephaven.engine.table.impl.util.WritableRowRedirection#remove
     pub fn remove(&self, outer: RowKey) -> RowKey {
-        let old = self.write().write().put(outer, None);
-        old.unwrap_or(NULL_ROW_KEY)
+        if outer < 0 {
+            // No key below zero has a mapping.
+            return NULL_ROW_KEY;
+        }
+        self.write().set(outer, NULL_ROW_KEY)
     }
 
-    fn write(&self) -> std::sync::RwLockWriteGuard<'_, Tracked<RowKey>> {
+    /// Whether the mappings are in a flat array now.
+    #[cfg(test)]
+    fn is_flat_array(&self) -> bool {
+        matches!(self.write().current, Current::Dense(_))
+    }
+
+    fn write(&self) -> std::sync::RwLockWriteGuard<'_, Mappings> {
         self.map.write().unwrap_or_else(PoisonError::into_inner)
     }
 }
@@ -85,10 +289,18 @@ impl Default for WritableRowRedirection {
 impl RowRedirection for WritableRowRedirection {
     fn redirect(&self, keys: &[RowKey], use_prev: bool) -> Vec<RowKey> {
         let map = self.map.read().unwrap_or_else(PoisonError::into_inner);
-        let reader = map.read(use_prev);
-        keys.iter()
-            .map(|&key| reader.get(key).unwrap_or(NULL_ROW_KEY))
-            .collect()
+        let overlay = use_prev
+            && !map.prev.is_empty()
+            && updating_step(map.clock.as_ref()) == Some(map.prev_step);
+        if overlay {
+            let prev = |key: &RowKey| match map.prev.get(key) {
+                Some(recorded) => *recorded,
+                None => map.current.get(*key),
+            };
+            keys.iter().map(prev).collect()
+        } else {
+            keys.iter().map(|&key| map.current.get(key)).collect()
+        }
     }
 }
 
