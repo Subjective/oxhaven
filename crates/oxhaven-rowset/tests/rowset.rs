@@ -108,8 +108,12 @@ fn insert_with_shift(rows: &mut RowSet, shift: i64, other: &RowSet) {
     rows.insert(&other.shift(shift).unwrap());
 }
 
+fn ranges(rows: &RowSet) -> Vec<RowRange> {
+    rows.ranges().collect()
+}
+
 fn assert_canonical(rows: &RowSet) {
-    for w in rows.ranges().windows(2) {
+    for w in ranges(rows).windows(2) {
         assert!(w[0].last() + 1 < w[1].first(), "not canonical: {rows:?}");
     }
 }
@@ -162,7 +166,7 @@ fn single_key_and_single_range() {
     assert_eq!(one.iter().collect::<Vec<_>>(), [2]);
 
     let range = RowSet::from_range(3, 100);
-    assert_eq!(range.ranges(), &[RowRange::new(3, 100)]);
+    assert_eq!(ranges(&range), [RowRange::new(3, 100)]);
 }
 
 /// Port of `testRange`, without its reference-count assertions.
@@ -626,8 +630,8 @@ fn random_builder_merges_overlapping_and_adjacent_ranges() {
     builder.add_range(225, 250);
     builder.add_range(220, 260);
     assert_eq!(
-        builder.build().ranges(),
-        &[
+        ranges(&builder.build()),
+        [
             RowRange::new(10, 110),
             RowRange::new(120, 150),
             RowRange::new(155, 165),
@@ -647,7 +651,7 @@ fn random_builder_collapses_interleaved_keys() {
     builder.add_keys((0..10 * 32).map(|i| 1000 + 2 * i));
     let rows = builder.build();
     assert_eq!(rows.size(), 12 * 32);
-    assert_eq!(rows.ranges()[0], RowRange::new(1, 64));
+    assert_eq!(ranges(&rows)[0], RowRange::new(1, 64));
 }
 
 /// The values shared by the builder tests and `testSubSetForPositions`.
@@ -863,7 +867,7 @@ fn contains_range_around_every_range_boundary() {
     insert_range(&mut rows, 6 * BLOCK_SIZE, 6 * BLOCK_SIZE + BLOCK_LAST);
     insert_range(&mut rows, 10 * BLOCK_SIZE, 20 * BLOCK_SIZE - 1);
     let last_key = rows.last_row_key().unwrap();
-    let ranges = rows.ranges().to_vec();
+    let ranges = ranges(&rows);
     assert_eq!(ranges.len(), 6);
     for (i, range) in ranges.iter().enumerate() {
         let (start, end) = (range.first(), range.last());
@@ -895,7 +899,7 @@ fn overlaps_range_around_every_gap() {
     insert_range(&mut rows, 10 * BLOCK_SIZE, 20 * BLOCK_SIZE - 1);
     let last_key = rows.last_row_key().unwrap();
     let mut prev_end: Option<RowKey> = None;
-    for range in rows.ranges().to_vec() {
+    for range in ranges(&rows) {
         let (start, end) = (range.first(), range.last());
         let Some(before) = prev_end else {
             assert!(!overlaps_range(&rows, 0, start - 1));
@@ -1216,11 +1220,11 @@ fn single_range_insert_row_set_and_range() {
     for (start2, end2, expected) in [(21, 22, (10, 22)), (8, 9, (8, 20))] {
         let mut rows = RowSet::from_range(10, 20);
         rows.insert(&RowSet::from_range(start2, end2));
-        assert_eq!(rows.ranges(), &[RowRange::new(expected.0, expected.1)]);
+        assert_eq!(ranges(&rows), [RowRange::new(expected.0, expected.1)]);
         let mut rows = RowSet::empty();
         insert_range(&mut rows, 10, 20);
         insert_range(&mut rows, start2, end2);
-        assert_eq!(rows.ranges(), &[RowRange::new(expected.0, expected.1)]);
+        assert_eq!(ranges(&rows), [RowRange::new(expected.0, expected.1)]);
     }
 
     let (start, end) = (10, 20);
@@ -1260,15 +1264,15 @@ fn single_range_remove_row_set_range_and_minus_agree() {
 
         let mut rows = RowSet::from_range(10, 20);
         rows.remove(&other);
-        assert_eq!(rows.ranges(), expected, "remove {start2}..={end2}");
+        assert_eq!(ranges(&rows), expected, "remove {start2}..={end2}");
 
         let mut rows = RowSet::empty();
         insert_range(&mut rows, 10, 20);
         remove_range(&mut rows, start2, end2);
-        assert_eq!(rows.ranges(), expected, "remove range {start2}..={end2}");
+        assert_eq!(ranges(&rows), expected, "remove range {start2}..={end2}");
 
         let minus = RowSet::from_range(10, 20).minus(&other);
-        assert_eq!(minus.ranges(), expected, "minus {start2}..={end2}");
+        assert_eq!(ranges(&minus), expected, "minus {start2}..={end2}");
     }
 }
 

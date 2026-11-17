@@ -164,7 +164,9 @@ impl CoalescingShiftBuilder {
                 Some(prev)
                     if prev.delta == s.delta
                         && prev.last < s.first
-                        && !self.pre_shift_keys.overlaps_range(prev.last + 1, s.first - 1) =>
+                        && !self
+                            .pre_shift_keys
+                            .overlaps_range(prev.last + 1, s.first - 1) =>
                 {
                     prev.last = s.last;
                 }

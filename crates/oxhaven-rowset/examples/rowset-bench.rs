@@ -1,17 +1,18 @@
-//! Times row-set operations on large tables, for the present representation (the contract
-//! `RowSet`, a sorted vector of ranges) and for the block representation of this crate.
+//! Times row-set operations on large tables, for the first representation (a sorted vector
+//! of ranges, kept as `oxhaven_testkit::RangeRowSet`) and for the row set of the contracts.
 //!
 //! `docs/ROWSET.md` explains the workloads and records a run. Run it alone, in release mode:
 //!
 //! ```text
-//! cargo run --release -p oxhaven-rowset --bin rowset-bench            # every shape
-//! cargo run --release -p oxhaven-rowset --bin rowset-bench -- filtered # shapes whose name matches
+//! cargo run --release -p oxhaven-rowset --example rowset-bench            # every shape
+//! cargo run --release -p oxhaven-rowset --example rowset-bench -- filtered # shapes whose name matches
 //! ```
 //!
 //! Every operation is first checked to give the same keys in both representations, so a row of
 //! the output never compares two different results.
 
-use oxhaven_rowset::{BlockRowSet, RowKey, RowRange, RowSet, RowSetError};
+use oxhaven_rowset::{RowKey, RowRange, RowSet, RowSetError};
+use oxhaven_testkit::RangeRowSet;
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
@@ -86,12 +87,12 @@ macro_rules! forward {
     };
 }
 
-impl Rows for RowSet {
+impl Rows for RangeRowSet {
     fn build(ranges: &[RowRange]) -> Self {
-        RowSet::from_ranges(ranges.iter().copied())
+        Self::from_ranges(ranges.iter().copied())
     }
     fn keys(keys: &[RowKey]) -> Self {
-        RowSet::from_keys(keys.iter().copied())
+        Self::from_keys(keys.iter().copied())
     }
     fn to_ranges(&self) -> Vec<RowRange> {
         self.ranges().to_vec()
@@ -105,12 +106,12 @@ impl Rows for RowSet {
     forward!();
 }
 
-impl Rows for BlockRowSet {
+impl Rows for RowSet {
     fn build(ranges: &[RowRange]) -> Self {
-        BlockRowSet::from_ranges(ranges.iter().copied())
+        Self::from_ranges(ranges.iter().copied())
     }
     fn keys(keys: &[RowKey]) -> Self {
-        BlockRowSet::from_keys(keys.iter().copied())
+        Self::from_keys(keys.iter().copied())
     }
     fn to_ranges(&self) -> Vec<RowRange> {
         self.ranges().collect()
@@ -494,8 +495,8 @@ fn main() {
         println!("{} rows in {} ranges\n", input.size, input.ranges.len());
         println!("| operation | ranges | blocks | ratio |");
         println!("| --- | ---: | ---: | ---: |");
-        let ranges = run::<RowSet>(&input);
-        let blocks = run::<BlockRowSet>(&input);
+        let ranges = run::<RangeRowSet>(&input);
+        let blocks = run::<RowSet>(&input);
         for ((name, a, result_a), (_, b, result_b)) in ranges.into_iter().zip(blocks) {
             assert_eq!(
                 result_a, result_b,

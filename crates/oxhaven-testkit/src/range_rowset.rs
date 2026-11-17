@@ -299,7 +299,10 @@ impl RangeRowSet {
             if r_end > start && pos < end {
                 let lo = start.max(pos) - pos;
                 let hi = end.min(r_end) - pos - 1;
-                out.push(RowRange::new(r.first() + lo as RowKey, r.first() + hi as RowKey));
+                out.push(RowRange::new(
+                    r.first() + lo as RowKey,
+                    r.first() + hi as RowKey,
+                ));
             }
             pos = r_end;
             if pos >= end {
@@ -359,7 +362,6 @@ impl FromIterator<RowKey> for RangeRowSet {
         RangeRowSet::from_keys(iter)
     }
 }
-
 
 impl From<&RowSet> for RangeRowSet {
     fn from(rows: &RowSet) -> Self {

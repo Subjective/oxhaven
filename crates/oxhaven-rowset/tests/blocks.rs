@@ -1,9 +1,9 @@
 //! Every operation of the row set is compared with the vector-of-ranges reference
-//! (`oxhaven_testkit::RangeRangeRowSet`) on the same keys, and every result is checked to be in the
+//! (`oxhaven_testkit::RangeRowSet`) on the same keys, and every result is checked to be in the
 //! one layout its keys allow.
 
 use oxhaven_contracts::rowset::{RowKey, RowRange, RowSet, RowSetError, SpanCounts};
-use oxhaven_testkit::{at_least_for, test_seeds, RangeRangeRowSet};
+use oxhaven_testkit::{at_least_for, test_seeds, RangeRowSet};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -360,4 +360,3 @@ fn every_operation_matches_the_reference_row_set() {
         );
     }
 }
-
