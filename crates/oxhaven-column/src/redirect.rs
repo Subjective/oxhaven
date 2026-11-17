@@ -1,6 +1,6 @@
 //! Reading a column through a mapping from outer row keys to inner row keys.
 
-use crate::tracked::{updating_step, Clock};
+use crate::tracked::{is_dense, updating_step, Clock, DENSE_FLOOR};
 use arrow::array::ArrayRef;
 use oxhaven_contracts::rowset::{RowKey, RowSet, NULL_ROW_KEY};
 use oxhaven_contracts::schema::ColumnType;
@@ -28,25 +28,6 @@ pub trait RowRedirection: Send + Sync {
         let keys: Vec<RowKey> = rows.iter().collect();
         self.redirect(&keys, use_prev)
     }
-}
-
-/// The least number of mappings a redirection is taken to have when it decides whether its
-/// outer keys are dense: below it, a flat array costs a few kilobytes at most.
-const DENSE_FLOOR: usize = 1024;
-
-/// Whether `mappings` mappings whose largest outer key is `last` are kept in a flat array
-/// indexed by outer key: when the array is at most four times as long as there are
-/// mappings.
-///
-/// Java chooses once, when a join or sort makes its redirection: a flat array for a static
-/// flat table, a sparse array source when that uses at least a quarter of each of its
-/// blocks, and a hash map otherwise. The factor is the same; the forms are two here, and a
-/// redirection changes form when its keys change.
-///
-/// Behavior: io.deephaven.engine.table.impl.JoinControl#getRedirectionType
-fn is_dense(last: RowKey, mappings: usize) -> bool {
-    let room = mappings.max(DENSE_FLOOR).saturating_mul(4);
-    usize::try_from(last).is_ok_and(|last| last < room)
 }
 
 /// The mappings as they are now.

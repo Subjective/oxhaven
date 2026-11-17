@@ -103,16 +103,32 @@ impl ColumnSource for FlatSource {
     }
 
     fn chunk_by_keys(&self, keys: &[RowKey], _use_prev: bool) -> Result<ArrayRef, TableFailure> {
-        if !keys.contains(&NULL_ROW_KEY) {
-            // Every key is a position: a gather without a validity per key.
-            let positions: Vec<u64> = keys.iter().map(|&k| k as u64).collect();
-            return self.take(&UInt64Array::from(positions));
+        let gather = |keys: &[RowKey]| {
+            if !keys.contains(&NULL_ROW_KEY) {
+                // Every key is a position: a gather without a validity per key.
+                let positions: Vec<u64> = keys.iter().map(|&k| k as u64).collect();
+                return self.take(&UInt64Array::from(positions));
+            }
+            let positions: UInt64Array = keys
+                .iter()
+                .map(|&k| (k != NULL_ROW_KEY).then_some(k as u64))
+                .collect();
+            self.take(&positions)
+        };
+        let piece_rows = GATHER_PIECE_ROWS as usize;
+        if keys.len() < 2 * piece_rows || parallel::threads() == 1 {
+            return gather(keys);
         }
-        let positions: UInt64Array = keys
-            .iter()
-            .map(|&k| (k != NULL_ROW_KEY).then_some(k as u64))
-            .collect();
-        self.take(&positions)
+        // As for a row set: pieces in the order of the keys, and the first that fails
+        // holds the first key that fails.
+        let pieces = parallel::pieces_of(keys.len(), piece_rows);
+        let gathered = parallel::map_pieces(pieces.len(), |piece| {
+            let (offset, length) = pieces[piece];
+            gather(&keys[offset..offset + length])
+        });
+        let gathered = gathered.into_iter().collect::<Result<Vec<_>, _>>()?;
+        let pieces: Vec<&dyn Array> = gathered.iter().map(|piece| piece.as_ref()).collect();
+        concat(&pieces).map_err(arrow_failure)
     }
 }
 
@@ -166,6 +182,32 @@ mod tests {
                 beyond.insert(&RowSet::from_range(len + 3, len + 3));
                 let failure = ints.chunk(&beyond).expect_err("a key past the end");
                 let alone = ints.chunk(&RowSet::from_keys([0, len + 3])).err();
+                assert_eq!(Some(failure.message), alone.map(|f| f.message));
+
+                // The same by keys in an order that is not theirs, with a null key in one
+                // piece only and a repeat.
+                let mut keys: Vec<RowKey> = (0..len).map(|i| (i * 7919) % len).collect();
+                keys.extend([5, NULL_ROW_KEY, 5]);
+                let expected: Vec<Option<i32>> = keys
+                    .iter()
+                    .map(|&k| (k != NULL_ROW_KEY).then(|| cell(k)).flatten())
+                    .collect();
+                let chunk = ints.chunk_by_keys(&keys, false).unwrap();
+                let read: Vec<Option<i32>> = chunk.as_primitive::<Int32Type>().iter().collect();
+                assert!(read == expected, "ints by key on {threads} threads");
+                let chunk = text.chunk_by_keys(&keys, true).unwrap();
+                let read = chunk.as_string::<i32>().iter();
+                let expected = expected.iter().map(|v| v.map(|v| format!("s{v}")));
+                assert!(
+                    read.map(|v| v.map(str::to_string)).eq(expected),
+                    "strings by key on {threads} threads"
+                );
+                keys[70_000] = len + 3;
+                keys[200_000] = len + 9;
+                let failure = ints
+                    .chunk_by_keys(&keys, false)
+                    .expect_err("a key past the end");
+                let alone = ints.chunk_by_keys(&[0, len + 3], false).err();
                 assert_eq!(Some(failure.message), alone.map(|f| f.message));
             });
         }
