@@ -1185,3 +1185,7 @@ Seven green checks. Task 9.7 takes the leftovers 9.4 and 9.6 named: slow scatter
 ## 2026-11-17 16:52 UTC: task 9.7 reported, pull request 150 opened
 
 The slow refreshing read was a map lookup per row in the writable column, not locks or previous values. The 9.4 reading of the piece join was only partly right: the first write of new memory is the cost.
+
+## 2026-11-17 16:59 UTC: pull request 150 merged
+
+Seven green checks. No new builder started: the end-to-end benchmark rerun against Deephaven needs a quiet machine and starts when the second run of task 9.5 reports.
