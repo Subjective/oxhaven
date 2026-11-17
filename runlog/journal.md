@@ -1261,3 +1261,7 @@ One operator family per agent, as learned from 10.2: the hierarchical tables (R1
 ## 2026-11-17 22:25 UTC: task 10.4 reported, pull request 158 opened
 
 The agent stopped its workspace test build at 4.3 GB free, as briefed. The checks run the workspace tests; the full-seed engine tests run locally before the merge. Owner question 7 (group and formula combinations in a rollup that Deephaven serves or fails by order and name) goes to review-items-2.md.
+
+## 2026-11-17 22:34 UTC: pull request 158 merged
+
+Seven green checks on head 845b1454 and the full-seed engine tests (1254 passed) run locally by the orchestrator. Main is at d2bc80a0. Follow-up: docs/HIERARCHICAL.md still says count where, group and formula are refused in a rollup.
