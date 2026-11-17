@@ -6,7 +6,7 @@ runner, `bench/bench.py`, and made the first measurement below. The only earlier
 the row set micro-benchmark in [ROWSET.md](ROWSET.md).
 
 The short reading: every case gave the same answer on both servers. At 1M rows Oxhaven is
-within about 2x of Java on formulas, filters, low- and medium-cardinality aggregations,
+within about 2x of Java in the less loaded run (up to 4x in the other) on formulas, filters, low- and medium-cardinality aggregations,
 `join`, `head`/`tail` and `ungroup`, and faster on the Arrow Flight read path and on a string
 match filter. It is 18x to 40x slower on `natural_join` and `exact_join`, 8x to 31x on
 `select_distinct`, 4x to 10x on `sort` of an int column and on `last_by`, and 3x to 7x on
@@ -249,9 +249,9 @@ No profiler was available on the machine (`perf` is not installed), so the cause
 from reading the code path of each slow case, not from a profile. They are the likely
 reasons, not measured ones.
 
-**Close to Java, or faster (ratio below about 2 in both runs):** the formulas of `update` at
-1M rows, `where_string` (a match filter over a dictionary of literal strings, faster on
-Oxhaven at both sizes), low and medium cardinality `sum_by`/`avg_by`/`count_by`, `agg_by_multi`,
+**Close to Java, or faster (ratio below about 2 in run 1, the less loaded run at 1M rows,
+and below 4 in run 2):** the formulas of `update` at 1M rows, `where_string` (a match filter
+on the string column, faster on Oxhaven at both sizes), low and medium cardinality `sum_by`/`avg_by`/`count_by`, `agg_by_multi`,
 `sort_string` at 1M rows, `join_on_key`, `head`/`tail`, and `doget_1m`: Oxhaven sends 1M rows
 over Arrow Flight in about 30-45 ms against Java's 65-90 ms, because its columns already are
 Arrow arrays and Java converts its chunks to Arrow buffers. The ticking case is 1.7x to 2.4x,
