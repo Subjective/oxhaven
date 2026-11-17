@@ -1,8 +1,8 @@
 //! The interface between the aggregation framework and one aggregation.
 
+use super::slot_source::ResultColumn;
 use super::values::Run;
 use arrow::array::ArrayRef;
-use oxhaven_column::WritableSource;
 use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{ColumnSource, TableFailure};
@@ -57,14 +57,14 @@ impl Effect {
 pub struct GroupReader<'a> {
     rows: &'a [RowSet],
     input: Option<&'a dyn ColumnSource>,
-    keys: &'a [Arc<WritableSource>],
+    keys: &'a [ResultColumn],
 }
 
 impl<'a> GroupReader<'a> {
     pub(super) fn new(
         rows: &'a [RowSet],
         input: Option<&'a dyn ColumnSource>,
-        keys: &'a [Arc<WritableSource>],
+        keys: &'a [ResultColumn],
     ) -> Self {
         GroupReader { rows, input, keys }
     }
@@ -75,7 +75,7 @@ impl<'a> GroupReader<'a> {
     /// # Panics
     /// If the aggregation has no such key column.
     pub fn key(&self, index: usize) -> &'a dyn ColumnSource {
-        &*self.keys[index]
+        self.keys[index].as_source()
     }
 
     /// The parent's rows that are in group `slot` now, in the parent's current key space.

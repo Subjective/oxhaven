@@ -1,8 +1,9 @@
 //! First and last.
 
 use super::operator::{AggOperator, Effect, GroupReader};
+use super::slot_source::SlotSource;
 use super::values::{build, failure, Run, Scalar, Values};
-use arrow::array::{new_empty_array, new_null_array, Array, ArrayRef};
+use arrow::array::{Array, ArrayRef};
 use oxhaven_contracts::rowset::{RowKey, RowSet, NULL_ROW_KEY};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{ColumnSource, TableFailure};
@@ -205,9 +206,8 @@ pub struct FirstLastCell {
     first: bool,
     mode: FirstLastMode,
     row_key: Vec<RowKey>,
-    /// The cell of each group, as an array of one element; `None` for a group that has
-    /// had no rows, which shows as a null.
-    cells: Vec<Option<ArrayRef>>,
+    /// The cell of each group, by slot; a group that has had no rows shows a null.
+    cells: SlotSource,
 }
 
 impl FirstLastCell {
@@ -219,11 +219,11 @@ impl FirstLastCell {
     ) -> FirstLastCell {
         FirstLastCell {
             input,
+            cells: SlotSource::new(column_type.clone(), None),
             column_type,
             first,
             mode,
             row_key: Vec::new(),
-            cells: Vec::new(),
         }
     }
 }
@@ -262,7 +262,6 @@ impl AggOperator for FirstLastCell {
     fn ensure_slots(&mut self, slots: usize) {
         if self.row_key.len() < slots {
             self.row_key.resize(slots, NULL_ROW_KEY);
-            self.cells.resize(slots, None);
         }
     }
 
@@ -355,33 +354,28 @@ impl AggOperator for FirstLastCell {
         if cells.len() != slots.len() {
             return Err(failure("first or last: the column gave too few cells"));
         }
-        Ok(slots
-            .iter()
-            .enumerate()
-            .map(|(position, &slot)| {
-                let cell = cells.slice(position, 1);
-                let changed = match &self.cells[slot] {
-                    // A row took the place of another: reported as it is for a scalar.
-                    _ if !tracked => true,
-                    Some(old) => old.as_ref() != cell.as_ref(),
-                    None => cell.is_valid(0),
-                };
-                self.cells[slot] = Some(cell);
-                changed
-            })
-            .collect())
+        let slot_keys: Vec<RowKey> = slots.iter().map(|&slot| slot as RowKey).collect();
+        let changed = if tracked {
+            // A group that has had no rows reads as null here, so it changed when its
+            // cell is not a null.
+            let old = self.cells.chunk_by_keys(&slot_keys, false)?;
+            (0..slots.len())
+                .map(|position| {
+                    old.slice(position, 1).as_ref() != cells.slice(position, 1).as_ref()
+                })
+                .collect()
+        } else {
+            // A row took the place of another: reported as it is for a scalar.
+            vec![true; slots.len()]
+        };
+        self.cells.fill_by_keys(&slot_keys, &cells)?;
+        Ok(changed)
     }
 
     fn results(&self, slots: &[usize]) -> ArrayRef {
-        let data_type = self.column_type.arrow_type();
-        if slots.is_empty() {
-            return new_empty_array(&data_type);
-        }
-        let null = new_null_array(&data_type, 1);
-        let cells: Vec<&dyn Array> = slots
-            .iter()
-            .map(|&slot| self.cells[slot].as_deref().unwrap_or(&*null))
-            .collect();
-        arrow::compute::concat(&cells).expect("cells of one type")
+        let slot_keys: Vec<RowKey> = slots.iter().map(|&slot| slot as RowKey).collect();
+        self.cells
+            .chunk_by_keys(&slot_keys, false)
+            .expect("cells of the column's type")
     }
 }
