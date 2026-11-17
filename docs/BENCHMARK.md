@@ -468,5 +468,5 @@ longer fits in cache (Java's whole `count_by_high` takes about the same); and 25
 writing results. `group_by` still gathers every value into Arrow lists at creation, which
 Java does not; that is now about 20 ms of its 155 at 1M rows. Not measured here: ticking
 throughput (the engine example's 19 append-only cycles of 50,000 rows into `select_distinct`,
-`last_by` and `sum_by` went from 4.6 s to 2.4 s, most of what remains being outside the
-aggregations).
+`last_by` and `sum_by` went from 4.6 s to 2.4 s; the two aggregators' own cycles were about half of what remains,
+and the rest, the input table's writes and `select_distinct`, was not broken down).
