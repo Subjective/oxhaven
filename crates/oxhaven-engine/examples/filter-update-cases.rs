@@ -25,6 +25,7 @@ use oxhaven_engine::ops::filter::unstructured_filter;
 use oxhaven_engine::ops::select::update;
 use oxhaven_engine::table::{empty_table, in_memory_table};
 use oxhaven_expr::Compiler;
+use oxhaven_rowset::RowSetBuilderSequential;
 use oxhaven_testkit::definition;
 use std::hint::black_box;
 use std::sync::Arc;
@@ -188,6 +189,32 @@ fn parts(table: &Arc<dyn Table>, rows: i64, reps: usize) {
         .row_set();
     time("read A at the kept 40%", rows, reps, || {
         black_box(a.chunk(&sparse).expect("A"));
+    });
+    // The stages of `where_conj`, each on the result of the one before.
+    let where_one = |from: &Arc<dyn Table>, filter: &str| {
+        unstructured_filter(from, &[filter], &Compiler).expect("where")
+    };
+    let mut stage = table.clone();
+    for filter in ["K10 = 3", "B > 50000.0", "A < 50000"] {
+        let from = stage.clone();
+        let what = format!("{filter}, of {} rows", from.row_set().size());
+        time(&what, rows, reps, || {
+            black_box(where_one(&from, filter));
+        });
+        stage = where_one(&from, filter);
+    }
+    // The row set of `where_range`, built by one sequential builder over all the kept
+    // ranges, as a filter built it before task 9.6.
+    let kept = mask.values();
+    time("ranges of the kept 40%", rows, reps, || {
+        black_box(kept.set_slices().collect::<Vec<_>>());
+    });
+    time("sequential builder over them", rows, reps, || {
+        let mut builder = RowSetBuilderSequential::new();
+        for (start, end) in kept.set_slices() {
+            builder.append_range(start as i64, end as i64 - 1);
+        }
+        black_box(builder.build());
     });
     black_box(values.len());
 }
