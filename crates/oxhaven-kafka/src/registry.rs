@@ -295,12 +295,7 @@ impl Registry {
 
     /// GETs `path` once per registry.
     fn cached(&self, path: &str) -> Result<Node, CallFailure> {
-        if let Some(node) = self
-            .answers
-            .lock()
-            .expect("not poisoned")
-            .get(path)
-        {
+        if let Some(node) = self.answers.lock().expect("not poisoned").get(path) {
             return Ok(node.clone());
         }
         let node = self.get(path)?;
