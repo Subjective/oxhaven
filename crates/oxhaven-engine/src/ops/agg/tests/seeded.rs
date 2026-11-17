@@ -360,7 +360,10 @@ fn initial_groups_are_refused_as_java_refuses_them() {
         ),
     ];
     for (column_type, text) in described {
-        assert_eq!(super::super::describe_for_compatibility("K", &column_type), text);
+        assert_eq!(
+            super::super::describe_for_compatibility("K", &column_type),
+            text
+        );
     }
     // A group-by column the parent lacks is found first.
     assert_eq!(
