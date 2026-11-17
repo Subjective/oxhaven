@@ -1237,3 +1237,7 @@ Task 9.10 second part met both goals in the engine but recognised in-memory colu
 ## 2026-11-17 20:23 UTC: pull request 155 merged
 
 Seven green checks. The rework agent of task 9.10 told that main moved.
+
+## 2026-11-17 20:44 UTC: rework of task 9.10 reported, pull request 156 opened
+
+Labelled oracle-change (two additions to the contracts crate). All gates including replay passed locally.
