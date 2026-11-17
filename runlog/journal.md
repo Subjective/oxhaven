@@ -1277,3 +1277,7 @@ The assumption in 10.2 about two distances was wrong: Deephaven does not mark bo
 ## 2026-11-17 23:32 UTC: pull request 159 merged
 
 Seven green checks on head 62641c2a. Main is at e5a637ce.
+
+## 2026-11-17 23:33 UTC: task 10.3 taken over, pull request 160 opened
+
+The agent finished its gates and pushed at 22:07, then hung on a cleanup command for 85 minutes without reporting; two messages did not wake it. Its task file records the gates, so the branch went to a pull request from that. Lesson: when an agent is silent for an hour, look at the time of its last transcript entry and its processes rather than waiting. Owner questions 1 and 2 of 10.3 are reproductions and need no decision now.
