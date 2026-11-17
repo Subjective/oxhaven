@@ -1241,3 +1241,7 @@ Seven green checks. The rework agent of task 9.10 told that main moved.
 ## 2026-11-17 20:44 UTC: rework of task 9.10 reported, pull request 156 opened
 
 Labelled oracle-change (two additions to the contracts crate). All gates including replay passed locally.
+
+## 2026-11-17 20:54 UTC: pull request 156 merged, task 10.3 started
+
+Seven green checks on the run after the label was set (the first run was cancelled by the label event). Task 10.3 takes the filter refusals that 10.1 could not touch: search over vector and array columns, BigDecimal and BigInteger match literals, and the literal parsing gaps.
