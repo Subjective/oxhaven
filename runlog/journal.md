@@ -1197,3 +1197,7 @@ All gates including replay passed locally. The agent used 328k tokens of context
 ## 2026-11-17 17:25 UTC: pull request 151 merged, task 9.8 started
 
 Seven green checks. Task 9.8 reruns the whole end-to-end benchmark, Deephaven and Oxhaven, as the only builder on the machine.
+
+## 2026-11-17 17:50 UTC: second benchmark reported, pull request 152 opened, tasks 9.9 and 9.10 started
+
+The comparison is not even: Deephaven runs with two processors and Oxhaven with four threads. On one thread filters and operator formulas at 10M rows are still 1.4x to 2.8x slower than Deephaven; task 9.10 takes that. Task 9.9 takes the cases slower in both passes: as-of join, last_by, ungroup, low-cardinality aggregations. A later rerun should give Deephaven four processors too.
