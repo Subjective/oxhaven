@@ -26,12 +26,12 @@
 //! a marked stamp and the next right stamp, and each of them is looked up again.
 
 use super::stamps::{self, primitive, Stamp, StampValue, Word};
-use arrow::datatypes::DataType;
 use super::{AsOfJoinError, AsOfMatch, JoinAddition, JoinMatch};
 use crate::ops::join::keys::{Cell, Key, KeyColumns};
 use crate::ops::key_table::{KeyTable, NO_SLOT};
 use crate::table::{reads_through, MergedOperator, QueryTable, TableSpec};
 use crate::update::{modified_pre_shift, ModifiedColumnTransformer};
+use arrow::datatypes::DataType;
 use oxhaven_column::{Clock, RedirectedSource, RowRedirection, WritableRowRedirection};
 use oxhaven_contracts::rowset::{RowKey, RowSet, NULL_ROW_KEY};
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
@@ -786,7 +786,11 @@ impl<S: StampValue> AsOfJoin<S> {
     /// io.deephaven.engine.table.impl.asofjoin.ZeroKeyChunkedAjMergedListener#process, and
     /// the listeners of `rightStaticAj` and `zeroKeyAjRightStatic` in
     /// io.deephaven.engine.table.impl.AsOfJoinHelper
-    fn retire_left(&self, state: &mut State<S>, update: &TableUpdate) -> Result<bool, TableFailure> {
+    fn retire_left(
+        &self,
+        state: &mut State<S>,
+        update: &TableUpdate,
+    ) -> Result<bool, TableFailure> {
         let track = self.plan.track_left;
         let mut watched = self.plan.left_keys.columns.clone();
         watched.push(self.plan.left_stamp);
@@ -817,7 +821,10 @@ impl<S: StampValue> AsOfJoin<S> {
                         moves.push((slot, Some(stamp), row, row + range.delta));
                     }
                 } else {
-                    moves.extend(rows.iter().map(|row| (NO_SLOT, None, row, row + range.delta)));
+                    moves.extend(
+                        rows.iter()
+                            .map(|row| (NO_SLOT, None, row, row + range.delta)),
+                    );
                 }
             }
             // Every row leaves its old row key before any row takes a new one: a row may
@@ -1145,7 +1152,8 @@ pub(super) fn join(
     let mut refused = None;
     let result = QueryTable::derive_merged(&parents, Vec::new(), || {
         let started = if plan.word_stamps {
-            AsOfJoin::<Word>::start(plan, left, right).map(|(spec, join)| (spec, Started::Word(join)))
+            AsOfJoin::<Word>::start(plan, left, right)
+                .map(|(spec, join)| (spec, Started::Word(join)))
         } else {
             AsOfJoin::<Stamp>::start(plan, left, right)
                 .map(|(spec, join)| (spec, Started::Other(join)))
@@ -1159,5 +1167,29 @@ pub(super) fn join(
     match result {
         Ok(table) => Ok(table),
         Err(failure) => Err(refused.unwrap_or(AsOfJoinError::Table(failure))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::partition_from;
+
+    /// From every hint, the point is the one a binary search of the whole slice finds.
+    #[test]
+    fn a_partition_found_from_any_hint_is_the_partition() {
+        let values = [1, 2, 2, 2, 3, 5, 5, 8, 9, 9, 9, 9, 12];
+        for target in 0..14 {
+            for hint in 0..=values.len() + 2 {
+                for strict in [false, true] {
+                    let before = |v: &i32| if strict { *v < target } else { *v <= target };
+                    assert_eq!(
+                        partition_from(&values, hint, before),
+                        values.partition_point(before),
+                        "target {target} hint {hint} strict {strict}"
+                    );
+                }
+            }
+        }
+        assert_eq!(partition_from::<i32>(&[], 3, |_| true), 0);
     }
 }

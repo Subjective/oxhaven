@@ -146,8 +146,7 @@ fn main() {
         aj(&left, &right, &k10, &stamp(AsOfRule::GreaterThanEqual), &r4).expect("aj");
     });
     time("aj_read", reps, || {
-        let joined =
-            aj(&left, &right, &k10, &stamp(AsOfRule::GreaterThanEqual), &r4).expect("aj");
+        let joined = aj(&left, &right, &k10, &stamp(AsOfRule::GreaterThanEqual), &r4).expect("aj");
         sum(&joined, "R4");
     });
     time("aj_strict", reps, || {
@@ -169,15 +168,18 @@ fn main() {
 
     let graph: Arc<dyn UpdateGraph> = SteppedUpdateGraph::new();
     if selected("refreshing_left") {
-        let grown: Arc<dyn Table> = append_only_input_table(
-            graph.clone(),
-            definition(&LEFT),
-            Some(&left_batch(0..rows)),
-        )
-        .expect("a left table");
+        let grown: Arc<dyn Table> =
+            append_only_input_table(graph.clone(), definition(&LEFT), Some(&left_batch(0..rows)))
+                .expect("a left table");
         let started = Instant::now();
-        let joined =
-            aj(&grown, &right, &k10, &stamp(AsOfRule::GreaterThanEqual), &r4).expect("aj");
+        let joined = aj(
+            &grown,
+            &right,
+            &k10,
+            &stamp(AsOfRule::GreaterThanEqual),
+            &r4,
+        )
+        .expect("aj");
         let built = started.elapsed().as_secs_f64() * 1e3;
         let input = grown.input_table().expect("an input table");
         let started = Instant::now();
@@ -196,15 +198,11 @@ fn main() {
     }
     if selected("refreshing_right") {
         let initial = rows / 10 - 10_000;
-        let grown: Arc<dyn Table> = append_only_input_table(
-            graph,
-            definition(&RIGHT),
-            Some(&right_batch(0..initial)),
-        )
-        .expect("a right table");
+        let grown: Arc<dyn Table> =
+            append_only_input_table(graph, definition(&RIGHT), Some(&right_batch(0..initial)))
+                .expect("a right table");
         let started = Instant::now();
-        let joined =
-            aj(&left, &grown, &k10, &stamp(AsOfRule::GreaterThanEqual), &r4).expect("aj");
+        let joined = aj(&left, &grown, &k10, &stamp(AsOfRule::GreaterThanEqual), &r4).expect("aj");
         let built = started.elapsed().as_secs_f64() * 1e3;
         let input = grown.input_table().expect("an input table");
         let started = Instant::now();

@@ -318,33 +318,47 @@ impl StampValue for Word {
                     .map(|row| booleans.is_valid(row).then(|| booleans.value(row).into()))
                     .collect()
             }
-            DataType::Int8 => each(values, values.as_primitive::<Int8Type>().values(), i64::from),
-            DataType::Int16 => {
-                each(values, values.as_primitive::<Int16Type>().values(), i64::from)
-            }
-            DataType::Int32 => {
-                each(values, values.as_primitive::<Int32Type>().values(), i64::from)
-            }
+            DataType::Int8 => each(
+                values,
+                values.as_primitive::<Int8Type>().values(),
+                i64::from,
+            ),
+            DataType::Int16 => each(
+                values,
+                values.as_primitive::<Int16Type>().values(),
+                i64::from,
+            ),
+            DataType::Int32 => each(
+                values,
+                values.as_primitive::<Int32Type>().values(),
+                i64::from,
+            ),
             DataType::Int64 => each(values, values.as_primitive::<Int64Type>().values(), |v| v),
-            DataType::UInt16 => {
-                each(values, values.as_primitive::<UInt16Type>().values(), i64::from)
-            }
+            DataType::UInt16 => each(
+                values,
+                values.as_primitive::<UInt16Type>().values(),
+                i64::from,
+            ),
             DataType::Float32 => each(
                 values,
                 values.as_primitive::<Float32Type>().values(),
                 |v: f32| float_word(v.into()),
             ),
-            DataType::Float64 => {
-                each(values, values.as_primitive::<Float64Type>().values(), float_word)
-            }
+            DataType::Float64 => each(
+                values,
+                values.as_primitive::<Float64Type>().values(),
+                float_word,
+            ),
             DataType::Timestamp(TimeUnit::Nanosecond, _) => each(
                 values,
                 values.as_primitive::<TimestampNanosecondType>().values(),
                 |v| v,
             ),
-            DataType::Date32 => {
-                each(values, values.as_primitive::<Date32Type>().values(), i64::from)
-            }
+            DataType::Date32 => each(
+                values,
+                values.as_primitive::<Date32Type>().values(),
+                i64::from,
+            ),
             DataType::Time64(TimeUnit::Nanosecond) => each(
                 values,
                 values.as_primitive::<Time64NanosecondType>().values(),
@@ -560,6 +574,62 @@ mod tests {
             primitive(&ColumnType::Float),
             primitive(&ColumnType::Double)
         );
+    }
+
+    /// A word orders as the stamp of the same value, for every column a word is made of.
+    #[test]
+    fn words_order_as_stamps() {
+        let other_nan = f64::from_bits(f64::NAN.to_bits() | 1);
+        let columns: Vec<ArrayRef> = vec![
+            Arc::new(Float64Array::from(vec![
+                None,
+                Some(f64::NEG_INFINITY),
+                Some(-1e300),
+                Some(-1.5),
+                Some(-f64::MIN_POSITIVE),
+                Some(-0.0),
+                Some(0.0),
+                Some(f64::MIN_POSITIVE),
+                Some(2.0),
+                Some(f64::INFINITY),
+                Some(f64::NAN),
+                Some(other_nan),
+                Some(-f64::NAN),
+            ])),
+            Arc::new(Float32Array::from(vec![
+                None,
+                Some(-0.0f32),
+                Some(0.0),
+                Some(-3.5),
+                Some(f32::NAN),
+                Some(f32::MAX),
+            ])),
+            Arc::new(Int64Array::from(vec![
+                Some(i64::MAX),
+                None,
+                Some(i64::MIN),
+                Some(0),
+                Some(-1),
+            ])),
+            Arc::new(BooleanArray::from(vec![Some(true), None, Some(false)])),
+            Arc::new(UInt16Array::from(vec![Some(0xFFFF), Some(0), None])),
+            Arc::new(Int8Array::from(vec![Some(-128), Some(127), None])),
+            Arc::new(Date32Array::from(vec![Some(-3), None, Some(7)])),
+        ];
+        for values in &columns {
+            let stamps = of(values);
+            let words = <Word as StampValue>::of(values).unwrap();
+            for i in 0..stamps.len() {
+                for j in 0..stamps.len() {
+                    assert_eq!(
+                        words[i].cmp(&words[j]),
+                        stamps[i].cmp(&stamps[j]),
+                        "{} rows {i} and {j}",
+                        values.data_type()
+                    );
+                }
+            }
+        }
     }
 
     #[test]
