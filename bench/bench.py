@@ -437,37 +437,59 @@ def report(args: argparse.Namespace) -> int:
             runs.append(json.load(f))
     names = list(runs[0]["meta"]["servers"])
     a, b = names[0], names[1]
-    print(f"Times in milliseconds, median of the timed repetitions (min-max). Ratio = {b} / {a}; "
-          f"below 1 means {b} is faster.\n")
+    many = len(runs) > 1
+    if args.compact:
+        print(f"Median milliseconds{' of each run, run 1 / run 2' if many else ''}. "
+              f"Ratio = {b} / {a}; above 1 means {b} is slower.\n")
+    else:
+        print(f"Milliseconds: median of the timed repetitions (min-max). Ratio = {b} / {a}; "
+              f"above 1 means {b} is slower.\n")
     for size in runs[0]["sizes"]:
         print(f"### {int(size):,} rows\n")
-        hdr = ["case"]
-        for i, _ in enumerate(runs):
-            tag = f" (run {i + 1})" if len(runs) > 1 else ""
-            hdr += [f"{a}{tag}", f"{b}{tag}", f"ratio{tag}"]
-        hdr.append("same result")
+        if args.compact:
+            hdr = ["case", a, b, "ratio", "same result"]
+        else:
+            hdr = ["case"]
+            for i, _ in enumerate(runs):
+                tag = f" (run {i + 1})" if many else ""
+                hdr += [f"{a}{tag}", f"{b}{tag}", f"ratio{tag}"]
+            hdr += ["load", "same result"]
         print("| " + " | ".join(hdr) + " |")
-        print("|" + "---|" * len(hdr))
+        print("| --- |" + " ---: |" * (len(hdr) - 2) + " --- |")
         for case in runs[0]["sizes"][size]:
-            cells = [f"`{case}`"]
-            match = []
-            for r in runs:
-                row = r["sizes"].get(size, {}).get(case)
+            rows = [r["sizes"].get(size, {}).get(case) for r in runs]
+            match = " / ".join(
+                "-" if row is None else {True: "yes", False: "NO", None: "-"}[row.get("match")] for row in rows
+            )
+
+            def cell(row, name, full):
                 if row is None:
-                    cells += ["", "", ""]
-                    continue
-                for name in (a, b):
-                    v = row[name]
-                    if v["status"] == "ok":
-                        cells.append(f"{fmt_ms(v['median'])} ({fmt_ms(v['min'])}-{fmt_ms(v['max'])})")
-                    else:
-                        cells.append(f"{v['status']} ({v['code']})")
-                if row[a]["status"] == "ok" and row[b]["status"] == "ok":
-                    cells.append(f"{row[b]['median'] / row[a]['median']:.2f}")
-                else:
-                    cells.append("-")
-                match.append({True: "yes", False: "NO", None: "-"}[row.get("match")])
-            cells.append(" / ".join(match))
+                    return "-"
+                v = row[name]
+                if v["status"] != "ok":
+                    return f"{v['status']} ({v['code']})"
+                if full:
+                    return f"{fmt_ms(v['median'])} ({fmt_ms(v['min'])}-{fmt_ms(v['max'])})"
+                return fmt_ms(v["median"])
+
+            def ratio(row):
+                if row is None or row[a]["status"] != "ok" or row[b]["status"] != "ok":
+                    return "-"
+                return f"{row[b]['median'] / row[a]['median']:.2f}"
+
+            if args.compact:
+                cells = [
+                    f"`{case}`",
+                    " / ".join(cell(r, a, False) for r in rows),
+                    " / ".join(cell(r, b, False) for r in rows),
+                    " / ".join(ratio(r) for r in rows),
+                    match,
+                ]
+            else:
+                cells = [f"`{case}`"]
+                for r in rows:
+                    cells += [cell(r, a, True), cell(r, b, True), ratio(r)]
+                cells += [" / ".join("-" if r is None else f"{r['load']:.1f}" for r in rows), match]
             print("| " + " | ".join(cells) + " |")
         print()
     return 0
@@ -487,6 +509,7 @@ def main(argv: list[str]) -> int:
     r.add_argument("--out", required=True)
     rp = sub.add_parser("report")
     rp.add_argument("files", nargs="+")
+    rp.add_argument("--compact", action="store_true", help="medians only, one column per server")
     args = p.parse_args(argv[1:])
     return run(args) if args.cmd == "run" else report(args)
 
