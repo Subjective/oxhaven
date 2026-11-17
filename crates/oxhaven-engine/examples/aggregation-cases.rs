@@ -161,15 +161,21 @@ fn main() {
         ];
         aggregate(&all, &aggs, false, &["K10k"]).expect("agg_by");
     });
+    // Before task 9.5 the timing of this case also built the table, which took most of it.
+    let narrow: Arc<dyn Table> = in_memory_table(
+        oxhaven_testkit::definition(&[("K10k", ColumnType::Int), ("A", ColumnType::Int)]),
+        &[source(0, rows, "K10k")
+            .project(&[2, 4])
+            .expect("two columns")],
+    )
+    .expect("a table");
     time("group_by", reps, || {
-        let narrow: Arc<dyn Table> = in_memory_table(
-            oxhaven_testkit::definition(&[("K10k", ColumnType::Int), ("A", ColumnType::Int)]),
-            &[source(0, rows, "K10k")
-                .project(&[2, 4])
-                .expect("two columns")],
-        )
-        .expect("a table");
         group_by(&narrow, &["K10k"]).expect("group_by");
+    });
+    time("group_by_read", reps, || {
+        let grouped = group_by(&narrow, &["K10k"]).expect("group_by");
+        let column = grouped.column(1);
+        column.chunk(&grouped.row_set()).expect("the vectors");
     });
 
     // The same operations kept up to date over an append-only table: 20 cycles, each

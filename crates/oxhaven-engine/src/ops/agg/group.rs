@@ -114,16 +114,109 @@ impl AggOperator for Group {
             .iter()
             .map(|slot| self.spans.get(slot).copied().unwrap_or((0, 0)))
             .collect();
-        let positions: UInt32Array = spans
+        // Asked for in the order they were read, as the framework does after a recompute,
+        // the vectors are one stretch of the elements, which is used as it is.
+        let start = spans
             .iter()
-            .flat_map(|&(first, length)| (first..first + length).map(|position| position as u32))
-            .collect();
-        let elements = arrow::compute::take(&self.elements, &positions, None)
-            .expect("positions within the elements read");
+            .find(|&&(_, length)| length > 0)
+            .map_or(0, |s| s.0);
+        let mut end = start;
+        let in_order = spans.iter().all(|&(first, length)| {
+            let next = length == 0 || first == end;
+            end += length;
+            next
+        });
+        let elements = if in_order {
+            self.elements.slice(start, end - start)
+        } else {
+            let positions: UInt32Array = spans
+                .iter()
+                .flat_map(|&(first, length)| {
+                    (first..first + length).map(|position| position as u32)
+                })
+                .collect();
+            arrow::compute::take(&self.elements, &positions, None)
+                .expect("positions within the elements read")
+        };
         let DataType::List(field) = self.result_type.arrow_type() else {
             unreachable!("a vector is an Arrow list");
         };
         let offsets = OffsetBuffer::from_lengths(spans.iter().map(|&(_, length)| length));
         Arc::new(ListArray::new(field, offsets, elements, None))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arrow::array::{Array, Int32Array};
+    use oxhaven_column::FlatSource;
+    use oxhaven_contracts::rowset::RowSet;
+
+    /// The vectors of `slots` as lists of values.
+    fn lists(group: &Group, slots: &[usize]) -> Vec<Vec<Option<i32>>> {
+        let results = group.results(slots);
+        let lists = results
+            .as_any()
+            .downcast_ref::<ListArray>()
+            .expect("a list");
+        (0..lists.len())
+            .map(|index| {
+                let values = lists.value(index);
+                values
+                    .as_any()
+                    .downcast_ref::<Int32Array>()
+                    .expect("ints")
+                    .iter()
+                    .collect()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn vectors_asked_for_in_any_order_hold_their_group_s_values() {
+        let values: ArrayRef = Arc::new(Int32Array::from(vec![
+            Some(10),
+            None,
+            Some(12),
+            Some(13),
+            Some(14),
+        ]));
+        let input: Arc<dyn ColumnSource> =
+            Arc::new(FlatSource::new(ColumnType::Int, values).expect("a column"));
+        let mut group = Group::new(input.clone(), &ColumnType::Int);
+        // Group 0 has rows 1 and 3, group 1 none, group 2 rows 0, 2 and 4; group 3 is
+        // never read.
+        let rows = [
+            RowSet::from_keys([1, 3]),
+            RowSet::empty(),
+            RowSet::from_keys([0, 2, 4]),
+            RowSet::empty(),
+        ];
+        let reader = GroupReader::new(&rows, Some(&*input), &[]);
+        group.recompute(&[0, 1, 2], &reader).expect("the groups");
+        let (zero, empty, two) = (
+            vec![None, Some(13)],
+            vec![],
+            vec![Some(10), Some(12), Some(14)],
+        );
+        // In the order read, from the first group read, from a later one, and in other
+        // orders, with groups without rows and a group never read among them.
+        assert_eq!(
+            lists(&group, &[0, 1, 2]),
+            [zero.clone(), empty.clone(), two.clone()]
+        );
+        assert_eq!(
+            lists(&group, &[1, 2, 3]),
+            [empty.clone(), two.clone(), empty.clone()]
+        );
+        assert_eq!(lists(&group, &[2]), std::slice::from_ref(&two));
+        assert_eq!(lists(&group, &[2, 0]), [two.clone(), zero.clone()]);
+        assert_eq!(lists(&group, &[0, 0]), [zero.clone(), zero.clone()]);
+        assert_eq!(lists(&group, &[3, 1]), [empty.clone(), empty]);
+        assert_eq!(
+            group.results(&[0, 1, 2]).data_type(),
+            &ColumnType::vector(ColumnType::Int).arrow_type()
+        );
     }
 }
