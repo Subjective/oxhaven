@@ -56,6 +56,7 @@ pub(crate) mod keys;
 mod min_max;
 mod operator;
 mod periods;
+pub(crate) mod slot_source;
 mod sorted;
 mod sum;
 mod values;
@@ -779,10 +780,14 @@ fn make_operator(
                 FirstLastMode::Tracked => (0..definition.columns().len()).collect(),
                 _ => vec![input],
             };
-            if input_type.list_element().is_some() || matches!(input_type, ColumnType::Table(_)) {
+            if input_type.list_element().is_some()
+                || matches!(input_type, ColumnType::Table(_))
+                || mode == FirstLastMode::ByRowKey
+            {
                 // The cells are read by row key, so the framework need not decode the
-                // column. A cell of a column of tables is copied as its handle, and the
-                // result's source keeps the table it names.
+                // column: Java's operator for these keeps a row key per group and shows the
+                // column through it. A cell of a column of tables is copied as its handle,
+                // and the result's source keeps the table it names.
                 let op = FirstLastCell::new(
                     parent.column(input),
                     input_type.clone(),

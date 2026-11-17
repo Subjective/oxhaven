@@ -30,17 +30,15 @@ mod where_in_tests;
 
 pub use where_in::{where_in, where_not_in, WhereInError};
 
-use crate::table::{
-    memoized, shared_reads_through, tracked_source, CopyType, QueryTable, TableSpec,
-};
+use crate::ops::agg::slot_source::ResultColumn;
+use crate::ops::group_keys::GroupKeys;
+use crate::table::{memoized, CopyType, QueryTable, TableSpec};
 use crate::update::modified_pre_shift;
 use arrow::array::{ArrayRef, UInt64Array};
-use oxhaven_column::WritableSource;
 use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::{ColumnDefinition, TableDefinition};
-use oxhaven_contracts::table::{ColumnSource, Table, TableAttributes, TableFailure};
+use oxhaven_contracts::table::{Table, TableAttributes, TableFailure};
 use oxhaven_contracts::update::TableUpdate;
-use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -74,6 +72,9 @@ impl From<TableFailure> for DistinctError {
         DistinctError::Table(failure)
     }
 }
+
+/// Rows read at a time.
+const CHUNK_SIZE: usize = 4096;
 
 fn failure(message: impl Into<String>) -> TableFailure {
     TableFailure {
@@ -184,45 +185,56 @@ fn without_keys(source: &Arc<dyn Table>) -> Result<Arc<QueryTable>, TableFailure
 }
 
 /// The groups met so far.
-#[derive(Default)]
 struct State {
-    /// The number of each key's group, which is its row key in the result. A group stays
-    /// here when it has lost its rows.
-    numbers: BTreeMap<Vec<u8>, usize>,
+    /// The number of each key's group, which is its row key in the result. A group keeps
+    /// its number when it has lost its rows.
+    keys: GroupKeys,
     /// How many rows of the source each group has.
     rows: Vec<u64>,
+    /// The groups whose number of rows changed in this cycle, with the number they had
+    /// before, in the order first touched; `seen` marks them.
+    touched: Vec<(usize, u64)>,
+    seen: Vec<bool>,
 }
 
-/// The groups whose number of rows changed in a cycle, with the number they had before.
-type Touched = BTreeMap<usize, u64>;
-
 impl State {
-    /// Takes a row out of the group of `key`.
-    fn leave(&mut self, key: &[u8], touched: &mut Touched) -> Result<(), TableFailure> {
-        let group = self.numbers.get(key).copied();
-        match group.filter(|group| self.rows[*group] > 0) {
-            Some(group) => {
-                touched.entry(group).or_insert(self.rows[group]);
-                self.rows[group] -= 1;
-                Ok(())
-            }
-            None => Err(failure(
-                "a row left the source whose key has no rows in the select_distinct",
-            )),
+    fn touch(&mut self, group: usize) {
+        if !self.seen[group] {
+            self.seen[group] = true;
+            self.touched.push((group, self.rows[group]));
         }
     }
 
-    /// Puts a row into the group of `key`. Returns whether that made a new group.
-    fn enter(&mut self, key: Vec<u8>, touched: &mut Touched) -> bool {
-        let next = self.rows.len();
-        let group = *self.numbers.entry(key).or_insert(next);
-        if group == next {
-            self.rows.push(0);
+    /// Takes a row out of each group of `groups`.
+    fn leave(&mut self, groups: &[usize]) -> Result<(), TableFailure> {
+        for &group in groups {
+            if self.rows[group] == 0 {
+                return Err(no_rows());
+            }
+            self.touch(group);
+            self.rows[group] -= 1;
         }
-        touched.entry(group).or_insert(self.rows[group]);
-        self.rows[group] += 1;
-        group == next
+        Ok(())
     }
+
+    /// Makes room for the groups made since the last call.
+    fn grow(&mut self) {
+        let groups = self.keys.len();
+        self.rows.resize(groups, 0);
+        self.seen.resize(groups, false);
+    }
+
+    /// Puts a row into `group`, recording the change when `track` is set.
+    fn enter(&mut self, group: usize, track: bool) {
+        if track {
+            self.touch(group);
+        }
+        self.rows[group] += 1;
+    }
+}
+
+fn no_rows() -> TableFailure {
+    failure("a row left the source whose key has no rows in the select_distinct")
 }
 
 /// A `select_distinct` by key columns: the groups and the key values of the result.
@@ -232,7 +244,7 @@ struct Groups {
     indices: Vec<usize>,
     blink: bool,
     /// The key columns of the result, written at a group's number when the group is made.
-    columns: Vec<Arc<WritableSource>>,
+    columns: Vec<ResultColumn>,
     state: Mutex<State>,
 }
 
@@ -250,6 +262,17 @@ impl Groups {
         values.collect()
     }
 
+    /// The groups of the keys at `rows` as of the previous cycle; an error if one has
+    /// never been seen.
+    fn groups_before(&self, state: &mut State, rows: &RowSet) -> Result<Vec<usize>, TableFailure> {
+        let mut groups = Vec::with_capacity(rows.size() as usize);
+        if state.keys.find(&self.values(rows, true)?, &mut groups)? {
+            Ok(groups)
+        } else {
+            Err(no_rows())
+        }
+    }
+
     /// Writes the key values of the groups made from the rows at `made`, which are
     /// positions in `values`, in the order the groups were made. `first` is the number of
     /// the first of them.
@@ -259,40 +282,41 @@ impl Groups {
     fn write_keys(
         &self,
         first: usize,
-        made: Vec<u64>,
+        made: &[usize],
         values: &[ArrayRef],
     ) -> Result<(), TableFailure> {
         if made.is_empty() {
             return Ok(());
         }
-        let last = first + made.len() - 1;
-        let at = RowSet::from_range(first as RowKey, last as RowKey);
-        let made = UInt64Array::from(made);
+        let at: Vec<RowKey> = (first..first + made.len()).map(|g| g as RowKey).collect();
+        let made: UInt64Array = made.iter().map(|&p| p as u64).collect();
         for (column, values) in self.columns.iter().zip(values) {
             let values = arrow::compute::take(values.as_ref(), &made, None)
                 .map_err(|e| failure(e.to_string()))?;
-            column.fill(&at, &values)?;
+            column.fill_by_keys(&at, &values)?;
         }
         Ok(())
     }
 
-    /// Puts the source's `rows` into their groups, in row order.
-    fn enter(
-        &self,
-        state: &mut State,
-        rows: &RowSet,
-        touched: &mut Touched,
-    ) -> Result<(), TableFailure> {
-        let values = self.values(rows, false)?;
-        let first = state.rows.len();
+    /// Puts the source's `rows` into their groups, in row order, a chunk at a time. With
+    /// `track`, the groups whose number of rows changed are recorded.
+    fn enter(&self, state: &mut State, rows: &RowSet, track: bool) -> Result<(), TableFailure> {
+        let mut groups = Vec::new();
         let mut made = Vec::new();
-        let keys = keys::encode(&values, rows.size() as usize)?;
-        for (position, key) in keys.into_iter().enumerate() {
-            if state.enter(key, touched) {
-                made.push(position as u64);
+        for start in (0..rows.size()).step_by(CHUNK_SIZE) {
+            let chunk = rows.sub_set_by_position_range(start, start + CHUNK_SIZE as u64);
+            let values = self.values(&chunk, false)?;
+            let first = state.keys.len();
+            groups.clear();
+            made.clear();
+            state.keys.find_or_create(&values, &mut groups, &mut made)?;
+            state.grow();
+            for &group in &groups {
+                state.enter(group, track);
             }
+            self.write_keys(first, &made, &values)?;
         }
-        self.write_keys(first, made, &values)
+        Ok(())
     }
 
     /// Brings the groups up to the source's `update` and returns the result's change.
@@ -312,55 +336,65 @@ impl Groups {
     fn update(&self, update: &TableUpdate) -> Result<TableUpdate, TableFailure> {
         let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
         let state = &mut *state;
-        let mut touched = Touched::new();
-        if self.blink {
-            check_blink(update)?;
-        } else if !update.removed.is_empty() {
-            let values = self.values(&update.removed, true)?;
-            for key in keys::encode(&values, update.removed.size() as usize)? {
-                state.leave(&key, &mut touched)?;
-            }
+        let result = self.apply(state, update);
+        // The record of this cycle goes, whatever happened.
+        let touched = std::mem::take(&mut state.touched);
+        for &(group, _) in &touched {
+            state.seen[group] = false;
         }
-        let keys_modified = update.modified_columns.contains_any(&self.indices);
-        if keys_modified && !update.modified.is_empty() {
-            let size = update.modified.size() as usize;
-            let before = modified_pre_shift(update).map_err(|e| failure(e.to_string()))?;
-            let old = keys::encode(&self.values(&before, true)?, size)?;
-            let values = self.values(&update.modified, false)?;
-            let new = keys::encode(&values, size)?;
-            let first = state.rows.len();
-            let mut made = Vec::new();
-            for (position, (old, new)) in old.into_iter().zip(new).enumerate() {
-                if old != new {
-                    state.leave(&old, &mut touched)?;
-                    if state.enter(new, &mut touched) {
-                        made.push(position as u64);
-                    }
-                }
-            }
-            self.write_keys(first, made, &values)?;
-        }
-        if !update.added.is_empty() {
-            self.enter(state, &update.added, &mut touched)?;
-        }
-
-        let counts = &state.rows;
+        result?;
         let changed = |appears: bool| {
-            let groups = touched.iter().filter(move |(group, before)| {
-                let now = counts[**group];
-                if appears {
-                    **before == 0 && now > 0
-                } else {
-                    **before > 0 && now == 0
-                }
-            });
-            RowSet::from_keys(groups.map(|(group, _)| *group as RowKey))
+            let mut groups: Vec<RowKey> = touched
+                .iter()
+                .filter(|(group, before)| {
+                    let now = state.rows[*group];
+                    if appears {
+                        *before == 0 && now > 0
+                    } else {
+                        *before > 0 && now == 0
+                    }
+                })
+                .map(|(group, _)| *group as RowKey)
+                .collect();
+            groups.sort_unstable();
+            RowSet::from_keys(groups)
         };
         Ok(TableUpdate {
             added: changed(true),
             removed: changed(false),
             ..TableUpdate::empty()
         })
+    }
+
+    fn apply(&self, state: &mut State, update: &TableUpdate) -> Result<(), TableFailure> {
+        if self.blink {
+            check_blink(update)?;
+        } else if !update.removed.is_empty() {
+            let groups = self.groups_before(state, &update.removed)?;
+            state.leave(&groups)?;
+        }
+        let keys_modified = update.modified_columns.contains_any(&self.indices);
+        if keys_modified && !update.modified.is_empty() {
+            let before = modified_pre_shift(update).map_err(|e| failure(e.to_string()))?;
+            let old = self.groups_before(state, &before)?;
+            let values = self.values(&update.modified, false)?;
+            let first = state.keys.len();
+            let mut new = Vec::with_capacity(old.len());
+            let mut made = Vec::new();
+            state.keys.find_or_create(&values, &mut new, &mut made)?;
+            state.grow();
+            for (&old, &new) in old.iter().zip(&new) {
+                if old != new {
+                    state.leave(&[old])?;
+                    state.enter(new, true);
+                }
+            }
+            self.write_keys(first, &made, &values)?;
+        }
+        if !update.added.is_empty() {
+            self.enter(state, &update.added, true)?;
+        }
+        Ok(())
     }
 }
 
@@ -376,27 +410,36 @@ fn with_keys(
         .collect();
     let graph = source.update_graph().filter(|_| source.is_refreshing());
     let of_source = source.attributes();
+    let data_types: Vec<_> = columns
+        .iter()
+        .map(|column| column.column_type.arrow_type())
+        .collect();
     let groups = Groups {
         source: source.clone(),
         columns: columns
             .iter()
-            .map(|column| match &graph {
-                Some(graph) => tracked_source(graph, column.column_type.clone()),
-                None => Arc::new(WritableSource::new(column.column_type.clone())),
-            })
+            .map(|column| ResultColumn::new(column.column_type.clone(), graph.as_ref()))
             .collect(),
         indices,
         blink: of_source.blink,
-        state: Mutex::new(State::default()),
+        state: Mutex::new(State {
+            keys: GroupKeys::new(&data_types)?,
+            rows: Vec::new(),
+            touched: Vec::new(),
+            seen: Vec::new(),
+        }),
     };
     let definition = TableDefinition::new(columns).expect("each key column is taken once");
     let attributes = attributes(&**source);
     // Without removals the groups with rows are the groups, `0..size`.
     let flat = graph.is_none() || of_source.add_only || of_source.append_only || of_source.blink;
     QueryTable::derive(source, move || {
+        for data_type in &data_types {
+            keys::check(data_type)?;
+        }
         let size = {
             let mut state = groups.state.lock().unwrap_or_else(PoisonError::into_inner);
-            groups.enter(&mut state, &groups.source.row_set(), &mut Touched::new())?;
+            groups.enter(&mut state, &groups.source.row_set(), false)?;
             state.rows.len() as u64
         };
         // A static result shows the keys where the aggregation keeps them, and a
@@ -404,9 +447,9 @@ fn with_keys(
         let refreshing = groups.source.is_refreshing();
         let sources = groups.columns.iter().map(|source| {
             if refreshing {
-                source.clone() as Arc<dyn ColumnSource>
+                source.source()
             } else {
-                shared_reads_through(source)
+                source.shared()
             }
         });
         let mut spec = TableSpec::new(definition, RowSet::flat(size), sources.collect())

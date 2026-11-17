@@ -5,6 +5,7 @@ mod fixtures;
 mod formula;
 mod group;
 mod incremental;
+mod many_groups;
 mod random;
 mod seeded;
 mod static_tables;

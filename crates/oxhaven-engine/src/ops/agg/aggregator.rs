@@ -2,11 +2,10 @@
 
 use super::keys::KeyTable;
 use super::operator::{AggOperator, Effect, GroupReader};
+use super::slot_source::ResultColumn;
 use super::values::{failure, Run, Values};
-use crate::table::{shared_reads_through, tracked_source};
 use crate::update::modified_pre_shift;
 use arrow::array::{ArrayRef, UInt64Array};
-use oxhaven_column::WritableSource;
 use oxhaven_contracts::graph::locked;
 use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::ColumnType;
@@ -117,7 +116,7 @@ pub(super) struct Layout {
 /// One operator with its input columns and result column.
 struct OpColumn {
     plan: Planned,
-    result: Arc<WritableSource>,
+    result: ResultColumn,
     marks: Marks,
 }
 
@@ -126,7 +125,7 @@ struct Keys {
     /// The indexes of the key columns in the parent.
     columns: Vec<usize>,
     /// The key columns of the result: the key of slot `s` at row key `s`.
-    results: Vec<Arc<WritableSource>>,
+    results: Vec<ResultColumn>,
 }
 
 /// The positions of a chunk brought together by slot.
@@ -141,16 +140,50 @@ struct Grouped {
 /// io.deephaven.engine.table.impl.by.ChunkedOperatorAggregationHelper (`findSlotRuns`
 /// after a stable sort by slot): each group's rows stay in row order.
 fn group(positions: impl Iterator<Item = usize>, slots: &[usize]) -> Grouped {
-    let mut order: Vec<usize> = positions.collect();
-    order.sort_by_key(|&position| slots[position]);
+    // Sorting (slot, position) pairs packed in one integer keeps each slot's positions
+    // increasing without a stable sort. A chunk has at most `CHUNK_SIZE` positions.
+    let mut packed: Vec<u64> = positions
+        .map(|position| (slots[position] as u64) << 32 | position as u64)
+        .collect();
+    packed.sort_unstable();
+    let mut order = Vec::with_capacity(packed.len());
     let mut runs: Vec<(usize, Range<usize>)> = Vec::new();
-    for (index, &position) in order.iter().enumerate() {
+    for (index, &entry) in packed.iter().enumerate() {
+        let (slot, position) = (
+            (entry >> 32) as usize,
+            (entry & u64::from(u32::MAX)) as usize,
+        );
+        order.push(position);
         match runs.last_mut() {
-            Some((slot, range)) if *slot == slots[position] => range.end = index + 1,
-            _ => runs.push((slots[position], index..index + 1)),
+            Some((last, range)) if *last == slot => range.end = index + 1,
+            _ => runs.push((slot, index..index + 1)),
         }
     }
     Grouped { order, runs }
+}
+
+/// Adds `rows`, (slot, row key) pairs in row key order, to the row sets of their slots.
+fn collect_group_rows(group_rows: &mut [RowSet], rows: Vec<(usize, RowKey)>) {
+    // A counting sort by slot keeps each slot's row keys increasing.
+    let mut starts = vec![0usize; group_rows.len() + 1];
+    for &(slot, _) in &rows {
+        starts[slot + 1] += 1;
+    }
+    for slot in 0..group_rows.len() {
+        starts[slot + 1] += starts[slot];
+    }
+    let mut next = starts.clone();
+    let mut sorted = vec![0; rows.len()];
+    for (slot, row_key) in rows {
+        sorted[next[slot]] = row_key;
+        next[slot] += 1;
+    }
+    for (slot, group) in group_rows.iter_mut().enumerate() {
+        let keys = &sorted[starts[slot]..starts[slot + 1]];
+        if !keys.is_empty() {
+            group.insert(&RowSet::from_keys(keys.iter().copied()));
+        }
+    }
 }
 
 /// `rows` in pieces of at most [`CHUNK_SIZE`] rows, in order.
@@ -203,6 +236,10 @@ pub(super) struct Aggregator {
     row_counts: Vec<u64>,
     /// The parent rows of each slot, kept only if an operator needs them.
     group_rows: Option<Vec<RowSet>>,
+    /// While [`Aggregator::initial`] adds the parent's rows: the (slot, row key) of each
+    /// row added, which become the group rows at the end, instead of a row set insertion
+    /// per run of each chunk.
+    initial_rows: Option<Vec<(usize, RowKey)>>,
     /// Where the result has each key column and each operator's column.
     layout: Layout,
     preserve_empty: bool,
@@ -224,10 +261,7 @@ impl Aggregator {
         layout: Layout,
     ) -> Result<Aggregator, TableFailure> {
         let graph = parent.update_graph().filter(|_| parent.is_refreshing());
-        let source = |column_type: ColumnType| match &graph {
-            Some(graph) => tracked_source(graph, column_type),
-            None => Arc::new(WritableSource::new(column_type)),
-        };
+        let source = |column_type: ColumnType| ResultColumn::new(column_type, graph.as_ref());
         let parent_types: Vec<ColumnType> = parent
             .definition()
             .columns()
@@ -268,6 +302,7 @@ impl Aggregator {
             slots: 0,
             row_counts: Vec::new(),
             group_rows,
+            initial_rows: None,
             layout,
             preserve_empty,
             blink,
@@ -293,18 +328,18 @@ impl Aggregator {
                 // keys of a refreshing parent out of the hash table and for a static
                 // parent shows the hash table's own sources through a redirection.
                 let source = if self.parent.is_refreshing() {
-                    source.clone() as Arc<dyn ColumnSource>
+                    source.source()
                 } else {
-                    shared_reads_through(source)
+                    source.shared()
                 };
                 Some((place, source))
             })
             .collect();
         for (column, &place) in self.ops.iter().zip(&self.layout.ops) {
             let source = if column.plan.op.holds_results() {
-                column.result.clone() as Arc<dyn ColumnSource>
+                column.result.source()
             } else {
-                shared_reads_through(&column.result)
+                column.result.shared()
             };
             placed.push((place, column.plan.op.result_column(source)));
         }
@@ -330,7 +365,15 @@ impl Aggregator {
     /// #doNoKeyAddition; the size of the result without keys is that of #noKeyAggregation.
     pub fn initial(&mut self) -> Result<RowSet, TableFailure> {
         let rows = self.parent.row_set();
-        self.process(&rows, false, true)?;
+        if self.group_rows.is_some() {
+            self.initial_rows = Some(Vec::with_capacity(rows.size() as usize));
+        }
+        let added = self.process(&rows, false, true);
+        let initial_rows = self.initial_rows.take();
+        added?;
+        if let (Some(group_rows), Some(initial_rows)) = (&mut self.group_rows, initial_rows) {
+            collect_group_rows(group_rows, initial_rows);
+        }
         if self.preserve_empty {
             for slot in (0..self.slots).filter(|&slot| self.row_counts[slot] == 0) {
                 for column in &mut self.ops {
@@ -341,7 +384,7 @@ impl Aggregator {
         }
         self.recompute()?;
         let all: Vec<usize> = (0..self.slots).collect();
-        self.write(&all, |_| true)?;
+        self.write(&all, None)?;
         self.forget_keys_of_absent_groups()?;
         self.end_cycle();
         Ok(RowSet::from_keys(
@@ -567,7 +610,10 @@ impl Aggregator {
                     failure("aggregation: more rows removed from a group than it has")
                 })?
             };
-            if let Some(group_rows) = &mut self.group_rows {
+            if let (true, Some(initial_rows)) = (add, &mut self.initial_rows) {
+                let positions = grouped.order[range.clone()].iter();
+                initial_rows.extend(positions.map(|&p| (slot, row_keys[p])));
+            } else if let Some(group_rows) = &mut self.group_rows {
                 let keys =
                     RowSet::from_keys(grouped.order[range.clone()].iter().map(|&p| row_keys[p]));
                 if add {
@@ -801,7 +847,7 @@ impl Aggregator {
     /// Lets the operators that could not answer from their state read their groups.
     fn recompute(&mut self) -> Result<(), TableFailure> {
         let group_rows: &[RowSet] = self.group_rows.as_deref().unwrap_or(&[]);
-        let keys: &[Arc<WritableSource>] = self.keys.as_ref().map_or(&[], |keys| &keys.results);
+        let keys: &[ResultColumn] = self.keys.as_ref().map_or(&[], |keys| &keys.results);
         for column in &mut self.ops {
             let pending = column.marks.marked(RECOMPUTE);
             if pending.is_empty() {
@@ -821,20 +867,23 @@ impl Aggregator {
 
     /// Writes the results of `slots`, and of the slots each operator marked modified that
     /// `also` selects, to the result columns. Returns, per operator, the marked slots
-    /// written that are not among `slots`.
+    /// written that are not among `slots`. Without `also`, only `slots` are written.
     fn write(
         &mut self,
         slots: &[usize],
-        also: impl Fn(usize) -> bool,
+        also: Option<&dyn Fn(usize) -> bool>,
     ) -> Result<Vec<Vec<usize>>, TableFailure> {
         let mut modified_by_op = Vec::with_capacity(self.ops.len());
         for column in &self.ops {
-            let modified: Vec<usize> = column
-                .marks
-                .marked(MODIFIED)
-                .into_iter()
-                .filter(|&slot| also(slot) && slots.binary_search(&slot).is_err())
-                .collect();
+            let modified: Vec<usize> = match also {
+                Some(also) => column
+                    .marks
+                    .marked(MODIFIED)
+                    .into_iter()
+                    .filter(|&slot| also(slot) && slots.binary_search(&slot).is_err())
+                    .collect(),
+                None => Vec::new(),
+            };
             let written: Vec<usize> = slots.iter().chain(&modified).copied().collect();
             let row_keys: Vec<RowKey> = written.iter().map(|&slot| slot as RowKey).collect();
             column
@@ -870,7 +919,7 @@ impl Aggregator {
         }
         added.sort_unstable();
         let present: Vec<bool> = (0..self.slots).map(|slot| self.present(slot)).collect();
-        let modified_by_op = self.write(&added, |slot| present[slot])?;
+        let modified_by_op = self.write(&added, Some(&|slot| present[slot]))?;
         let mut modified = Vec::new();
         let mut modified_columns = Vec::new();
         for slots in modified_by_op {
