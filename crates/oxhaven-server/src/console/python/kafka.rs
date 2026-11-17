@@ -383,6 +383,80 @@ pub(super) fn kafka_topics(py: Python<'_>, config: Vec<(String, String)>) -> PyR
         .map_err(exception)
 }
 
+/// The topic, and the subject and version of the key's and the value's schemas, as
+/// `deephaven.stream.kafka.cdc.CDCSpec` holds them: `None` is Java's null.
+type CdcSpecArgument = (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
+fn cdc_spec(spec: CdcSpecArgument) -> oxhaven_kafka::CdcSpec {
+    let (topic, key_subject, key_version, value_subject, value_version) = spec;
+    oxhaven_kafka::CdcSpec {
+        topic,
+        key_subject,
+        key_version,
+        value_subject,
+        value_version,
+    }
+}
+
+/// `deephaven.stream.kafka.cdc.consume`: the table a topic of change events describes.
+#[pyfunction]
+pub(super) fn kafka_cdc_consume(
+    py: Python<'_>,
+    config: Vec<(String, String)>,
+    spec: CdcSpecArgument,
+    partitions: Option<Vec<i32>>,
+    blink: bool,
+    drop_columns: Vec<String>,
+) -> PyResult<TableHandle> {
+    let options = oxhaven_kafka::CdcOptions {
+        config,
+        spec: cdc_spec(spec),
+        partitions,
+        blink,
+        drop_columns,
+    };
+    let graph: Arc<dyn UpdateGraph> = super::runtime()?.context.graph.clone();
+    let table = py
+        .detach(|| oxhaven_kafka::consume_cdc(graph, &options))
+        .map_err(exception)?;
+    Ok(TableHandle { table })
+}
+
+/// `deephaven.stream.kafka.cdc.consume_raw`: the change events as they are, in a table of
+/// `table_type` (`blink`, `append` or `ring` with its capacity), or `None` for Java's null.
+#[pyfunction]
+pub(super) fn kafka_cdc_consume_raw(
+    py: Python<'_>,
+    config: Vec<(String, String)>,
+    spec: CdcSpecArgument,
+    partitions: Option<Vec<i32>>,
+    table_type: Option<(String, i32)>,
+) -> PyResult<TableHandle> {
+    let table_type = match table_type {
+        None => None,
+        Some((kind, capacity)) => Some(match kind.as_str() {
+            "blink" => TableType::Blink,
+            "append" => TableType::Append,
+            "ring" => TableType::Ring(capacity),
+            other => return Err(PyValueError::new_err(format!("no table type {other}"))),
+        }),
+    };
+    let spec = cdc_spec(spec);
+    let graph: Arc<dyn UpdateGraph> = super::runtime()?.context.graph.clone();
+    let table = py
+        .detach(|| {
+            oxhaven_kafka::consume_cdc_raw(graph, &config, &spec, partitions.as_deref(), table_type)
+        })
+        .map_err(exception)?;
+    Ok(TableHandle { table })
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::tests::ONE_INTERPRETER;
@@ -624,6 +698,140 @@ mod tests {
         assert!(
             last.ends_with("not ported: io.deephaven.kafka.KafkaTools.Consume#objectProcessorSpec"),
             "{last}"
+        );
+    }
+
+    /// No broker and no registry are needed: the calls fail before the broker, or reach
+    /// for a registry on a closed port of this machine. The texts are the reference's
+    /// (the probes of `tasks/7.5.3-kafka-cdc.md`, named in the comments).
+    #[tokio::test]
+    async fn deephaven_kafka_cdc_checks_refuses_and_raises_dherror() {
+        let _turn = ONE_INTERPRETER.lock().await;
+        let server = TestServer::start_with(|state| super::super::start(state).unwrap()).await;
+        let console = server.state.console.clone().unwrap();
+        const SETUP: &str = "from deephaven.stream.kafka import cdc, consumer as kc\n\
+            CFG = {'bootstrap.servers': '127.0.0.1:1', 'schema.registry.url': 'http://127.0.0.1:1'}\n\
+            S = cdc.cdc_short_spec('db', 'inv', 't')\n\
+            APPEND = kc.TableType.append().j_object\n";
+        let failure = |code: &str, message: &str| {
+            let error = console.evaluate(&format!("{SETUP}{code}")).error;
+            let error = error.expect("the call fails");
+            let last = error.trim_end().lines().last().unwrap().to_string();
+            let prefix = format!("deephaven.dherror.DHError: {message} : ");
+            let text = last.strip_prefix(&prefix);
+            text.unwrap_or_else(|| panic!("not a DHError of {message}: {last}"))
+                .to_string()
+        };
+        const CONSUME: &str = "failed to consume a CDC stream.";
+        const RAW: &str = "failed to consume a raw CDC stream.";
+        const NO_OVERLOAD: &str = "no matching Java method overloads found";
+
+        // Probes short_none, spec_repr.
+        let checked = console.evaluate(&format!(
+            "{SETUP}\
+             assert S.j_object == ('db.inv.t', 'db.inv.t-key', 'latest', 'db.inv.t-value', \
+             'latest'), S.j_object\n\
+             assert cdc.cdc_short_spec(None, 'b', 'c').j_object[0] == 'null.b.c'\n\
+             assert isinstance(S, cdc.CDCSpec)\n\
+             assert cdc.cdc_long_spec('t', 'k', None, 'v', '1').j_object == \
+             ('t', 'k', None, 'v', '1')\n"
+        ));
+        assert_eq!(checked.error, None);
+        // Probes long_vint, short_int.
+        assert_eq!(
+            failure(
+                "cdc.cdc_long_spec('t', 'k', 1, 'v', 'latest')",
+                "failed to create a CDC spec in cdc_long_spec."
+            ),
+            NO_OVERLOAD
+        );
+        assert_eq!(
+            failure(
+                "cdc.cdc_short_spec('a', 5, 'c')",
+                "failed to create a CDC spec in cdc_short_spec."
+            ),
+            NO_OVERLOAD
+        );
+        // Probes drop_email, drop_empty, st_str, st_none, cfg_int, spec_none.
+        for code in [
+            "cdc.consume(CFG, S, cols_to_drop=['x'])",
+            "cdc.consume(CFG, S, cols_to_drop=[])",
+            "cdc.consume(CFG, S, stream_table='x')",
+            "cdc.consume(CFG, S, stream_table=None)",
+            "cdc.consume(dict(CFG, x=1), S)",
+        ] {
+            assert_eq!(failure(code, CONSUME), NO_OVERLOAD, "{code}");
+        }
+        assert_eq!(
+            failure("cdc.consume(CFG, None)", CONSUME),
+            "'NoneType' object has no attribute 'j_object'"
+        );
+        // Probes part_str, part_int_neg. This package's `DHError` names the inner
+        // `DHError`'s message before its cause, where the reference names the root cause.
+        assert_eq!(
+            failure("cdc.consume(CFG, S, partitions=['a'])", CONSUME),
+            "failed to create a Java int array. : 'str' object cannot be interpreted as an integer"
+        );
+        let negative = failure("cdc.consume(CFG, S, partitions=-1)", CONSUME);
+        assert!(
+            negative.contains("array: argument 2 (init) must be either an integer array length"),
+            "{negative}"
+        );
+        // Probes noreg, reg_down, long_vnone, long_sub_none.
+        assert_eq!(
+            failure(
+                "cdc.consume({'bootstrap.servers': '127.0.0.1:1'}, S)",
+                CONSUME
+            ),
+            "org.apache.kafka.common.config.ConfigException: Missing required \
+             configuration \"schema.registry.url\" which has no default value."
+        );
+        let down = failure("cdc.consume(CFG, S)", CONSUME);
+        assert!(
+            down.starts_with(
+                "io.deephaven.UncheckedDeephavenException: \
+                 java.net.ConnectException: Connection refused"
+            ),
+            "{down}"
+        );
+        assert_eq!(
+            failure(
+                "cdc.consume(CFG, cdc.cdc_long_spec('t', 'k', 'latest', 'v', None))",
+                CONSUME
+            ),
+            "java.lang.NumberFormatException: Cannot parse null string"
+        );
+        assert_eq!(
+            failure(
+                "cdc.consume(CFG, cdc.cdc_long_spec('t', 'k', 'latest', None, 'latest'))",
+                CONSUME
+            ),
+            "java.lang.NullPointerException"
+        );
+        // Probes raw_default, raw_append, raw_tt_int, raw_sub_none, raw_tt_none_missing.
+        for code in [
+            "cdc.consume_raw(CFG, S)",
+            "cdc.consume_raw(CFG, S, table_type=kc.TableType.append())",
+            "cdc.consume_raw(CFG, S, table_type=1)",
+            "cdc.consume_raw(CFG, S, table_type=('append', 0))",
+        ] {
+            assert_eq!(failure(code, RAW), NO_OVERLOAD, "{code}");
+        }
+        assert_eq!(
+            failure(
+                "cdc.consume_raw(CFG, cdc.cdc_long_spec('t', None, 'latest', 'v', 'latest'), \
+                 table_type=APPEND)",
+                RAW
+            ),
+            "java.lang.NullPointerException"
+        );
+        let down = failure("cdc.consume_raw(CFG, S, table_type=None)", RAW);
+        assert!(
+            down.starts_with(
+                "io.deephaven.UncheckedDeephavenException: \
+                 java.net.ConnectException: Connection refused"
+            ),
+            "{down}"
         );
     }
 

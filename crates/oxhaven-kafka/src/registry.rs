@@ -26,10 +26,11 @@ pub(crate) struct Registry {
     by_id: Mutex<HashMap<i32, Arc<Schema>>>,
     /// The ids of the schemas registered so far, by subject and schema text.
     registered: Mutex<HashMap<(String, String), i32>>,
-    /// The answers to the Protobuf schema requests so far, by path: Confluent's client
-    /// caches the latest metadata of a subject, schemas by id and versions, so the key
-    /// and the value of one subject ask once (probe key_both).
-    protobuf_answers: Mutex<HashMap<String, Node>>,
+    /// The answers Confluent's client keeps, by path: for a Protobuf schema the latest
+    /// metadata of a subject, schemas by id and versions, so the key and the value of one
+    /// subject ask once (probe key_both); for an Avro schema the latest metadata and
+    /// schemas by id.
+    answers: Mutex<HashMap<String, Node>>,
 }
 
 /// Why a call to the registry failed: what the registry answered, or why it could not be
@@ -117,7 +118,7 @@ impl Registry {
             urls,
             by_id: Mutex::new(HashMap::new()),
             registered: Mutex::new(HashMap::new()),
-            protobuf_answers: Mutex::new(HashMap::new()),
+            answers: Mutex::new(HashMap::new()),
         })
     }
 
@@ -194,10 +195,18 @@ impl Registry {
                 encode(subject)
             )
         };
-        let metadata = self.get(&path).map_err(unchecked)?;
+        // Confluent's client keeps the latest metadata of a subject and the schemas by id
+        // it fetched, but asks again for a version by number (probes same_subject,
+        // same_subject_v, same_v1_v1 of task 7.5.3: a key and a value of one subject).
+        let metadata = if version == Some("latest") {
+            self.cached(&path)
+        } else {
+            self.get(&path)
+        };
+        let metadata = metadata.map_err(unchecked)?;
         let id = metadata.get("id").and_then(Node::exact_long).unwrap_or(0);
         let text = self
-            .get(&format!("/schemas/ids/{id}?fetchMaxId=false&subject="))
+            .cached(&format!("/schemas/ids/{id}?fetchMaxId=false&subject="))
             .and_then(|body| schema_text(&body))
             .map_err(unchecked)?;
         Ok(text)
@@ -286,16 +295,11 @@ impl Registry {
 
     /// GETs `path` once per registry.
     fn cached(&self, path: &str) -> Result<Node, CallFailure> {
-        if let Some(node) = self
-            .protobuf_answers
-            .lock()
-            .expect("not poisoned")
-            .get(path)
-        {
+        if let Some(node) = self.answers.lock().expect("not poisoned").get(path) {
             return Ok(node.clone());
         }
         let node = self.get(path)?;
-        let mut answers = self.protobuf_answers.lock().expect("not poisoned");
+        let mut answers = self.answers.lock().expect("not poisoned");
         answers.insert(path.to_owned(), node.clone());
         Ok(node)
     }

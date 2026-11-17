@@ -12,13 +12,14 @@ sized tasks at the end.
    (`oxhaven_kafka::consume`) and no gRPC surface: Java has no gRPC call that consumes or
    produces, only `KafkaTools`, which scripts reach through the Python package.
 2. **The Python modules are Oxhaven's own**, with the reference's names and signatures:
-   `deephaven.stream.kafka.consumer` now, `producer` and `cdc` later. They call one native
+   `deephaven.stream.kafka.consumer`, `producer` and `cdc`. They call one native
    function per entry point (`_oxhaven.kafka_consume`), as `deephaven.csv` does.
 3. **The client is librdkafka**, through the `rdkafka` crate, compiled from the sources
    `rdkafka-sys` carries, in its smallest form plus Zstandard. The owner allowed its
    licences on 2026-11-16 (`PORTING.md`, "Dependencies"). TLS, SASL and gzip are not
    built: each needs a library that ruling does not cover. "The client library" has the
-   table. Task 7.4.5 turned on gzip, TLS and SASL under the owner's ruling of 2026-11-17. The wire client of the first slice is removed.
+   table. Task 7.4.5 turned on gzip, TLS and SASL under the owner's ruling of 2026-11-17.
+   The wire client of the first slice is removed.
 4. **A record source is a trait** (`RecordSource`: `poll` returns the records that
    arrived). The table, the specs and the decoding are written against it: tests script
    one, and `client::ClientSource` is the one over librdkafka.
@@ -53,7 +54,7 @@ half a second and hands the records to a `KafkaStreamPublisher`, which fills chu
 arrived since the last. `append()` is `BlinkTableTools.blinkToAppendOnly` of that table
 and `ring(n)` is `RingTableTools.of` of it.
 
-## What exists after tasks 7.4.1, 7.4.3, 7.4.4, 7.4.6, 7.4.7 and 7.4.8
+## What exists after tasks 7.4.1, 7.4.3, 7.4.4, 7.4.6, 7.4.7, 7.4.8 and 7.5.3
 
 `deephaven.stream.kafka.topics`, and `deephaven.stream.kafka.consumer.consume` and
 `consume_to_partitioned_table` ("A table per partition") with:
@@ -81,7 +82,9 @@ and `ring(n)` is `RingTableTools.of` of it.
 - the consumer properties of "Consumer properties";
 - plaintext brokers; record batches that are uncompressed or compressed with gzip,
   snappy, lz4 or zstd; transactional topics at either `isolation.level`; a broker that
-  restarts.
+  restarts;
+- `deephaven.stream.kafka.cdc`: `consume`, `consume_raw`, `cdc_long_spec` and
+  `cdc_short_spec` ("Change data capture").
 
 Everything else is refused with the name of what Java does; "Refused, by Java method"
 has the list.
@@ -567,6 +570,61 @@ Java's defaults are set where librdkafka's differ: `message.timeout.ms` 120000,
 - `key.serializer` and `value.serializer` are ignored, as in Java, where the specs choose
   the serializers. Other properties are ignored in silence, as for the consumer.
 
+## Change data capture
+
+Task 7.5.3 (`tasks/7.5.3-kafka-cdc.md`), `oxhaven_kafka::consume_cdc` and
+`consume_cdc_raw` (`src/cdc.rs`) and `deephaven.stream.kafka.cdc`, as `CdcTools` does it:
+
+- **The spec.** `cdc_long_spec(topic, key_subject, key_version, value_subject,
+  value_version)` holds the five names; `cdc_short_spec(server, db, table)` is the topic
+  `server.db.table`, the subjects `<topic>-key` and `<topic>-value` and the versions
+  `latest`. A `None` name of the short form becomes `null`, as Java's string concatenation
+  does. A version is `latest` or a number.
+- **`consume(kafka_config, cdc_spec, partitions=None, stream_table=False,
+  cols_to_drop=None)`.** The value schema is fetched from the registry, then the key
+  schema, and the topic is read from the beginning of every partition (or of those
+  listed) as `avro_spec` of each schema, into a blink table. That table is viewed to the
+  key's fields, `X = after__X` for every other column of the value's `after` record
+  (nested records flattened as `after__addr__city`), and `op`. A blink table
+  (`stream_table=True`) then only drops `cols_to_drop`, so it keeps `op` and shows every
+  event. Otherwise it is `last_by` of the key's fields, `where op != `d``, and drops
+  `cols_to_drop` and `op`: the current rows of the database table.
+- **Deletes and tombstones, as Java.** A delete event (`op` `d`) hides its key. Debezium's
+  tombstone after it (the key and no value) is read as a row of null cells; after
+  `last_by` its `op` is null, `op != `d`` keeps it, and **the deleted key shows again with
+  null columns**. Reproduced, not refused: it is what Java's table shows, and is an item
+  for the owner. Other `op` values (`D`, empty, `t` for truncate) are kept as rows.
+- **`consume_raw(kafka_config, cdc_spec, partitions=None, table_type=...)`** is `consume`
+  of the topic with `avro_spec(subject, version)` of the key and the value (the key's
+  subject is fetched first), from the beginning, as the table type given; no view.
+- **What Java's Python package lets through, reproduced.** jpy finds no Java method for a
+  Python list of `cols_to_drop` (even an empty one) or for a `TableType` (even the
+  default of `consume_raw`), so both fail with `no matching Java method overloads found`
+  in Java; here too. Java works with `jcompat.j_array_list(...)` and with
+  `TableType.append().j_object`; this package has no `jcompat`, so dropping columns from
+  Python is not reachable, and `consume_raw` takes `TableType.<x>().j_object`.
+  `stream_table` must be an `int` (a `bool` is one); `None`, a float or text are refused
+  as by jpy. `table_type=None` fetches both schemas and fails with Java's
+  `NullPointerException` on `tableType.walk`. A `None` subject fails with
+  `java.lang.NullPointerException` at the point Java's registry client does; a `None`
+  version with `NumberFormatException: Cannot parse null string`.
+- **Errors of the view, with Java's texts.** A value without `op`
+  (`NoSuchColumnException: Unknown column names [op], ...`), a key field missing from
+  `after` (`aggregation: not all group-by columns [...]`), a key and value whose columns
+  repeat a name (every repeated name, as `checkForNullOrDuplicates` lists them). A key
+  without fields is `last_by()` of nothing: one row.
+- **Debezium's shapes.** The envelope (`before` and `after` as unions of null and the row's
+  record, `source` a record, `transaction` a union of null and a record, `op`, `ts_ms`,
+  `ts_us`, `ts_ns`), `io.debezium.time.*` names on `int` and `long` (their plain types),
+  `io.debezium.data.Enum` on `string`, and `connect.decimal` (`bytes` with Avro's
+  `decimal`, a `BigDecimal` column) work as 7.4.7 reads them. A plain `bytes` column
+  (Postgres `bytea`) is refused by 7.4.7's name, where Java's table fails. A
+  `BigDecimal` or `BigInteger` column that is not a key is refused by name in the
+  current-rows table (not in the blink or raw ones): the engine's `last_by` of a blink
+  table cannot hold it yet.
+- **The registry.** As Java's client: the latest metadata of a subject and a schema by id
+  are fetched once per registry client, a numbered version every time it is asked.
+
 ## The engine side
 
 Since task 7.4.2 (`tasks/7.4.2-stream-adapter.md`) the engine has Java's stream adapter,
@@ -849,6 +907,15 @@ broker under the open tables of both.
   `DHError("text")` without a cause, whose `str()` Java writes as `text : text` (the
   Python package's `dherror.py`, not this task's). Failure texts of tables were compared
   from Java's log and are asserted in `tests/protobuf.rs` and the unit tests.
+- Task 7.5.3, change data capture: Java on 10878, Oxhaven on 10879, one broker and a stub
+  registry that logs each request, 249 cases in six rounds (`tasks/7.5.3-kafka-cdc.md`).
+  Same in 196: the columns, types and rows of the current-rows, blink and raw tables
+  (deletes, tombstones, reinserted keys, composite and empty keys, nested records, every
+  `op`), the errors of calls, and the registry requests. Different by design in 53: a
+  non-key decimal of the current-rows table and a `None` topic, refused by name (26);
+  `cols_to_drop` through `jcompat`, which this package does not have (21); no broker
+  (text only), registry credentials and a `bytes` column, as since 7.4.4 and 7.4.7 (5);
+  a `numpy` value the probe's Oxhaven interpreter could not import (1).
 - Task 7.4.6, partitioned tables: Java on 10898, Oxhaven on 10899, one broker, topics of
   three and two partitions, 38 cases in three rounds (`tasks/7.4.6-kafka-partitioned.md`).
   Same: the columns and their types, the key and constituent columns and the other facts,
@@ -1006,6 +1073,18 @@ broker under the open tables of both.
     their records and those after do not. Here the order is the partitions' numbers. The
     failed constituent is the same; which of the others got the last records may differ.
     As item 4, this is an order Java does not define.
+28. **CDC, a tombstone brings a deleted key back.** After a delete, Debezium writes a
+    tombstone (the key, no value); Java's `last_by` keeps it as the key's last row, its
+    `op` is null, `op != `d`` keeps it, and the deleted key shows again with null columns.
+    Reproduced. Should Oxhaven keep this, or drop a key whose last record has no value?
+29. **CDC, Python arguments Java cannot take.** In Java's package `cdc.consume` fails for
+    any `cols_to_drop` but a Java list (`jcompat.j_array_list`), and `consume_raw` for
+    any `TableType`, its default included (only `.j_object` works). Reproduced; this
+    package has no `jcompat`, so dropping columns from Python is not reachable here.
+30. **CDC, decimals in the current rows.** A non-key `BigDecimal` or `BigInteger` column
+    of `cdc.consume` without `stream_table` is refused by name: the engine's `last_by` of
+    a blink table cannot hold these. Debezium's `connect.decimal` (any SQL `NUMERIC`) is
+    common, so the engine fix is worth sizing.
 
 ## Refused, by Java method
 
@@ -1033,6 +1112,8 @@ broker under the open tables of both.
 | Avro: registry credentials (`basic.auth.*`, `bearer.auth.*`), `key.subject.name.strategy` and `value.subject.name.strategy`, `specific.avro.reader` and `avro.use.logical.type.converters` other than `false` | the class or property Java reads, named in the refusal |
 | Avro: a registry schema with references, or of a type other than `AVRO` | `io.confluent.kafka.schemaregistry.avro.AvroSchemaProvider#parseSchemaOrElseThrow` |
 | Avro: a record with magic byte 1 (a schema GUID) | `io.confluent.kafka.serializers.schema.id.SchemaId` |
+| CDC: a non-key `BigDecimal` or `BigInteger` column of the current-rows table (`consume` without `stream_table`); the engine's `last_by` of a blink table holds values that are not chunks of primitives as scalars it cannot make of these | `io.deephaven.engine.table.impl.by.BlinkLastChunkedOperator` |
+| CDC: a spec whose topic is `None` (Java fetches both schemas, then fails asking the broker for the topic's metadata) | `org.apache.kafka.clients.consumer.KafkaConsumer#partitionsFor` |
 | `deephaven.stream.add_only_to_blink` | `io.deephaven.engine.table.impl.AddOnlyToBlinkTableAdapter#toBlink` |
 | Producing: an update whose modified columns are `ModifiedColumnSet.ALL` (Java's listener throws a NullPointerException and stops; here the publication fails at the same point) | `io.deephaven.engine.table.ModifiedColumnSet#containsAny` |
 | Producing: `transactional.id` | `org.apache.kafka.clients.producer.KafkaProducer#initTransactions` |
@@ -1081,8 +1162,7 @@ other than gzip, `isolation.level=read_committed`, record batches older than for
 (librdkafka reads them; not probed, the broker writes none), `deephaven.stream.kafka.
 topics`.
 
-`deephaven.stream.kafka.producer` exists since task 7.5.1. `cdc` does not exist yet:
-importing it fails.
+`deephaven.stream.kafka.producer` exists since task 7.5.1, `cdc` since task 7.5.3.
 `deephaven.stream.blink_to_append_only` and `deephaven.stream.table_publisher` exist since
 task 7.4.2.
 
@@ -1102,4 +1182,4 @@ These replace 7.4 and 7.5. Sizes: S is a day of one implementer, M two to three,
 | 7.4.8 | Protobuf specs (`prost-reflect` is in the tree), both protocols | done (`tasks/7.4.8-kafka-protobuf.md`); no new crate | 7.4.7 for the registry |
 | 7.5.1 | Produce: librdkafka's producer, simple and JSON specs, `publish_initial`, `last_by_key_columns`, how removes and modifies are published; `deephaven.stream.kafka.producer` | done (`tasks/7.5.1-kafka-produce.md`) | 7.4.4 |
 | 7.5.2 | Produce: Avro and raw specs, topic, partition and timestamp columns | done (`tasks/7.5.2-kafka-produce-avro.md`); raw spec not reachable from Python | 7.5.1, 7.4.7 |
-| 7.5.3 | `deephaven.stream.kafka.cdc` | M; not started (`tasks/7.5.3-kafka-cdc.md` has what was read) | 7.4.7 |
+| 7.5.3 | `deephaven.stream.kafka.cdc` | done (`tasks/7.5.3-kafka-cdc.md`); no new crate; a non-key decimal of the current-rows table refused until the engine's blink `last_by` holds it | 7.4.7 |
