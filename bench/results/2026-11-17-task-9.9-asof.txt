@@ -1,0 +1,46 @@
+examples/asof-cases.rs, release build, task 9.9, 2026-11-17
+
+## main at 8a21018b, 1M left rows, 3 repetitions, load 1.6 (one-minute)
+1000000 left rows, 100000 right rows
+aj                               448.8 ms  (min 433.7, max 454.2)
+aj_read                          520.5 ms  (min 476.2, max 527.2)
+aj_strict                        459.5 ms  (min 450.6, max 484.7)
+raj                              528.9 ms  (min 463.5, max 546.3)
+aj_no_key                        357.8 ms  (min 331.5, max 357.9)
+aj_string_key                    781.1 ms  (min 730.6, max 800.8)
+aj_unordered_stamps              896.2 ms  (min 722.0, max 907.9)
+refreshing_left                  415.0 ms, then 20 cycles of 1,000 left rows 12.8 ms (sum 51994590192)
+refreshing_right                 375.6 ms, then 10 cycles of 1,000 right rows 201.2 ms (sum 49994700192)
+
+## main at 8a21018b, 10M left rows, 1 repetition, load 1.3
+10000000 left rows, 1000000 right rows
+aj                              4982.2 ms  (min 4982.2, max 4982.2)
+aj_read                         5196.4 ms  (min 5196.4, max 5196.4)
+aj_strict                       4824.0 ms  (min 4824.0, max 4824.0)
+aj_no_key                       3552.6 ms  (min 3552.6, max 3552.6)
+aj_string_key                   9988.1 ms  (min 9988.1, max 9988.1)
+aj_unordered_stamps            15005.2 ms  (min 15005.2, max 15005.2)
+
+## branch at 95a05ee8, 1M left rows, 3 repetitions, load 3.1
+1000000 left rows, 100000 right rows
+aj                                16.9 ms  (min 14.3, max 17.0)
+aj_read                           24.8 ms  (min 23.6, max 25.7)
+aj_strict                         13.5 ms  (min 13.4, max 13.8)
+raj                               12.9 ms  (min 12.8, max 12.9)
+aj_no_key                         10.4 ms  (min 10.3, max 10.4)
+aj_string_key                     25.3 ms  (min 23.5, max 25.3)
+aj_unordered_stamps               99.7 ms  (min 89.8, max 103.4)
+refreshing_left                   22.4 ms, then 20 cycles of 1,000 left rows 11.2 ms (sum 51994590192)
+refreshing_right                 133.5 ms, then 10 cycles of 1,000 right rows 161.9 ms (sum 49994700192)
+
+## branch at 1c1abe89, 10M left rows, 3 repetitions, load 2.8
+10000000 left rows, 1000000 right rows
+aj                               229.5 ms  (min 206.8, max 254.9)
+aj_read                          320.6 ms  (min 318.1, max 328.2)
+aj_strict                        205.6 ms  (min 200.8, max 220.7)
+raj                              198.1 ms  (min 173.3, max 199.9)
+aj_no_key                        167.7 ms  (min 150.4, max 176.8)
+aj_string_key                    351.5 ms  (min 346.8, max 370.5)
+aj_unordered_stamps             2281.3 ms  (min 1980.2, max 2304.3)
+refreshing_left                  212.1 ms, then 20 cycles of 1,000 left rows 8.3 ms (sum 5019946890192)
+refreshing_right                1794.0 ms, then 10 cycles of 1,000 right rows 143.7 ms (sum 4999947000192)
