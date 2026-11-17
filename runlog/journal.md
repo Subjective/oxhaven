@@ -1249,3 +1249,11 @@ Seven green checks on the run after the label was set (the first run was cancell
 ## 2026-11-17 21:38 UTC: task 10.2 reported, pull request 157 opened
 
 One group of five done. Lesson for sizing: a pass over refusals should take one operator family per agent, since each item is its own quirk of Java.
+
+## 2026-11-17 21:47 UTC: pull request 157 merged
+
+Seven green checks on head a3b5f9b6. Main is at 572fafbc.
+
+## 2026-11-17 21:48 UTC: task 10.4 started
+
+One operator family per agent, as learned from 10.2: the hierarchical tables (R1 to R4, T1, T2). Two builders run (10.3 and 10.4).
