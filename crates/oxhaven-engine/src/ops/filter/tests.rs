@@ -256,6 +256,45 @@ fn hexadecimal_float_literals_are_read_as_java_reads_them() {
     assert_eq!(found("0x1p"), [0i64; 0]);
 }
 
+/// Every expectation was observed on Deephaven 42.9 with the same rows.
+#[test]
+fn integer_and_big_number_literals_read_every_decimal_digit_java_reads() {
+    let p = Int32Array::from(vec![0, 1, 2, 3]);
+    let i = Int32Array::from(vec![12, -12, 5, 0]);
+    let l = Int64Array::from(vec![12, -12, 5, 0]);
+    let t = static_table(vec![
+        ("P", ColumnType::Int, Arc::new(p)),
+        ("I", ColumnType::Int, Arc::new(i)),
+        ("L", ColumnType::Long, Arc::new(l)),
+    ]);
+    assert_eq!(kept(&t, &["I in \u{661}\u{662}"]), [0]);
+    assert_eq!(kept(&t, &["I in -\u{661}\u{662}"]), [1]);
+    assert_eq!(kept(&t, &["I in +\u{ff11}\u{ff12}"]), [0]);
+    assert_eq!(kept(&t, &["L in \u{661}\u{662}, \u{665}"]), [0, 2]);
+    // a digit outside the Basic Multilingual Plane, a superscript and a Roman numeral are
+    // not decimal digits
+    for bad in [
+        "I in \u{1d7cf}\u{1d7d0}",
+        "I in \u{b2}",
+        "I in \u{2167}",
+        // Java compiles these as formulas, which fail
+        "I == \u{966}",
+        "I > \u{665}",
+    ] {
+        refused(&t, &[bad]);
+    }
+    let found = |text: &str| {
+        let search = Condition::Search {
+            search_string: text.to_string(),
+            columns: vec!["P".into(), "I".into(), "L".into()],
+        };
+        kept_by(&t, &[search])
+    };
+    assert_eq!(found("\u{661}\u{662}"), [0]);
+    assert_eq!(found("-\u{661}\u{662}"), [1]);
+    assert_eq!(found("\u{665}"), [2]);
+}
+
 #[test]
 fn integer_filters_treat_the_sentinel_as_null() {
     let t = ints_table();

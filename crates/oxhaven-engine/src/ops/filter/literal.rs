@@ -178,16 +178,15 @@ pub(super) fn parse_java_integer(text: &str, min: i64, max: i64) -> Result<i64, 
     if digits.is_empty() {
         return Err(bad());
     }
-    if let Some(c) = digits.chars().find(|c| !c.is_ascii() && c.is_numeric()) {
-        unported!("java.lang.Character#digit", "the non-ASCII digit {c:?}");
-    }
-    if !digits.bytes().all(|b| b.is_ascii_digit()) {
-        return Err(bad());
-    }
+    let digits: Vec<u8> = digits
+        .chars()
+        .map(decimal_digit)
+        .collect::<Option<_>>()
+        .ok_or_else(bad)?;
     let negative = text.starts_with('-');
     let mut value: i128 = 0;
-    for b in digits.bytes() {
-        value = value * 10 + i128::from(b - b'0');
+    for digit in digits {
+        value = value * 10 + i128::from(digit);
         if value > i128::from(u64::MAX) {
             return Err(bad());
         }
@@ -785,16 +784,28 @@ pub(super) fn convert_value(
 // java.math.BigInteger and java.math.BigDecimal
 // ---------------------------------------------------------------------------------------
 
-/// The decimal digit `c` stands for. A non-ASCII digit, which Java reads by
-/// `Character#digit`, is not ported.
+/// The first code point of each run of ten decimal digits, zero to nine, that JDK 21 reads
+/// in a `char`: those of the Unicode 15.0 category `Nd` in the Basic Multilingual Plane.
+/// A digit outside it is two `char`s, neither of which is a digit. Listed from
+/// `Character.digit((char) c, 10)` of every `c`.
+const DIGIT_ZEROS: [u32; 37] = [
+    0x0030, 0x0660, 0x06F0, 0x07C0, 0x0966, 0x09E6, 0x0A66, 0x0AE6, 0x0B66, 0x0BE6, 0x0C66, 0x0CE6,
+    0x0D66, 0x0DE6, 0x0E50, 0x0ED0, 0x0F20, 0x1040, 0x1090, 0x17E0, 0x1810, 0x1946, 0x19D0, 0x1A80,
+    0x1A90, 0x1B50, 0x1BB0, 0x1C40, 0x1C50, 0xA620, 0xA8D0, 0xA900, 0xA9D0, 0xA9F0, 0xAA50, 0xABF0,
+    0xFF10,
+];
+
+/// The decimal digit `c` stands for.
+///
+/// Behavior: java.lang.Character#digit(char, int) in radix 10, which `Long#parseLong`,
+/// `Integer#parseInt`, `BigInteger(String)` and `BigDecimal(String)` read digits with
 fn decimal_digit(c: char) -> Option<u8> {
-    if c.is_ascii_digit() {
-        return Some(c as u8 - b'0');
-    }
-    if !c.is_ascii() && c.is_numeric() {
-        unported!("java.lang.Character#digit", "the non-ASCII digit {c:?}");
-    }
-    None
+    let c = u32::from(c);
+    let at = DIGIT_ZEROS
+        .partition_point(|zero| *zero <= c)
+        .checked_sub(1)?;
+    let value = c - DIGIT_ZEROS[at];
+    (value < 10).then_some(value as u8)
 }
 
 /// The two's complement bytes, most significant first and as few as hold the sign, of the
@@ -1079,6 +1090,25 @@ mod tests {
         ] {
             assert!(parse_big_decimal(bad).is_err(), "{bad:?}");
         }
+    }
+
+    /// What `X in ...` on a `BigDecimal` column and `Y in ...` on a `BigInteger` column kept
+    /// on Deephaven 42.9 (cells 150, 1.5, 12 and 12, -5).
+    #[test]
+    fn big_numbers_read_every_decimal_digit_java_reads() {
+        use oxhaven_column::java_values::big_integer_cell;
+        let decimal = |unscaled: i128, scale: i32| Ok((scale, big_integer_cell(unscaled)));
+        assert_eq!(parse_big_decimal("\u{661}\u{665}\u{660}"), decimal(150, 0));
+        assert_eq!(parse_big_decimal("\u{661}.\u{665}"), decimal(15, 1));
+        assert_eq!(parse_big_decimal("\u{661}.\u{665}e\u{661}"), decimal(15, 0));
+        assert_eq!(parse_big_decimal("\u{661}\u{662}"), decimal(12, 0));
+        assert_eq!(
+            parse_big_integer("\u{661}\u{662}"),
+            Ok(big_integer_cell(12))
+        );
+        assert_eq!(parse_big_integer("-\u{665}"), Ok(big_integer_cell(-5)));
+        assert!(parse_big_integer("\u{1d7cf}").is_err());
+        assert!(parse_big_decimal("\u{b2}").is_err());
     }
 
     #[test]
