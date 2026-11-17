@@ -6,13 +6,17 @@ use super::{
     merged_sorts, Expandable, HierarchicalError, Hierarchy, Located, NodeId, NodeKey, Parent, Part,
     DEPTH_COLUMN_NAME, EXPANDED_COLUMN_NAME,
 };
-use crate::ops::agg::{aggregate, aggregate_with, AggSpec, Aggregation};
+use crate::ops::agg::{
+    aggregate_with_constants, java_class, AggSpec, AggregateError, Aggregation, FormulaConstant,
+};
 use crate::ops::filter::{CheckedFilters, FilterError};
 use crate::ops::partitioned::{partition_by, tables_of, PartitionedTable};
-use crate::ops::select::drop_columns;
+use crate::ops::select::{drop_columns, ArrayFormula};
 use crate::ops::sort::{check_sort_columns, sorted_rows, SortColumn, SortError};
 use crate::table::sortable_columns;
-use arrow::array::{ArrayRef, AsArray};
+use arrow::array::{ArrayRef, AsArray, Int32Array, ListArray, StringArray};
+use arrow::buffer::OffsetBuffer;
+use arrow::datatypes::DataType;
 use arrow::datatypes::Int32Type;
 use oxhaven_contracts::expr::FormulaCompiler;
 use oxhaven_contracts::rowset::{RowKey, RowSet};
@@ -131,7 +135,9 @@ fn check_reaggregation(
             Aggregation::Columns { pairs, .. } => {
                 pairs.iter().filter(|pair| pair.output == *key).count()
             }
-            Aggregation::Count { column } => usize::from(column == key),
+            Aggregation::Count { column }
+            | Aggregation::CountWhere { column, .. }
+            | Aggregation::Formula { column, .. } => usize::from(column == key),
             _ => 0,
         });
         let used = outputs.sum::<usize>() + group_by.iter().filter(|other| *other == key).count();
@@ -167,6 +173,308 @@ fn check_reaggregation(
     Ok(())
 }
 
+/// Java's text for what a blink table does not support.
+///
+/// Behavior: io.deephaven.engine.table.impl.by.AggregationProcessor.Converter#unsupportedForBlinkTables
+fn unsupported_for_blink(what: &str) -> HierarchicalError {
+    HierarchicalError::Unsupported(format!(
+        "Blink tables do not support {what}; use BlinkTableTools.blinkToAppendOnly to \
+         accumulate full history"
+    ))
+}
+
+/// What Java refuses of `aggregation` in a rollup of a blink table, if it does: what
+/// needs the rows of a group again at a coarser level (a group, a formula) or the row a
+/// first or last came from.
+///
+/// Behavior: AggregationProcessor.RollupBaseConverter#visit(AggSpecGroup), #visit(Formula),
+/// and Converter#addFirstOrLastOperators and #addSortedFirstOrLastOperator with a
+/// redirection to expose
+fn refused_for_blink(aggregation: &Aggregation) -> Option<&'static str> {
+    match aggregation {
+        Aggregation::Columns { spec, .. } => match spec {
+            AggSpec::First => Some(
+                "AggFirst with exposed row redirections (e.g. for rollup(), AggFirstRowKey, or \
+                 AggLastRowKey)",
+            ),
+            AggSpec::Last => Some(
+                "AggLast with exposed row redirections (e.g. for rollup(), AggFirstRowKey, or \
+                 AggLastRowKey)",
+            ),
+            AggSpec::SortedFirst { .. } => {
+                Some("AggSortedFirst with exposed row redirections (e.g. for rollup())")
+            }
+            AggSpec::SortedLast { .. } => {
+                Some("AggSortedLast with exposed row redirections (e.g. for rollup())")
+            }
+            AggSpec::Group => Some("AggGroup for rollup"),
+            _ => None,
+        },
+        Aggregation::Formula { .. } => Some("AggFormula for rollup"),
+        _ => None,
+    }
+}
+
+/// What Java refuses of a rollup before it aggregates, in the order it finds it: a blink
+/// table with constituents, a partition aggregation, then per aggregation in their order
+/// one that has no rollup, or none of a blink table.
+///
+/// Java finds a refusal of its walk among the other errors of that aggregation's place:
+/// an unknown column, or a type without the aggregation, in an earlier aggregation comes
+/// first there and after the refusal here. Only the text differs (PARITY A5).
+///
+/// Behavior: io.deephaven.engine.table.impl.QueryTable#rollup,
+/// AggregationProcessor#forRollupBase and the walk of RollupBaseConverter
+fn check_refusals(
+    source: &Arc<dyn Table>,
+    aggregations: &[Aggregation],
+    include_constituents: bool,
+) -> Result<(), HierarchicalError> {
+    let blink = source.attributes().blink;
+    if blink && include_constituents {
+        return Err(unsupported_for_blink("rollup with included constituents"));
+    }
+    if aggregations
+        .iter()
+        .any(|aggregation| matches!(aggregation, Aggregation::Partition { .. }))
+    {
+        return Err(HierarchicalError::Unsupported(
+            "AggPartition is not supported for rollup()".to_string(),
+        ));
+    }
+    for aggregation in aggregations {
+        if let Some(name) = refused_by_java(aggregation) {
+            return Err(HierarchicalError::Unsupported(format!(
+                "Agg{name} is not supported for rollup()"
+            )));
+        }
+        if let Some(what) = refused_for_blink(aggregation).filter(|_| blink) {
+            return Err(unsupported_for_blink(what));
+        }
+    }
+    Ok(())
+}
+
+/// Refuses as not ported a rollup with two group aggregations, or with a group aggregation
+/// and a formula aggregation: Java shares one group operator between them, at every level,
+/// and whether it answers depends on their order and names. Observed on Java 42.9, by `K`
+/// and `J`: `group("V"), group("D")` and `group("G = V"), group("V")` serve,
+/// `group("G = D"), group("H = V")` fails with a `NullPointerException`,
+/// `formula("S = sum(V)"), group("V")` serves and `group("G = V"), formula("S = sum(V)")`
+/// fails with a `NoSuchColumnException` for `V_GRP___ROLLUP__`.
+///
+/// Behavior: AggregationProcessor.Converter#ensureGroupByOperator and
+/// #ensureGroupByReaggregateOperator
+fn check_group_users(aggregations: &[Aggregation]) {
+    let groups = aggregations
+        .iter()
+        .filter(|aggregation| {
+            matches!(
+                aggregation,
+                Aggregation::Columns {
+                    spec: AggSpec::Group,
+                    ..
+                }
+            )
+        })
+        .count();
+    let formulas = aggregations
+        .iter()
+        .any(|aggregation| matches!(aggregation, Aggregation::Formula { .. }));
+    if groups > 1 {
+        oxhaven_contracts::unported!(
+            "io.deephaven.engine.table.impl.by.AggregationProcessor.Converter#ensureGroupByOperator",
+            "two group aggregations in one rollup, which Java serves or fails depending on their names"
+        );
+    }
+    if groups == 1 && formulas {
+        oxhaven_contracts::unported!(
+            "io.deephaven.engine.table.impl.by.AggregationProcessor.Converter#ensureGroupByOperator",
+            "a group and a formula aggregation in one rollup, which Java serves or fails depending on their order"
+        );
+    }
+}
+
+/// The name of the number of group-by columns of a level, which a formula aggregation in
+/// a rollup may read.
+///
+/// Behavior: AggregationProcessor#ROLLUP_FORMULA_DEPTH
+const FORMULA_DEPTH: &str = "__FORMULA_DEPTH__";
+
+/// The name of the names of the group-by columns of a level, which a formula aggregation
+/// in a rollup may read.
+///
+/// Behavior: AggregationProcessor#ROLLUP_FORMULA_KEYS
+const FORMULA_KEYS: &str = "__FORMULA_KEYS__";
+
+/// What a formula aggregation of the level grouped by `keys` reads besides the source's
+/// columns: an `int` and a vector of strings, which take the place of a source column of
+/// their name.
+///
+/// Behavior: AggregationProcessor#EXTRA_ROLLUP_FORMULA_DEFINITIONS, and the depth and key
+/// name sources that RollupBaseConverter#visit(Formula) and
+/// RollupReaggregatedConverter#visit(Formula) give FormulaMultiColumnChunkedOperator
+fn formula_constants(keys: &[&str]) -> Vec<FormulaConstant> {
+    let names = ColumnType::vector(ColumnType::String);
+    let DataType::List(field) = names.arrow_type() else {
+        unreachable!("a vector is an Arrow list");
+    };
+    let values = StringArray::from_iter_values(keys.iter().copied());
+    let list = ListArray::new(
+        field,
+        OffsetBuffer::from_lengths([keys.len()]),
+        Arc::new(values),
+        None,
+    );
+    vec![
+        FormulaConstant {
+            name: FORMULA_DEPTH.to_string(),
+            column_type: ColumnType::Int,
+            value: Arc::new(Int32Array::from(vec![keys.len() as i32])),
+        },
+        FormulaConstant {
+            name: FORMULA_KEYS.to_string(),
+            column_type: names,
+            value: Arc::new(list),
+        },
+    ]
+}
+
+/// The columns a formula aggregation of the level grouped by `keys` is compiled against:
+/// the source's, as a vector where it is not grouped by, and the constants of the level.
+///
+/// Behavior: AggregationProcessor#maybeInitializeVectorColumns
+fn formula_columns(source: &TableDefinition, keys: &[&str]) -> Vec<(String, ColumnType)> {
+    let mut columns: Vec<(String, ColumnType)> = source
+        .columns()
+        .iter()
+        .filter(|column| column.name != FORMULA_DEPTH && column.name != FORMULA_KEYS)
+        .map(|column| {
+            let seen = if keys.contains(&column.name.as_str()) {
+                column.column_type.clone()
+            } else {
+                ColumnType::vector(column.column_type.clone())
+            };
+            (column.name.clone(), seen)
+        })
+        .collect();
+    for constant in formula_constants(keys) {
+        columns.push((constant.name, constant.column_type));
+    }
+    columns
+}
+
+/// What Java refuses of the formula aggregations of a rollup with group-by columns.
+///
+/// Java makes a coarser level from the rows of the level below it, which keeps, of the
+/// columns the formulas read, those that the first formula reads and that are not grouped
+/// by there. A formula at a coarser level that reads another column fails there: every
+/// formula that reads a group-by column, at the level that stops grouping by it, and
+/// every formula after the first that reads a column the first does not. Java checks
+/// first that the formula's result has the type it has one level below, which fails only
+/// for such a formula; then it fails looking for the column in the level below by an
+/// internal name (`NoSuchColumnException` for `J_GRP___ROLLUP__`), which is refused here
+/// as not ported. The levels are made from the finest up, the formulas in their order.
+///
+/// Behavior: AggregationProcessor.RollupReaggregatedConverter#visit(Formula), and
+/// io.deephaven.engine.table.impl.by.GroupByReaggregateOperator#GroupByReaggregateOperator
+fn check_formulas(
+    source: &Arc<dyn Table>,
+    aggregations: &[Aggregation],
+    group_by: &[&str],
+    compiler: Option<&dyn FormulaCompiler>,
+) -> Result<(), HierarchicalError> {
+    let formulas: Vec<(&str, &str)> = aggregations
+        .iter()
+        .filter_map(|aggregation| match aggregation {
+            Aggregation::Formula { column, expression } => {
+                Some((column.as_str(), expression.as_str()))
+            }
+            _ => None,
+        })
+        .collect();
+    let (Some(compiler), Some(first)) = (compiler, formulas.first()) else {
+        return Ok(());
+    };
+    let definition = source.definition();
+    let compiled = |expression: &str, keys: &[&str]| {
+        let columns = formula_columns(definition, keys);
+        let columns: Vec<(&str, ColumnType)> = columns
+            .iter()
+            .map(|(name, column_type)| (name.as_str(), column_type.clone()))
+            .collect();
+        ArrayFormula::compile(compiler, expression, &columns).map_err(|error| {
+            HierarchicalError::Aggregate(AggregateError::InvalidFormula(error.to_string()))
+        })
+    };
+    // The source columns a formula reads at the finest level. One that does not compile
+    // there fails when the levels are made, as in Java, which makes the finest first.
+    let read = |expression: &str| -> Option<Vec<String>> {
+        let formula = compiled(expression, group_by).ok()?;
+        Some(
+            formula
+                .inputs_read()
+                .iter()
+                .filter(|name| name.as_str() != FORMULA_DEPTH && name.as_str() != FORMULA_KEYS)
+                .cloned()
+                .collect(),
+        )
+    };
+    let Some(first_read) = read(first.1) else {
+        return Ok(());
+    };
+    let mut reads = Vec::with_capacity(formulas.len());
+    for &(_, expression) in &formulas {
+        let Some(inputs) = read(expression) else {
+            return Ok(());
+        };
+        reads.push(inputs);
+    }
+    for level in (0..group_by.len()).rev() {
+        let keys = &group_by[..level];
+        let below = &group_by[..=level];
+        for (&(name, expression), inputs) in formulas.iter().zip(&reads) {
+            let kept = |input: &String| {
+                keys.contains(&input.as_str())
+                    || (first_read.contains(input) && !below.contains(&input.as_str()))
+            };
+            if inputs.iter().all(kept) {
+                continue;
+            }
+            let here = compiled(expression, keys)?.result_type().clone();
+            let before = compiled(expression, below)?.result_type().clone();
+            if here != before {
+                let (was, is) = (java_class(&before), java_class(&here));
+                let component = |column_type: &ColumnType| {
+                    column_type
+                        .list_element()
+                        .map_or("null".to_string(), java_class)
+                };
+                return Err(HierarchicalError::IllegalArgument(if was != is {
+                    format!(
+                        "Inconsistent return type in rollup for Formula column '{name}': \
+                         previous level was {was}, but level {level} is {is}"
+                    )
+                } else {
+                    format!(
+                        "Inconsistent return component type in rollup for Formula column \
+                         '{name}': previous level was {}, but level {level} is {}",
+                        component(&before),
+                        component(&here)
+                    )
+                }));
+            }
+            oxhaven_contracts::unported!(
+                "io.deephaven.engine.table.impl.by.GroupByReaggregateOperator#GroupByReaggregateOperator",
+                "a formula aggregation in a rollup that reads a group-by column, or a column that \
+                 the first formula does not read, which Java fails with a NoSuchColumnException \
+                 for an internal column"
+            );
+        }
+    }
+    Ok(())
+}
+
 /// `source` rolled up by `group_by` with `aggregations`. `compiler` compiles what the
 /// aggregations hold of formulas.
 ///
@@ -179,39 +487,11 @@ pub fn rollup(
     group_by: &[&str],
     compiler: Option<&dyn FormulaCompiler>,
 ) -> Result<RollupTable, HierarchicalError> {
-    for aggregation in aggregations {
-        if let Some(name) = refused_by_java(aggregation) {
-            return Err(HierarchicalError::Unsupported(format!(
-                "Agg{name} is not supported for rollup()"
-            )));
-        }
-        match aggregation {
-            Aggregation::CountWhere { .. } => oxhaven_contracts::unported!(
-                "io.deephaven.engine.table.impl.by.AggregationProcessor.RollupBaseConverter#visit(CountWhere)",
-                "a count where in a rollup"
-            ),
-            Aggregation::Formula { .. } => oxhaven_contracts::unported!(
-                "io.deephaven.engine.table.impl.by.AggregationProcessor.RollupBaseConverter#visit(Formula)",
-                "a formula aggregation in a rollup"
-            ),
-            Aggregation::Columns {
-                spec: AggSpec::Group,
-                ..
-            } => oxhaven_contracts::unported!(
-                "io.deephaven.engine.table.impl.by.AggregationProcessor.RollupBaseConverter#visit(AggSpecGroup)",
-                "a group aggregation in a rollup"
-            ),
-            _ => {}
-        }
-    }
+    check_refusals(source, aggregations, include_constituents)?;
+    check_group_users(aggregations);
     if !group_by.is_empty() {
         check_reaggregation(aggregations, group_by)?;
-    }
-    if source.attributes().blink {
-        oxhaven_contracts::unported!(
-            "io.deephaven.engine.table.impl.by.AggregationProcessor#forRollupBase",
-            "a rollup of a blink table"
-        );
+        check_formulas(source, aggregations, group_by, compiler)?;
     }
     let finest = build_levels(
         source,
@@ -288,11 +568,16 @@ fn build_levels(
     } else {
         (aggregations, None)
     };
+    let formulas = aggregations
+        .iter()
+        .any(|aggregation| matches!(aggregation, Aggregation::Formula { .. }));
     let level = |keys: &[&str]| -> Result<Arc<dyn Table>, HierarchicalError> {
-        let level = match compiler {
-            Some(compiler) => aggregate_with(source, aggregated, false, keys, compiler),
-            None => aggregate(source, aggregated, false, keys),
-        }?;
+        let constants = if formulas {
+            formula_constants(keys)
+        } else {
+            Vec::new()
+        };
+        let level = aggregate_with_constants(source, aggregated, keys, compiler, &constants)?;
         match &hidden {
             Some(hidden) => drop_columns(&level, &[hidden])
                 .map_err(|error| HierarchicalError::IllegalArgument(error.to_string())),
