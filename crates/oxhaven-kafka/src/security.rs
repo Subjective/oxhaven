@@ -37,6 +37,25 @@ pub(crate) fn connection_failure(error: &ClientError, reason: &str) -> Option<St
     ))
 }
 
+/// Keeps the first refusal of TLS or SASL among the error events librdkafka reports, and
+/// logs every event, as `rdkafka`'s own context would.
+pub(crate) fn record(first: &Mutex<Option<String>>, error: &ClientError, reason: &str) {
+    tracing::warn!(target: "librdkafka", "{error}: {reason}");
+    if let Some(failure) = connection_failure(error, reason) {
+        let mut first = first.lock().unwrap_or_else(|p| p.into_inner());
+        first.get_or_insert(failure);
+    }
+}
+
+/// The most events served between two requests for metadata: all there are, in practice.
+/// librdkafka puts its logs on the queue its errors are on, and a poll serves one event.
+/// It keeps quiet about an error identical to the last one, but when a name resolves to
+/// two addresses and one of them refuses connections (`localhost` as `::1` and
+/// `127.0.0.1`, to a broker listening on the second), the errors alternate, none is
+/// identical to the one before, and every attempt queues a log and an error, several a
+/// second. One event a slice fell behind them, and the refusal waited for the timeout.
+pub(crate) const EVENTS_PER_SLICE: usize = 1000;
+
 /// The context of a consumer: it keeps the first refusal of TLS or SASL that librdkafka
 /// reports, for the calls that wait on a broker to end with.
 #[derive(Default)]
@@ -53,10 +72,7 @@ impl Watch {
 
 impl ClientContext for Watch {
     fn error(&self, error: ClientError, reason: &str) {
-        if let Some(failure) = connection_failure(&error, reason) {
-            let mut first = self.failure.lock().unwrap_or_else(|p| p.into_inner());
-            first.get_or_insert(failure);
-        }
+        record(&self.failure, &error, reason);
     }
 }
 

@@ -23,6 +23,15 @@ use oxhaven_testkit::ReferenceTable;
 const PLAIN: &str = "org.apache.kafka.common.security.plain.PlainLoginModule";
 const SCRAM: &str = "org.apache.kafka.common.security.scram.ScramLoginModule";
 
+/// Prints librdkafka's logs and error events with the output of a test that fails, so that
+/// a failure in CI says what the client saw.
+fn trace() {
+    let subscriber = tracing_subscriber::fmt()
+        .with_test_writer()
+        .with_max_level(tracing::Level::DEBUG);
+    let _ = subscriber.try_init();
+}
+
 fn port(name: &str) -> String {
     std::env::var(name).unwrap_or_else(|_| panic!("{name} is unset; run tests/broker.sh"))
 }
@@ -160,6 +169,7 @@ fn values(config: &Properties, topic: &str, rows: u64) -> Vec<String> {
 
 /// Records go out and come back over `config`, and the topic is listed.
 fn round_trip(config: &Properties) {
+    trace();
     let topic = fresh("secure");
     produce(config, &topic, &["one", "two"]).unwrap();
     assert_eq!(values(config, &topic, 2), ["one", "two"]);
@@ -170,21 +180,42 @@ fn round_trip(config: &Properties) {
 /// What `consume`, `produce` and `topics` say over `config`, which the broker refuses:
 /// each fails, and in a few seconds, not after `default.api.timeout.ms`.
 fn refused(config: &Properties) -> [String; 3] {
-    let started = Instant::now();
-    let graph = SteppedUpdateGraph::new();
-    let shared: Arc<dyn UpdateGraph> = graph.clone();
-    let consumed = consume(shared, &consume_options(config, "oxhaven_one"));
-    let consumed = consumed.err().expect("the consumer is refused").to_string();
-    let produced = produce(config, &fresh("refused"), &["x"]);
-    let produced = produced.expect_err("the producer is refused").to_string();
-    let listed = oxhaven_kafka::topics(config);
-    let listed = listed.expect_err("the listing is refused").to_string();
+    trace();
+    let timed = |call: &dyn Fn() -> String| {
+        let started = Instant::now();
+        let error = call();
+        (error, started.elapsed())
+    };
+    let consumed = timed(&|| {
+        let graph = SteppedUpdateGraph::new();
+        let shared: Arc<dyn UpdateGraph> = graph.clone();
+        let consumed = consume(shared, &consume_options(config, "oxhaven_one"));
+        consumed.err().expect("the consumer is refused").to_string()
+    });
+    let produced = timed(&|| {
+        let produced = produce(config, &fresh("refused"), &["x"]);
+        produced.expect_err("the producer is refused").to_string()
+    });
+    let listed = timed(&|| {
+        let listed = oxhaven_kafka::topics(config);
+        listed.expect_err("the listing is refused").to_string()
+    });
+    let calls = [
+        ("consume", consumed),
+        ("produce", produced),
+        ("topics", listed),
+    ];
+    let total: Duration = calls.iter().map(|(_, (_, elapsed))| *elapsed).sum();
+    let each: Vec<String> = calls
+        .iter()
+        .map(|(call, (error, elapsed))| format!("{call} after {elapsed:?}: {error}"))
+        .collect();
     assert!(
-        started.elapsed() < Duration::from_secs(20),
-        "refused after {:?}",
-        started.elapsed()
+        total < Duration::from_secs(20),
+        "refused after {total:?}\n{}",
+        each.join("\n")
     );
-    [consumed, produced, listed]
+    calls.map(|(_, (error, _))| error)
 }
 
 fn assert_all_contain(errors: &[String; 3], words: &[&str]) {

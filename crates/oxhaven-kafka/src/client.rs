@@ -16,7 +16,7 @@ use rdkafka::metadata::Metadata;
 use rdkafka::{Offset, TopicPartitionList};
 
 use crate::config::{ClientSettings, Reset};
-use crate::security::Watch;
+use crate::security::{Watch, EVENTS_PER_SLICE};
 use crate::{property, InitialOffset, KafkaError, Record, RecordSource};
 
 /// How long one poll waits for the first record, as the half second (at most)
@@ -64,7 +64,9 @@ pub(crate) fn metadata(
         };
         // Serves the consumer's events, which hands their errors to the context. Nothing
         // is assigned yet, so no record can come.
-        let _ = consumer.poll(Duration::ZERO);
+        for _ in 0..EVENTS_PER_SLICE {
+            let _ = consumer.poll(Duration::ZERO);
+        }
         if let Some(failure) = consumer.context().failure() {
             return Err(failure);
         }

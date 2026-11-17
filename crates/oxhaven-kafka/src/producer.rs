@@ -39,10 +39,7 @@ impl Deliveries {
 
 impl ClientContext for Deliveries {
     fn error(&self, error: ClientError, reason: &str) {
-        if let Some(failure) = crate::security::connection_failure(&error, reason) {
-            let mut first = self.refused.lock().unwrap_or_else(|p| p.into_inner());
-            first.get_or_insert(failure);
-        }
+        crate::security::record(&self.refused, &error, reason);
     }
 }
 
@@ -133,7 +130,9 @@ impl ClientSink {
             if known(self.partitions.get(topic).copied()) {
                 return Ok(());
             }
-            self.producer.poll(Duration::ZERO);
+            for _ in 0..crate::security::EVENTS_PER_SLICE {
+                self.producer.poll(Duration::ZERO);
+            }
             let refused = self.producer.context().refused.lock();
             if let Some(refused) = refused.unwrap_or_else(|p| p.into_inner()).clone() {
                 return Err(refused);

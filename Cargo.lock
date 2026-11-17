@@ -1356,6 +1356,8 @@ dependencies = [
  "prost-reflect",
  "protox",
  "rdkafka",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

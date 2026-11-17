@@ -666,6 +666,18 @@ the broker's message for SASL (`Invalid username or password`) and OpenSSL's for
 (`certificate verify failed`); Java's words differ (`PARITY.md` A5). After a table exists,
 such an error ends its consumption, as an `AuthenticationException` from Java's `poll`.
 
+The errors are recognised by librdkafka's codes, `RD_KAFKA_RESP_ERR__AUTHENTICATION` and
+`RD_KAFKA_RESP_ERR__SSL`, with one exception. Under TLS 1.3 a client certificate the broker
+refuses (or none) shows only as `RD_KAFKA_RESP_ERR__TRANSPORT`, and there the text decides:
+OpenSSL's `SSL alert number`. While waiting, the client reads every event librdkafka has
+queued between two requests for metadata, not one. A name that resolves to an address
+nobody listens on, as `localhost` does to `::1` on a runner whose broker listens on
+`127.0.0.1` only, makes librdkafka alternate between two errors. Neither is then identical
+to the one before, so it reports every attempt, with a log line each. Read one event at a
+time, the refusal stayed queued behind them until the timeout: the first CI run of task
+7.4.5 failed so. Every error event is also logged (`tracing`, target `librdkafka`), and the
+broker tests print them with a failing test's output.
+
 ## The engine side
 
 Since task 7.4.2 (`tasks/7.4.2-stream-adapter.md`) the engine has Java's stream adapter,
