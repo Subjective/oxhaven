@@ -1,10 +1,12 @@
 //! The Oxhaven server binary.
 
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 
+use oxhaven_column::parallel;
 use oxhaven_server::console::logs::{self, LogBuffer};
 use oxhaven_server::session::{random_psk, AuthHandler, AuthHandlers, DEFAULT_TOKEN_EXPIRE_MS};
 use oxhaven_server::storage::StorageRoot;
@@ -25,6 +27,9 @@ Usage: oxhaven-server [options]
   --psk <key>               pre-shared key; also read from OXHAVEN_PSK; random if absent
   --token-expire-ms <ms>    session token lifetime (default 300000)
   --cycle-ms <ms>           target update graph cycle duration (default 1000)
+  --threads <count>         threads one table operation may use for a filter, a formula
+                            or a read of many rows (default: the value of OXHAVEN_THREADS,
+                            otherwise the number of cores available)
   --demo-tables             offer the application ide_app with the tables ide_static and
                             ide_ticking, which the web IDE acceptance test expects
   --app-dir <directory>     start the applications of the .app files in the directory: each
@@ -52,6 +57,7 @@ struct Args {
     psk: Option<String>,
     token_expire_ms: i64,
     cycle: Duration,
+    threads: Option<NonZeroUsize>,
     demo_tables: bool,
     app_dir: Option<PathBuf>,
     console: Option<String>,
@@ -69,6 +75,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
         psk: std::env::var("OXHAVEN_PSK").ok(),
         token_expire_ms: DEFAULT_TOKEN_EXPIRE_MS,
         cycle: DEFAULT_TARGET_CYCLE_DURATION,
+        threads: None,
         demo_tables: false,
         app_dir: None,
         console: None,
@@ -98,6 +105,10 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
                     .map(Duration::from_millis)
                     .map_err(|e| format!("--cycle-ms: {e}"))?
             }
+            "--threads" => {
+                let count = value()?.parse().map_err(|e| format!("--threads: {e}"))?;
+                parsed.threads = Some(count)
+            }
             "--demo-tables" => parsed.demo_tables = true,
             "--app-dir" => parsed.app_dir = Some(PathBuf::from(value()?)),
             "--console" => parsed.console = Some(value()?),
@@ -113,6 +124,15 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
         }
     }
     Ok(parsed)
+}
+
+/// Gives the engine the thread count `--threads` names, if it names one, and returns the
+/// count table operations use from now on.
+fn use_threads(args: &Args) -> usize {
+    if let Some(count) = args.threads {
+        parallel::set_threads(count.get());
+    }
+    parallel::threads()
 }
 
 fn auth_handlers(args: &Args) -> Result<AuthHandlers, String> {
@@ -195,6 +215,7 @@ async fn run(args: Args, logs: Arc<LogBuffer>) -> Result<(), String> {
         target_cycle_duration: Some(args.cycle),
     })?;
     state.logs = logs;
+    tracing::info!("Table operations use up to {} threads", use_threads(&args));
     if let Some(directory) = &args.storage_root {
         let storage = StorageRoot::open(directory)?;
         tracing::info!("Storage in {}", storage.path().display());
@@ -254,5 +275,60 @@ async fn main() -> ExitCode {
             eprintln!("{message}");
             ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(args: &[&str]) -> Result<Args, String> {
+        parse_args(args.iter().map(|arg| arg.to_string()))
+    }
+
+    #[test]
+    fn threads_is_a_positive_count_and_absent_by_default() {
+        assert_eq!(parse(&[]).ok().and_then(|args| args.threads), None);
+        let args = parse(&["--port", "10888", "--threads", "3"]).ok().unwrap();
+        assert_eq!(
+            (args.port, args.threads.map(NonZeroUsize::get)),
+            (10888, Some(3))
+        );
+        for (bad, message) in [
+            (
+                &["--threads", "0"][..],
+                "--threads: number would be zero for non-zero type",
+            ),
+            (
+                &["--threads", "-2"][..],
+                "--threads: invalid digit found in string",
+            ),
+            (
+                &["--threads", "many"][..],
+                "--threads: invalid digit found in string",
+            ),
+        ] {
+            assert_eq!(parse(bad).err().as_deref(), Some(message));
+        }
+        let missing = parse(&["--threads"]).err().unwrap();
+        assert!(missing.starts_with("--threads needs a value"), "{missing}");
+        assert!(USAGE.contains("--threads <count>"));
+    }
+
+    /// The count reaches the engine: a table operation asks `parallel::threads`.
+    #[test]
+    fn the_thread_option_sets_the_count_table_operations_use() {
+        let default = parallel::threads();
+        let other = if default == 3 { 5 } else { 3 };
+        let asked = parse(&["--threads", &other.to_string()]).ok().unwrap();
+        assert_eq!(use_threads(&asked), other);
+        assert_eq!(parallel::threads(), other);
+        // On another thread too: the count is the process's.
+        let elsewhere = std::thread::spawn(parallel::threads).join().unwrap();
+        assert_eq!(elsewhere, other);
+        // Without the option the count is left as it is.
+        assert_eq!(use_threads(&parse(&[]).ok().unwrap()), other);
+        parallel::set_threads(0);
+        assert_eq!(parallel::threads(), default);
     }
 }

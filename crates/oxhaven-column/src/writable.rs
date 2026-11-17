@@ -1,11 +1,11 @@
 //! A writable column addressed by row key, with previous values for the current cycle.
 
 use crate::tables::named_by;
-use crate::tracked::{Clock, Reader, Tracked};
-use crate::{arrow_failure, failure};
-use arrow::array::{new_null_array, Array, ArrayRef};
-use arrow::compute::interleave;
-use oxhaven_contracts::rowset::{RowKey, RowSet, NULL_ROW_KEY};
+use crate::tracked::{Clock, Tracked};
+use crate::{arrow_failure, failure, parallel};
+use arrow::array::{new_null_array, Array, ArrayRef, UInt32Array};
+use arrow::compute::{concat, interleave, take};
+use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::shift::RowSetShiftData;
 use oxhaven_contracts::table::{ColumnSource, Table, TableFailure};
@@ -15,8 +15,13 @@ use std::sync::{Arc, PoisonError, RwLock};
 /// A value's place in storage: the batch it was written in and its index there.
 type Slot = (u32, u32);
 
-/// Where every unset row key reads from: the single null of batch 0.
+/// Where every unset row key reads from: the single null of batch 0. No written value is
+/// in batch 0, so this slot also stands for "no value" in the map of slots.
 const NULL_SLOT: Slot = (0, 0);
+
+/// Scattered rows are gathered in pieces of this many rows, on the threads [`parallel`]
+/// allows, when there are at least two pieces of them.
+const GATHER_PIECE_ROWS: usize = 1 << 16;
 
 /// A sparse, writable column source. A row key that was never written, or was removed, reads
 /// as null.
@@ -36,9 +41,15 @@ const NULL_SLOT: Slot = (0, 0);
 /// # Storage
 ///
 /// Values are kept as the Arrow arrays they were written from; a write stores its array and
-/// points the written row keys at it, and a read gathers values with Arrow's `interleave`.
-/// Nothing here is specific to a column type. Arrays whose values were mostly overwritten or
-/// removed are compacted away on a later write.
+/// points the written row keys at it. Nothing here is specific to a column type. Arrays
+/// whose values were mostly overwritten or removed are compacted away on a later write.
+///
+/// The place of each row key's value is kept in a flat array indexed by row key while the
+/// keys are dense, as those of an in-memory table, an input table or a stream's table
+/// are, and in an ordered map otherwise. A read of rows that were written in row order is
+/// a slice of the written array, or a concatenation of a few; any other read gathers the
+/// values, in pieces on several threads when there are many. A read takes the source's
+/// lock once, whatever the number of rows.
 ///
 /// Behavior: io.deephaven.engine.table.impl.sources.SparseArrayColumnSource and
 /// io.deephaven.engine.table.impl.sources.IntegerSparseArraySource.
@@ -80,7 +91,7 @@ impl WritableSource {
         Self {
             column_type,
             state: RwLock::new(State {
-                slots: Tracked::new(),
+                slots: Tracked::new(NULL_SLOT),
                 batches: vec![null],
                 stored: 0,
                 tables,
@@ -188,16 +199,93 @@ impl WritableSource {
     fn chunk_at(&self, rows: &RowSet, use_prev: bool) -> Result<ArrayRef, TableFailure> {
         let state = self.read();
         let reader = state.slots.read(use_prev);
-        let mut slots = vec![NULL_SLOT; rows.size() as usize];
-        let mut offset = 0;
-        for range in rows.ranges() {
-            reader.for_each_in(range.first(), range.last(), |key, slot| {
-                slots[offset + (key - range.first()) as usize] = slot;
-            });
-            offset += range.size() as usize;
+        let within = |array: &&[Slot]| {
+            let last = rows
+                .last_row_key()
+                .and_then(|last| usize::try_from(last).ok());
+            last.is_none_or(|last| last < array.len())
+        };
+        if let Some(array) = reader.flat_array().filter(within) {
+            // Rows written in row order are found without a copy of their slots.
+            let slices = rows
+                .ranges()
+                .map(|range| &array[range.first() as usize..=range.last() as usize]);
+            if let Some(runs) = runs_of(slices, rows.size() as usize) {
+                return concat_runs(&state.batches, &runs);
+            }
         }
-        gather(&state.batches, &slots)
+        let slots = reader.values_of(rows);
+        let batches = &state.batches;
+        in_pieces(slots.len(), |offset, length| {
+            gather(batches, &slots[offset..offset + length])
+        })
     }
+}
+
+/// `piece(offset, length)` for all `rows` rows at once, or for pieces of
+/// [`GATHER_PIECE_ROWS`] rows on several threads, concatenated in row order. The first
+/// piece that fails gives the failure.
+fn in_pieces(
+    rows: usize,
+    piece: impl Fn(usize, usize) -> Result<ArrayRef, TableFailure> + Sync,
+) -> Result<ArrayRef, TableFailure> {
+    if rows < 2 * GATHER_PIECE_ROWS || parallel::threads() == 1 {
+        return piece(0, rows);
+    }
+    let pieces = parallel::pieces_of(rows, GATHER_PIECE_ROWS);
+    let gathered = parallel::map_pieces(pieces.len(), |index| {
+        let (offset, length) = pieces[index];
+        piece(offset, length)
+    });
+    let gathered = gathered.into_iter().collect::<Result<Vec<_>, _>>()?;
+    let pieces: Vec<&dyn Array> = gathered.iter().map(|piece| piece.as_ref()).collect();
+    concat(&pieces).map_err(arrow_failure)
+}
+
+/// A run of slots that follow each other in one batch: the batch, the index of the first
+/// and how many.
+type Run = (u32, u32, usize);
+
+/// The runs that the `rows` slots of `slices`, taken one slice after the other, are made
+/// of, if they are few enough (one for every 32 rows) for a concatenation of slices of the
+/// batches to cost less than a gather; `None` otherwise, and for no rows.
+fn runs_of<'a>(slices: impl Iterator<Item = &'a [Slot]>, rows: usize) -> Option<Vec<Run>> {
+    let most = (rows / 32).max(1);
+    let mut runs: Vec<Run> = Vec::new();
+    for slice in slices {
+        let mut rest = slice;
+        while let Some(&(batch, index)) = rest.first() {
+            // The slots at the start of `rest` that follow each other from this one.
+            let next = (u64::from(index)..).zip(rest);
+            let length = next
+                .take_while(|&(place, &(b, i))| b == batch && u64::from(i) == place)
+                .count();
+            let continued = |&(b, first, length): &Run| {
+                b == batch && u64::from(first) + length as u64 == u64::from(index)
+            };
+            if let Some(run) = runs.last_mut().filter(|run| continued(run)) {
+                run.2 += length;
+            } else if runs.len() == most {
+                return None;
+            } else {
+                runs.push((batch, index, length));
+            }
+            rest = &rest[length..];
+        }
+    }
+    (!runs.is_empty()).then_some(runs)
+}
+
+/// The values of `runs`, one run after the other.
+fn concat_runs(batches: &[ArrayRef], runs: &[Run]) -> Result<ArrayRef, TableFailure> {
+    let slice =
+        |&(batch, first, length): &Run| batches[batch as usize].slice(first as usize, length);
+    if let [run] = runs {
+        return Ok(slice(run));
+    }
+    let slices: Vec<ArrayRef> = runs.iter().map(slice).collect();
+    let slices: Vec<&dyn Array> = slices.iter().map(|slice| slice.as_ref()).collect();
+    concat(&slices).map_err(arrow_failure)
 }
 
 impl State {
@@ -264,14 +352,14 @@ impl State {
         if writer.map().has_prev_record() {
             return;
         }
-        let live = writer.map().current().len() as u64;
+        let live = writer.map().len() as u64;
         let batches = self.batches.len() as u64 - 1;
         let mostly_dead = self.stored > 2 * live + 1024;
         let fragmented = batches > 64 && batches * 64 > live;
         if !(mostly_dead || fragmented) || live > u64::from(u32::MAX) {
             return;
         }
-        let slots: Vec<Slot> = writer.map().current().values().copied().collect();
+        let slots = writer.map().values();
         let Ok(compacted) = gather(&self.batches, &slots) else {
             return;
         };
@@ -290,31 +378,38 @@ impl State {
 
 /// The values at `slots`, in order.
 fn gather(batches: &[ArrayRef], slots: &[Slot]) -> Result<ArrayRef, TableFailure> {
+    if let Some(runs) = runs_of(std::iter::once(slots), slots.len()) {
+        return concat_runs(batches, &runs);
+    }
     // Hand `interleave` only the batches this read touches, so a read costs what it returns
-    // and not the number of batches stored.
+    // and not the number of batches stored. Slots that follow each other are mostly of one
+    // batch, so the last batch is remembered before the map is asked.
     let mut dense: HashMap<u32, usize> = HashMap::new();
     let mut used: Vec<&dyn Array> = Vec::new();
+    let mut last = None;
     let indices: Vec<(usize, usize)> = slots
         .iter()
         .map(|&(batch, index)| {
-            let position = *dense.entry(batch).or_insert_with(|| {
-                used.push(batches[batch as usize].as_ref());
-                used.len() - 1
-            });
+            let position = match last {
+                Some((known, position)) if known == batch => position,
+                _ => *dense.entry(batch).or_insert_with(|| {
+                    used.push(batches[batch as usize].as_ref());
+                    used.len() - 1
+                }),
+            };
+            last = Some((batch, position));
             (position, index as usize)
         })
         .collect();
-    if used.is_empty() {
-        used.push(batches[0].as_ref());
+    match used[..] {
+        [] => interleave(&[batches[0].as_ref()], &indices).map_err(arrow_failure),
+        [only] => {
+            // One batch: a gather by position, which carries four bytes a row.
+            let positions = UInt32Array::from_iter_values(slots.iter().map(|slot| slot.1));
+            take(only, &positions, None).map_err(arrow_failure)
+        }
+        _ => interleave(&used, &indices).map_err(arrow_failure),
     }
-    interleave(&used, &indices).map_err(arrow_failure)
-}
-
-fn slot_of(reader: &Reader<'_, Slot>, key: RowKey) -> Slot {
-    if key == NULL_ROW_KEY {
-        return NULL_SLOT;
-    }
-    reader.get(key).unwrap_or(NULL_SLOT)
 }
 
 impl ColumnSource for WritableSource {
@@ -335,8 +430,13 @@ impl ColumnSource for WritableSource {
     fn chunk_by_keys(&self, keys: &[RowKey], use_prev: bool) -> Result<ArrayRef, TableFailure> {
         let state = self.read();
         let reader = state.slots.read(use_prev);
-        let slots: Vec<Slot> = keys.iter().map(|&k| slot_of(&reader, k)).collect();
-        gather(&state.batches, &slots)
+        let batches = &state.batches;
+        in_pieces(keys.len(), |offset, length| {
+            let keys = &keys[offset..offset + length];
+            // `NULL_ROW_KEY` is negative, and no negative key has a value.
+            let slots: Vec<Slot> = keys.iter().map(|&key| reader.get(key)).collect();
+            gather(batches, &slots)
+        })
     }
 }
 
@@ -349,7 +449,9 @@ mod tests {
         ListArray, StringArray, TimestampNanosecondArray, UInt16Array,
     };
     use arrow::datatypes::{DataType, Int32Type, Int64Type};
+    use oxhaven_contracts::rowset::NULL_ROW_KEY;
     use oxhaven_contracts::shift::ShiftRange;
+    use std::collections::BTreeMap;
 
     fn int_array(values: impl IntoIterator<Item = Option<i32>>) -> ArrayRef {
         Arc::new(values.into_iter().collect::<Int32Array>())
@@ -861,5 +963,225 @@ mod tests {
             assert_eq!(sparse.data_type(), &column_type.arrow_type());
             assert!(sparse.is_null(0) && sparse.is_valid(1), "{column_type:?}");
         }
+    }
+
+    /// A generator of the numbers the tests below draw.
+    fn random_from(mut state: u64) -> impl FnMut(u64) -> u64 {
+        move |below| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state % below
+        }
+    }
+
+    /// What a model of a source reads at `keys`: `None` for a key without a value, as for
+    /// one that holds a null.
+    fn model_at(model: &BTreeMap<RowKey, Option<i32>>, keys: &[RowKey]) -> Vec<Option<i32>> {
+        keys.iter()
+            .map(|key| model.get(key).copied().flatten())
+            .collect()
+    }
+
+    /// Random fills, removes and shifts of keys near and far, over many cycles, against a
+    /// plain map with a copy of itself from the start of the cycle: reads of row sets and
+    /// of keys, now and before, while the slots are in an array and while they are in a map.
+    #[test]
+    fn a_source_agrees_with_a_map_through_random_changes() {
+        let clock = ManualClock::idle_at(1);
+        let source = WritableSource::new(ColumnType::Int);
+        source.start_tracking_prev(clock.clone());
+        let mut model: BTreeMap<RowKey, Option<i32>> = BTreeMap::new();
+        let mut random = random_from(0x9e37_79b9_7f4a_7c15);
+        let mut forms = [0, 0];
+        for cycle in 0..300 {
+            let before = model.clone();
+            clock.start_cycle();
+            // Phases of dense keys, of keys spread wide, and of removals back to few keys.
+            let (spread, removes) = match (cycle / 50) % 3 {
+                0 => (3000, 1),
+                1 => (1 << 30, 2),
+                _ => (3000, 8),
+            };
+            for _ in 0..6 {
+                let first = random(spread) as RowKey;
+                let mut keys: Vec<RowKey> = (first..first + random(40) as RowKey).collect();
+                keys.extend((0..random(8)).map(|_| random(spread) as RowKey));
+                let rows = RowSet::from_keys(keys.iter().copied());
+                match random(10) {
+                    kind if kind < removes => {
+                        source.remove(&rows);
+                        for key in rows.iter() {
+                            model.remove(&key);
+                        }
+                    }
+                    8 => {
+                        // Every move reads its key before any move writes one.
+                        let delta = random(7) as i64 - 3;
+                        let moved = rows.sub_set_by_key_range(3, RowKey::MAX);
+                        source.shift(&moved, delta).unwrap();
+                        let lifted: Vec<_> = moved.iter().map(|k| (k, model.remove(&k))).collect();
+                        for (key, value) in lifted {
+                            match value {
+                                Some(value) => model.insert(key + delta, value),
+                                None => model.remove(&(key + delta)),
+                            };
+                        }
+                    }
+                    9 => {
+                        // In the order drawn, with repeats: the last value of a key wins.
+                        let values: Vec<Option<i32>> =
+                            keys.iter().map(|_| Some(random(1000) as i32)).collect();
+                        source
+                            .fill_by_keys(&keys, &int_array(values.clone()))
+                            .unwrap();
+                        model.extend(keys.iter().copied().zip(values));
+                    }
+                    _ => {
+                        let value = |_| (random(9) > 0).then(|| random(1000) as i32);
+                        let values: Vec<Option<i32>> = rows.iter().map(value).collect();
+                        source.fill(&rows, &int_array(values.clone())).unwrap();
+                        model.extend(rows.iter().zip(values));
+                    }
+                }
+            }
+            if cycle % 50 == 49 && spread > 3000 {
+                // Drop the keys far away, so that the rest can be dense again.
+                let far = RowSet::from_keys(model.range(3010..).map(|(key, _)| *key));
+                source.remove(&far);
+                model.retain(|key, _| *key < 3010);
+            }
+            let known = model.keys().chain(before.keys()).copied();
+            let rows = RowSet::from_keys(known.chain([0, 1, 2999, 3050, (1 << 30) + 50]));
+            let mut keys: Vec<RowKey> = rows.iter().collect();
+            keys.reverse();
+            keys.extend([NULL_ROW_KEY, 7, 7, (1 << 31) + 1]);
+            let ordered: Vec<RowKey> = rows.iter().collect();
+            let now = [model_at(&model, &ordered), model_at(&model, &keys)];
+            let then = [model_at(&before, &ordered), model_at(&before, &keys)];
+            assert_eq!(ints(source.chunk(&rows)), now[0], "{cycle}");
+            assert_eq!(ints(source.chunk_by_keys(&keys, false)), now[1], "{cycle}");
+            assert_eq!(ints(source.prev_chunk(&rows)), then[0], "{cycle}");
+            assert_eq!(ints(source.chunk_by_keys(&keys, true)), then[1], "{cycle}");
+            // A part of the rows, so that changed keys lie before, in and after it.
+            let part = rows.sub_set_by_position_range(rows.size() / 3, rows.size() / 2);
+            let ordered: Vec<RowKey> = part.iter().collect();
+            assert_eq!(ints(source.chunk(&part)), model_at(&model, &ordered));
+            assert_eq!(ints(source.prev_chunk(&part)), model_at(&before, &ordered));
+            clock.finish_cycle();
+            assert_eq!(ints(source.prev_chunk(&rows)), now[0], "{cycle}");
+            assert_eq!(ints(source.chunk_by_keys(&keys, true)), now[1], "{cycle}");
+            assert_eq!(source.read().slots.len(), model.len(), "{cycle}");
+            forms[usize::from(source.read().slots.is_flat_array())] += 1;
+        }
+        // Both forms were in use.
+        assert!(forms[0] > 20 && forms[1] > 20, "{forms:?}");
+    }
+
+    /// More rows than two pieces, written in three arrays and then changed in a cycle, read
+    /// on one thread and on several: the same cells, now and before, in row order, at
+    /// scattered rows and at keys in any order, strings among them.
+    #[test]
+    fn many_rows_are_read_the_same_on_any_number_of_threads() {
+        let len = 5 * GATHER_PIECE_ROWS as i64 + 77;
+        let cell = |k: i64| (k % 11 != 0).then_some((k * 7919 % 100_003) as i32);
+        let text_of = |values: &[Option<i32>]| -> ArrayRef {
+            let text = values.iter().map(|v| v.map(|v| format!("s{v}")));
+            Arc::new(text.collect::<StringArray>())
+        };
+        let clock = ManualClock::idle_at(3);
+        let ints_source = WritableSource::new(ColumnType::Int);
+        let text_source = WritableSource::new(ColumnType::String);
+        ints_source.start_tracking_prev(clock.clone());
+        text_source.start_tracking_prev(clock.clone());
+        type Model = BTreeMap<RowKey, Option<i32>>;
+        let mut model = Model::new();
+        let write = |model: &mut Model, rows: RowSet, cell: &dyn Fn(i64) -> Option<i32>| {
+            let values: Vec<Option<i32>> = rows.iter().map(cell).collect();
+            ints_source.fill(&rows, &int_array(values.clone())).unwrap();
+            text_source.fill(&rows, &text_of(&values)).unwrap();
+            model.extend(rows.iter().zip(values));
+        };
+        // Two arrays one after the other, and a third over rows of both.
+        write(&mut model, RowSet::from_range(0, len / 2), &cell);
+        write(&mut model, RowSet::from_range(len / 2 + 1, len - 1), &cell);
+        let some = RowSet::from_keys((0..len).filter(|k| k % 1000 < 3));
+        write(&mut model, some, &|k| Some(-(k as i32)));
+        let before = model.clone();
+        clock.start_cycle();
+        let some = RowSet::from_keys((0..len).filter(|k| k % 777 == 5));
+        write(&mut model, some, &|k| (k % 2 == 0).then_some(k as i32));
+        let gone = RowSet::from_range(100_000, 100_020);
+        ints_source.remove(&gone);
+        text_source.remove(&gone);
+        model.retain(|key, _| !gone.contains(*key));
+
+        let all = RowSet::from_range(0, len + 9);
+        // Runs of one to three keys with gaps, and one long run across a piece's edge.
+        let mut some: Vec<RowKey> = (0..len).filter(|k| k % 5 < 1 + k % 3).collect();
+        some.extend(200_000..200_000 + GATHER_PIECE_ROWS as i64);
+        let some = RowSet::from_keys(some);
+        assert!(some.size() as usize > 2 * GATHER_PIECE_ROWS);
+        // Every key once in an order that is not theirs, then a null key and a repeat.
+        let mut keys: Vec<RowKey> = (0..len).map(|i| (i * 7919) % len).collect();
+        keys.extend([NULL_ROW_KEY, 5, 5, len + 1]);
+        for threads in [1, 2, 4] {
+            parallel::with_threads(threads, || {
+                for (model, use_prev) in [(&model, false), (&before, true)] {
+                    for rows in [&all, &some] {
+                        let ordered: Vec<RowKey> = rows.iter().collect();
+                        let expected = model_at(model, &ordered);
+                        let read = |source: &WritableSource| match use_prev {
+                            true => source.prev_chunk(rows).unwrap(),
+                            false => source.chunk(rows).unwrap(),
+                        };
+                        let what = format!("{threads} threads, previous {use_prev}");
+                        assert!(ints(Ok(read(&ints_source))) == expected, "{what}");
+                        assert!(read(&text_source) == text_of(&expected), "{what}");
+                    }
+                    let expected = model_at(model, &keys);
+                    let what = format!("keys, {threads} threads, previous {use_prev}");
+                    let read = ints_source.chunk_by_keys(&keys, use_prev);
+                    assert!(ints(read) == expected, "{what}");
+                    let read = text_source.chunk_by_keys(&keys, use_prev).unwrap();
+                    assert!(read == text_of(&expected), "{what}");
+                }
+            });
+        }
+    }
+
+    /// Rows read in the order they were written in are slices of the written arrays: no
+    /// value is copied for a read of one array, and a read across arrays concatenates.
+    #[test]
+    fn rows_written_in_row_order_are_read_without_a_gather() {
+        let source = WritableSource::new(ColumnType::Int);
+        let first = int_array((0..5000).map(Some));
+        source.fill(&RowSet::from_range(0, 4999), &first).unwrap();
+        let second = int_array((5000..9000).map(Some));
+        source
+            .fill(&RowSet::from_range(5000, 8999), &second)
+            .unwrap();
+        let start = |array: &ArrayRef| array.to_data().buffers()[0].as_ptr();
+
+        let whole = source.chunk(&RowSet::from_range(0, 4999)).unwrap();
+        assert_eq!(start(&whole), start(&first));
+        let part = source.chunk(&RowSet::from_range(5100, 5199)).unwrap();
+        // The hundredth int of the second array, in the same memory.
+        assert_eq!(start(&part), start(&second).wrapping_add(400));
+        assert_eq!(ints(Ok(part)), (5100..5200).map(Some).collect::<Vec<_>>());
+
+        // Three runs: two of the first array, around a gap, and one of the second.
+        let mut rows = RowSet::from_range(4000, 5999);
+        rows.remove(&RowSet::from_range(4500, 4599));
+        let expected: Vec<Option<i32>> = rows.iter().map(|k| Some(k as i32)).collect();
+        assert_eq!(ints(source.chunk(&rows)), expected);
+        // The same rows by key are runs too, and scattered ones are not.
+        let keys: Vec<RowKey> = rows.iter().collect();
+        assert_eq!(ints(source.chunk_by_keys(&keys, false)), expected);
+        let slots = [(1, 7), (1, 8), (2, 0), (2, 1), (1, 9)];
+        let runs = runs_of([&slots[..2], &slots[2..]].into_iter(), 96);
+        assert_eq!(runs, Some(vec![(1, 7, 2), (2, 0, 2), (1, 9, 1)]));
+        assert_eq!(runs_of([&slots[..]].into_iter(), 95), None);
+        assert_eq!(runs_of(std::iter::empty(), 0), None);
     }
 }

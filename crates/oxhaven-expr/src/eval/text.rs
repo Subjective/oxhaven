@@ -10,9 +10,10 @@ use crate::functions::StringSource;
 use crate::parse::instant::civil_from_days;
 use crate::types::StringMethod;
 use arrow::array::{
-    Array, ArrayRef, ArrowPrimitiveType, AsArray, BooleanArray, Int32Array, PrimitiveArray,
-    StringArray, UInt16Array,
+    Array, ArrayRef, ArrowPrimitiveType, AsArray, BooleanArray, Int32Array, Int64Array,
+    PrimitiveArray, StringArray, UInt16Array,
 };
+use arrow::buffer::OffsetBuffer;
 use arrow::datatypes::{
     DataType, Date32Type, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type,
     Time64NanosecondType, TimeUnit, TimestampNanosecondType, UInt16Type,
@@ -387,12 +388,91 @@ pub(crate) fn new_string_of(
 /// Behavior: `QueryLanguageParser#visit(BinaryExpr)` prints such a `+` as Java's own
 /// operator, which is string concatenation (the Java Language Specification section
 /// 15.18.1).
+///
+/// The result's bytes and offsets are written directly, a row after the other: strings
+/// and whole numbers straight from their arrays, the other types from the strings
+/// [`java_strings`] makes of them. No `String` is made for a row.
 pub(crate) fn concat(left: &dyn Array, right: &dyn Array) -> Result<StringArray, TableFailure> {
-    let left = java_strings(left)?;
-    let right = java_strings(right)?;
-    Ok(StringArray::from_iter_values(
-        left.iter().zip(&right).map(|(l, r)| format!("{l}{r}")),
-    ))
+    let rows = left.len();
+    let (left, right) = (Operand::of(left)?, Operand::of(right)?);
+    let mut bytes = String::with_capacity(left.bytes() + right.bytes());
+    let mut offsets: Vec<i32> = Vec::with_capacity(rows + 1);
+    offsets.push(0);
+    for row in 0..rows {
+        left.print(row, &mut bytes);
+        right.print(row, &mut bytes);
+        offsets.push(bytes.len() as i32);
+    }
+    // As a string array built a value at a time fails.
+    i32::try_from(bytes.len()).expect("offset overflow");
+    let offsets = OffsetBuffer::new(offsets.into());
+    Ok(StringArray::new(offsets, bytes.into_bytes().into(), None))
+}
+
+/// One side of a concatenation, ready to print its rows as [`java_strings`] gives them.
+enum Operand<'a> {
+    Strings(&'a StringArray),
+    Ints(&'a Int32Array),
+    Longs(&'a Int64Array),
+    Printed(Vec<String>),
+}
+
+impl<'a> Operand<'a> {
+    fn of(array: &'a dyn Array) -> Result<Self, TableFailure> {
+        Ok(match array.data_type() {
+            DataType::Utf8 => Operand::Strings(array.as_string::<i32>()),
+            DataType::Int32 => Operand::Ints(array.as_primitive::<Int32Type>()),
+            DataType::Int64 => Operand::Longs(array.as_primitive::<Int64Type>()),
+            _ => Operand::Printed(java_strings(array)?),
+        })
+    }
+
+    /// About how many bytes all the rows print as.
+    fn bytes(&self) -> usize {
+        match self {
+            Operand::Strings(values) => {
+                let offsets = values.value_offsets();
+                (offsets[offsets.len() - 1] - offsets[0]) as usize
+            }
+            Operand::Ints(values) => 6 * values.len(),
+            Operand::Longs(values) => 6 * values.len(),
+            Operand::Printed(texts) => texts.iter().map(String::len).sum(),
+        }
+    }
+
+    /// Appends row `row` to `out`: a null `String` prints as `null`, a null `int` or
+    /// `long` as the value Java reserves for it.
+    fn print(&self, row: usize, out: &mut String) {
+        match self {
+            Operand::Strings(values) if values.is_null(row) => out.push_str("null"),
+            Operand::Strings(values) => out.push_str(values.value(row)),
+            Operand::Ints(values) if values.is_null(row) => print_long(i32::MIN.into(), out),
+            Operand::Ints(values) => print_long(values.value(row).into(), out),
+            Operand::Longs(values) if values.is_null(row) => print_long(i64::MIN, out),
+            Operand::Longs(values) => print_long(values.value(row), out),
+            Operand::Printed(texts) => out.push_str(&texts[row]),
+        }
+    }
+}
+
+/// Appends `value` in decimal, as `Long.toString` and `Integer.toString` print it.
+fn print_long(value: i64, out: &mut String) {
+    // The digits from the last to the first; a `long` has at most 19.
+    let mut digits = [0_u8; 19];
+    let mut used = 0;
+    let mut rest = value.unsigned_abs();
+    loop {
+        digits[used] = b'0' + (rest % 10) as u8;
+        used += 1;
+        rest /= 10;
+        if rest == 0 {
+            break;
+        }
+    }
+    if value < 0 {
+        out.push('-');
+    }
+    out.extend(digits[..used].iter().rev().map(|digit| char::from(*digit)));
 }
 
 fn out_of_bounds(what: std::fmt::Arguments) -> TableFailure {
@@ -621,6 +701,130 @@ pub(crate) fn string_method(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use arrow::array::{Float64Array, Int64Array};
+
+    /// Every pair of operand types, with nulls, the values Java reserves for null, the
+    /// longest numbers, empty and non-ASCII strings, and arrays that are slices of longer
+    /// ones: each row is the two texts `java_strings` gives, one after the other, and no
+    /// row is null.
+    #[test]
+    fn concatenation_prints_each_row_as_java_prints_its_two_sides() {
+        let strings = StringArray::from(vec![
+            Some("skipped"),
+            Some(""),
+            None,
+            Some("a"),
+            Some("né\u{10348}€"),
+            Some("null"),
+            Some("-12"),
+            Some("last"),
+        ]);
+        let ints = Int32Array::from(vec![
+            Some(99),
+            Some(0),
+            None,
+            Some(i32::MIN),
+            Some(i32::MAX),
+            Some(-7),
+            Some(10),
+            Some(-1_000_000),
+        ]);
+        let longs = Int64Array::from(vec![
+            Some(99),
+            Some(i64::MIN),
+            Some(i64::MAX),
+            None,
+            Some(0),
+            Some(-1),
+            Some(1_000_000_000_000),
+            Some(-90),
+        ]);
+        let doubles = Float64Array::from(vec![
+            Some(9.0),
+            Some(1.5),
+            None,
+            Some(f64::NAN),
+            Some(-0.0),
+            Some(1.0e7),
+            Some(0.1),
+            Some(-2.0),
+        ]);
+        let flags = BooleanArray::from(vec![
+            Some(true),
+            None,
+            Some(true),
+            Some(false),
+            None,
+            Some(true),
+            Some(false),
+            Some(false),
+        ]);
+        let chars = UInt16Array::from(vec![
+            Some(65),
+            Some(97),
+            None,
+            Some(0x20ac),
+            Some(48),
+            Some(122),
+            Some(33),
+            Some(126),
+        ]);
+        // Without the first row, so that every array starts inside its buffers.
+        let sides: Vec<ArrayRef> = vec![
+            Arc::new(strings.slice(1, 7)),
+            Arc::new(ints.slice(1, 7)),
+            Arc::new(longs.slice(1, 7)),
+            Arc::new(doubles.slice(1, 7)),
+            Arc::new(flags.slice(1, 7)),
+            Arc::new(chars.slice(1, 7)),
+        ];
+        for left in &sides {
+            for right in &sides {
+                let texts = |side: &ArrayRef| java_strings(side.as_ref()).unwrap();
+                let expected: Vec<String> = texts(left)
+                    .iter()
+                    .zip(texts(right))
+                    .map(|(l, r)| format!("{l}{r}"))
+                    .collect();
+                let joined = concat(left.as_ref(), right.as_ref()).unwrap();
+                let what = format!("{} + {}", left.data_type(), right.data_type());
+                assert_eq!(joined.null_count(), 0, "{what}");
+                let joined: Vec<&str> = joined.iter().flatten().collect();
+                assert_eq!(joined, expected, "{what}");
+            }
+        }
+        // A few of them as Java prints them.
+        let joined = concat(&strings.slice(1, 7), &ints.slice(1, 7)).unwrap();
+        let joined: Vec<&str> = joined.iter().flatten().collect();
+        let expected = [
+            "0",
+            "null-2147483648",
+            "a-2147483648",
+            "né\u{10348}€2147483647",
+            "null-7",
+            "-1210",
+            "last-1000000",
+        ];
+        assert_eq!(joined, expected);
+        let joined = concat(&longs.slice(1, 3), &strings.slice(1, 3)).unwrap();
+        let joined: Vec<&str> = joined.iter().flatten().collect();
+        let expected = [
+            "-9223372036854775808",
+            "9223372036854775807null",
+            "-9223372036854775808a",
+        ];
+        assert_eq!(joined, expected);
+        // No rows, and a side that cannot be printed.
+        assert_eq!(
+            concat(&strings.slice(0, 0), &ints.slice(0, 0))
+                .unwrap()
+                .len(),
+            0
+        );
+        let half = UInt16Array::from(vec![0xd800]);
+        assert!(concat(&half, &strings.slice(0, 1)).is_err());
+        assert!(concat(&strings.slice(0, 1), &half).is_err());
+    }
 
     /// Expected strings are the results of `Double.toString` on JDK 19 and later.
     #[test]

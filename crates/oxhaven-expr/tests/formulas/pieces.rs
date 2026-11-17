@@ -7,7 +7,7 @@
 use super::{render, Column, TestTable};
 use arrow::array::{
     Array, ArrayRef, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array,
-    Int8Array, StringArray, UInt16Array,
+    Int8Array, StringArray, TimestampNanosecondArray, UInt16Array,
 };
 use oxhaven_column::parallel::with_threads;
 use oxhaven_contracts::expr::{Formula, FormulaCompiler};
@@ -205,6 +205,57 @@ fn many_rows_give_the_values_of_one_pass_on_any_number_of_threads() {
                     "{text} over {rows} rows on {threads} threads differs from one pass"
                 );
             }
+        }
+    }
+}
+
+/// Results whose pieces are written into one buffer: a piece without a null beside pieces
+/// with nulls, and none with a null at all, for a number and for an `Instant`, whose Arrow
+/// type carries a time zone.
+#[test]
+fn pieces_with_and_without_nulls_share_one_buffer() {
+    let rows = 4 * PIECE + 9;
+    // Nulls in the second piece and at the very end only.
+    let null_at =
+        |row: usize| (PIECE..2 * PIECE).contains(&row) && row.is_multiple_of(3) || row == rows - 1;
+    let numbers: Int32Array = (0..rows)
+        .map(|row| (!null_at(row)).then_some(row as i32 % 1000))
+        .collect();
+    let instants: TimestampNanosecondArray = (0..rows)
+        .map(|row| (!null_at(row)).then_some(row as i64 * 1_000_000_007))
+        .collect();
+    let instants = instants.with_data_type(ColumnType::Instant.arrow_type());
+    let flags: BooleanArray = (0..rows).map(|row| Some(row % 5 != 0)).collect();
+    let table = TestTable::new([
+        ("I", (ColumnType::Int, Arc::new(numbers) as ArrayRef)),
+        ("Ts", (ColumnType::Instant, Arc::new(instants) as ArrayRef)),
+        ("X", (ColumnType::Boolean, Arc::new(flags) as ArrayRef)),
+    ]);
+    for text in [
+        "I * 3 - 1",
+        "X ? Ts : null",
+        "(long)I + ii",
+        "ii * 2",
+        "X ? I : 7",
+    ] {
+        let formula = compile(&table, text);
+        let expected = one_pass_each(&table, &*formula, rows);
+        for threads in [1, 3] {
+            let actual = with_threads(threads, || formula.evaluate(&table, &table.rows, false))
+                .unwrap_or_else(|e| panic!("{text} failed: {e}"));
+            assert_eq!(actual.data_type(), &formula.result_type().arrow_type());
+            assert_eq!(actual.len(), rows);
+            assert!(
+                render(&actual) == expected,
+                "{text} on {threads} threads differs from one pass"
+            );
+            // Only `ii * 2` has no null; the others have them where the columns do.
+            let nulls = if text == "ii * 2" {
+                0
+            } else {
+                expected.iter().filter(|v| *v == "null").count()
+            };
+            assert_eq!(actual.null_count(), nulls, "{text}");
         }
     }
 }
