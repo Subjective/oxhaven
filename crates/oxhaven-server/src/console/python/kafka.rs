@@ -539,17 +539,53 @@ mod tests {
             from_properties.contains("Unable to find the type for column 'KafkaKey' (key_spec)"),
             "{from_properties}"
         );
-        assert_eq!(
-            failure(
-                &format!(
-                    "kc.consume({{**CFG, 'security.protocol': 'SSL'}}, 't', offsets=BEGIN, \
-                     {IGNORED_KEY})"
-                ),
-                CONSUME
+        // TLS and SASL properties reach the client: librdkafka is given the trust store's
+        // file and fails to load it, Java's JAAS line is read, and what has no counterpart is refused by name.
+        let trusted = failure(
+            &format!(
+                "kc.consume({{**CFG, 'security.protocol': 'SSL', 'ssl.truststore.type': 'PEM', \
+                 'ssl.truststore.location': '/no/such/ca.pem'}}, 't', offsets=BEGIN, \
+                 {IGNORED_KEY})"
             ),
-            "not ported yet: \
-             org.apache.kafka.common.network.ChannelBuilders#clientChannelBuilder: \
-             security.protocol=SSL"
+            CONSUME,
+        );
+        // librdkafka names the property it was given, not the file.
+        assert!(trusted.contains("ssl.ca.location failed"), "{trusted}");
+        let jaas = "org.apache.kafka.common.security.plain.PlainLoginModule required";
+        for (properties, refusal) in [
+            (
+                format!(
+                    "'security.protocol': 'SASL_SSL', 'sasl.mechanism': 'PLAIN', \
+                     'sasl.jaas.config': '{jaas} username=\"a\"'"
+                ),
+                "java.lang.IllegalArgumentException: JAAS config entry not terminated",
+            ),
+            (
+                format!("'security.protocol': 'SASL_PLAINTEXT', 'sasl.jaas.config': '{jaas};'"),
+                "not ported yet: org.apache.kafka.common.security.kerberos.KerberosLogin: \
+                 sasl.mechanism=GSSAPI (the default under SASL): Kerberos needs Cyrus SASL, \
+                 which is not built in; set sasl.mechanism to PLAIN, SCRAM-SHA-256 or \
+                 SCRAM-SHA-512",
+            ),
+            (
+                "'security.protocol': 'tls'".to_owned(),
+                "org.apache.kafka.common.config.ConfigException: Invalid value tls for \
+                 configuration security.protocol: String must be one of (case insensitive): \
+                 SASL_SSL, PLAINTEXT, SSL, SASL_PLAINTEXT",
+            ),
+        ] {
+            let code =
+                format!("kc.consume({{**CFG, {properties}}}, 't', offsets=BEGIN, {IGNORED_KEY})");
+            assert_eq!(failure(&code, CONSUME), refusal, "{code}");
+        }
+        let listed = failure(
+            "from deephaven.stream.kafka import topics\n\
+             topics({**CFG, 'security.protocol': 'SSL', 'ssl.cipher.suites': 'TLS_AES_128_GCM_SHA256'})",
+            "failed to list Kafka topics",
+        );
+        assert!(
+            listed.starts_with("not ported yet: javax.net.ssl.SSLEngine#setEnabledCipherSuites"),
+            "{listed}"
         );
         // Without `offsets` the call is no longer refused: it reaches for the broker too.
         let unsought = failure(&format!("kc.consume(CFG, 't', {IGNORED_KEY})"), CONSUME);
@@ -872,6 +908,7 @@ mod tests {
              assert kp.json_spec().j_object['include'] is None\n\
              stop = kp.produce(EMPTY, CFG, 't', key_spec=kp.simple_spec('K'), value_spec=V)\n\
              stop()\n\
+             kp.produce(EMPTY, {{**CFG, 'compression.type': 'gzip'}}, 't', IGNORE, V)()\n\
              try:\n    stop()\n    raise AssertionError('stopped twice')\n\
              except Exception as e:\n    assert 'failed to stop publishing to Kafka' in str(e), e\n"
         ));
@@ -928,19 +965,20 @@ mod tests {
         ] {
             assert_eq!(failure(code, PRODUCE), refusal, "{code}");
         }
+        let ldaps = failure(
+            "kp.produce(EMPTY, {**CFG, 'security.protocol': 'SASL_SSL', \
+             'ssl.endpoint.identification.algorithm': 'LDAPS'}, 't', IGNORE, V)",
+            PRODUCE,
+        );
+        assert!(
+            ldaps.starts_with("not ported yet: sun.security.util.HostnameChecker#matchDNS"),
+            "{ldaps}"
+        );
         let missing = failure(
             "kp.produce(EMPTY, CFG, 't', IGNORE, kp.simple_spec('X'))",
             PRODUCE,
         );
         assert!(missing.contains("because \"cd\" is null"), "{missing}");
-        let gzip = failure(
-            "kp.produce(EMPTY, {**CFG, 'compression.type': 'gzip'}, 't', IGNORE, V)",
-            PRODUCE,
-        );
-        assert!(
-            gzip.starts_with("not ported yet: org.apache.kafka.common.compress.GzipCompression"),
-            "{gzip}"
-        );
         let unreachable = failure(
             "kp.produce(empty_table(2).update('V = i'), CFG, 't', IGNORE, V)",
             PRODUCE,

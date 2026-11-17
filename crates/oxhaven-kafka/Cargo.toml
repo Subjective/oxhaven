@@ -19,10 +19,15 @@ oxhaven-expr = { path = "../oxhaven-expr" }
 # Protobuf descriptors, and `.proto` text read into them, for a Protobuf spec.
 prost-reflect.workspace = true
 protox.workspace = true
-# librdkafka, compiled from the sources `rdkafka-sys` carries, with its own snappy and lz4
-# and Zstandard from `zstd-sys`. No TLS, SASL, curl or zlib: docs/KAFKA.md, "The client
-# library", has the licences and why each feature is on or off.
-rdkafka = { version = "0.39", default-features = false, features = ["zstd"] }
+# librdkafka, compiled from the sources `rdkafka-sys` carries, with its own snappy and lz4,
+# Zstandard from `zstd-sys`, zlib from `libz-sys` and the system's OpenSSL. No Cyrus SASL
+# or curl: docs/KAFKA.md, "The client library", has the licences and why each feature is
+# on or off.
+rdkafka = { version = "0.39", default-features = false, features = ["zstd", "libz-static", "ssl"] }
+# The error events librdkafka reports, which are logged.
+tracing.workspace = true
 
 [dev-dependencies]
 oxhaven-testkit = { path = "../oxhaven-testkit" }
+# Prints librdkafka's logs and error events with a failing test's output.
+tracing-subscriber.workspace = true
