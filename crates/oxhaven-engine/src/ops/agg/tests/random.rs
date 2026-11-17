@@ -150,6 +150,12 @@ pub(super) fn every_aggregation(weighted_averages: bool, by: &[&str]) -> Vec<Agg
             AggSpec::SortedLast {
                 columns: vec!["B".to_string(), "T".to_string(), "F".to_string()],
             },
+            AggSpec::SortedFirst {
+                columns: ["F", "B", "S", "D"].map(String::from).to_vec(),
+            },
+            AggSpec::SortedLast {
+                columns: ["D", "I", "T", "F", "S"].map(String::from).to_vec(),
+            },
         ];
         // Without keys, a distinct whose values are all gone is a null where the distinct
         // of a table without values is an empty vector: DistinctOperatorFactory's operators
