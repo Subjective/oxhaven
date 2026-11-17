@@ -16,9 +16,10 @@ sized tasks at the end.
    function per entry point (`_oxhaven.kafka_consume`), as `deephaven.csv` does.
 3. **The client is librdkafka**, through the `rdkafka` crate, compiled from the sources
    `rdkafka-sys` carries, in its smallest form plus Zstandard. The owner allowed its
-   licences on 2026-11-16 (`PORTING.md`, "Dependencies"). TLS, SASL and gzip are not
-   built: each needs a library that ruling does not cover. "The client library" has the
-   table. The wire client of the first slice is removed.
+   licences on 2026-11-16 (`PORTING.md`, "Dependencies"). Task 7.4.5 turned on gzip
+   (zlib from `libz-sys`), TLS and SASL (the system's OpenSSL 3) under the owner's ruling
+   of 2026-11-17; Kerberos and OIDC stay off. "The client library" has the table.
+   The wire client of the first slice is removed.
 4. **A record source is a trait** (`RecordSource`: `poll` returns the records that
    arrived). The table, the specs and the decoding are written against it: tests script
    one, and `client::ClientSource` is the one over librdkafka.
@@ -79,8 +80,11 @@ and `ring(n)` is `RingTableTools.of` of it.
   `ProtobufProtocol`s (below);
 - `KeyValueSpec.IGNORE`, and the six common columns with their properties;
 - the consumer properties of "Consumer properties";
-- plaintext brokers; record batches that are uncompressed or compressed with snappy, lz4
-  or zstd; transactional topics at either `isolation.level`; a broker that restarts;
+- brokers over plaintext, TLS and SASL (PLAIN, SCRAM-SHA-256, SCRAM-SHA-512), with
+  Java's `ssl.*` and `sasl.*` properties ("TLS and SASL");
+- record batches that are uncompressed or compressed with gzip,
+  snappy, lz4 or zstd; transactional topics at either `isolation.level`; a broker that
+  restarts;
 - `deephaven.stream.kafka.cdc`: `consume`, `consume_raw`, `cdc_long_spec` and
   `cdc_short_spec` ("Change data capture").
 
@@ -363,9 +367,10 @@ so the properties are translated (`src/config.rs`):
 | `max.poll.records` | the most records one poll returns (500); checked as Java checks it |
 | `default.api.timeout.ms` | how long finding the partitions and the offsets may take (60 seconds); an unreachable broker fails the call after it, as in Java |
 | `isolation.level`, `allow.auto.create.topics`, `check.crcs`, `request.timeout.ms` left out | set to Java's defaults (`read_uncommitted`, `true`, `true`, 30 seconds), which are not librdkafka's |
-| `security.protocol` other than `PLAINTEXT`; `auto.offset.reset=by_duration:...` | refused by name |
+| `security.protocol`, `ssl.*`, `sasl.*` | translated, or refused by name: "TLS and SASL" |
+| `auto.offset.reset=by_duration:...` | refused by name |
 | `key.deserializer`, `value.deserializer`, `deephaven.*` | read by the specs and the table, as before |
-| every other name | not passed, and without effect: Java's own (`session.timeout.ms`, `heartbeat.interval.ms`, `max.poll.interval.ms`, `partition.assignment.strategy`, which matter only to a consumer that joins a group; `interceptor.classes`, `metric.reporters`, `exclude.internal.topics`, `client.dns.lookup`, `sasl.*`, `ssl.*`, ...) and names nobody knows, which Java logs and ignores too |
+| every other name | not passed, and without effect: Java's own (`session.timeout.ms`, `heartbeat.interval.ms`, `max.poll.interval.ms`, `partition.assignment.strategy`, which matter only to a consumer that joins a group; `interceptor.classes`, `metric.reporters`, `exclude.internal.topics`, `client.dns.lookup`, ...) and names nobody knows, which Java logs and ignores too |
 
 A value Java accepts and librdkafka does not (its ranges are narrower in places:
 `fetch.max.bytes` up to 2147483135, `max.partition.fetch.bytes` up to 1000000000) fails
@@ -552,8 +557,8 @@ Java's defaults are set where librdkafka's differ: `message.timeout.ms` 120000,
 
 - `acks` takes `all`, `-1`, `0` and `1`. Anything else fails with Java's
   `ConfigException`.
-- `compression.type` takes `none`, `snappy`, `lz4` and `zstd`. `gzip` is refused, for
-  want of zlib (see "The client library").
+- `compression.type` takes `none`, `gzip`, `snappy`, `lz4` and `zstd` (gzip since task
+  7.4.5).
 - `enable.idempotence` follows `ProducerConfig`:
   - left unset, it is on unless `acks` is not `all`, `retries` is 0, or more than five
     requests may be in flight;
@@ -564,7 +569,8 @@ Java's defaults are set where librdkafka's differ: `message.timeout.ms` 120000,
   `partition`.
 - Refused by name: `partitioner.class` and `interceptor.classes`, which load Java
   classes; `transactional.id`, with which every send in the reference fails, since it
-  never calls `initTransactions`; and any `security.protocol` other than `PLAINTEXT`.
+  never calls `initTransactions`.
+- `security.protocol`, `ssl.*` and `sasl.*` as for the consumer ("TLS and SASL").
 - `key.serializer` and `value.serializer` are ignored, as in Java, where the specs choose
   the serializers. Other properties are ignored in silence, as for the consumer.
 
@@ -623,6 +629,55 @@ Task 7.5.3 (`tasks/7.5.3-kafka-cdc.md`), `oxhaven_kafka::consume_cdc` and
 - **The registry.** As Java's client: the latest metadata of a subject and a schema by id
   are fetched once per registry client, a numbered version every time it is asked.
 
+### TLS and SASL
+
+Since task 7.4.5 (`tasks/7.4.5-kafka-security.md`). Java hands `security.protocol` and the
+`ssl.*` and `sasl.*` properties to its client, which reads key stores and a JAAS line.
+librdkafka reads PEM files, a PKCS#12 key store, a user name and a password. The
+consumer, the producer and `topics` translate them the same way (`src/security.rs`); each
+row was probed on Deephaven 42.9 against the broker of the tests.
+
+| Property | What happens |
+| --- | --- |
+| `security.protocol` | `PLAINTEXT`, `SSL`, `SASL_PLAINTEXT`, `SASL_SSL`, in any case; anything else is Java's `ConfigException`, with its list in its order (`SASL_SSL, PLAINTEXT, SSL, SASL_PLAINTEXT`). The `ssl.*` properties count only under `SSL` and `SASL_SSL`, the `sasl.*` ones only under the `SASL_*` protocols, as in Java |
+| `ssl.truststore.type=PEM` with `ssl.truststore.location` | `ssl.ca.location` |
+| `ssl.truststore.type=PEM` with `ssl.truststore.certificates` | `ssl.ca.pem` |
+| no trust store | Java trusts what the JVM trusts, librdkafka what the system's OpenSSL trusts |
+| `ssl.truststore.type` JKS (Java's default) or PKCS12 with a location | refused by name: librdkafka reads trusted certificates from PEM only. A file of type JKS that is neither JKS nor PKCS#12 fails with Java's `java.io.IOException: Invalid keystore format` |
+| `ssl.truststore.password` with PEM; `ssl.truststore.certificates` with another type | Java's `InvalidConfigurationException` texts |
+| `ssl.keystore.type=PKCS12` with `ssl.keystore.location` and `ssl.keystore.password` | `ssl.keystore.location`, `ssl.keystore.password`. A JKS key store (Java's default type) that is a PKCS#12 file is read as one, as the JDK's `keystore.type.compat` reads it; a real JKS file is refused by name. `ssl.key.password` other than the store's password is refused by name: librdkafka opens the store with one password |
+| `ssl.keystore.type=PEM` with `ssl.keystore.location` | `ssl.key.location` and `ssl.certificate.location`, both the file, which holds the key and its chain; `ssl.key.password` is passed |
+| `ssl.keystore.type=PEM` with `ssl.keystore.key` and `ssl.keystore.certificate.chain` | `ssl.key.pem` and `ssl.certificate.pem` |
+| `ssl.endpoint.identification.algorithm` | `https` in any case (the default) checks the broker's name, an empty value checks nothing; `ldap` and `ldaps`, which check by other rules, are refused by name; any other name is Java's `CertificateException: Unknown identification algorithm`, which Java raises at the first connection |
+| `ssl.protocol`, `ssl.enabled.protocols`, `ssl.keymanager.algorithm`, `ssl.trustmanager.algorithm` | accepted at Java's defaults (`TLSv1.3`, `TLSv1.2,TLSv1.3`, `SunX509`, `PKIX`), refused by name otherwise: OpenSSL negotiates TLS 1.2 or 1.3 and has no such choices in librdkafka |
+| `ssl.cipher.suites`, `ssl.provider`, `ssl.secure.random.implementation`, `ssl.engine.factory.class` | refused by name when set: Java's names and classes, which OpenSSL does not have |
+| `sasl.mechanism` | `PLAIN`, `SCRAM-SHA-256`, `SCRAM-SHA-512`, as written. `GSSAPI`, also the default when none is given, is refused by name (Kerberos needs Cyrus SASL, which the owner's ruling keeps out); `OAUTHBEARER` likewise (tokens from an OIDC provider need libcurl); any other name fails the call |
+| `sasl.jaas.config` | read as Java's `JaasConfig` reads it (`java.io.StreamTokenizer`: words, quoted text with escapes, `//` and `/* */` comments, any case of the flag), with Java's texts for a line it refuses. Exactly one login module: `PlainLoginModule` or `ScramLoginModule`, whose `username` and `password` become `sasl.username` and `sasl.password`, whichever the mechanism, as in Java. Any other login module is refused by name; `tokenauth=true` (delegation tokens) too. None at all is Java's `Could not find a 'KafkaClient' entry in the JAAS configuration` |
+| `sasl.login.class`, `sasl.client.callback.handler.class`, `sasl.login.callback.handler.class` | refused by name: they load Java classes |
+| other `sasl.*` (Kerberos, OAUTHBEARER, login refresh) | without effect: they serve the refused mechanisms |
+
+**Refused connections.** A broker whose certificate is not trusted or does not name the
+host, a missing client certificate, and a wrong password fail the call (`consume`,
+`produce`, `topics`) at once, as Java's `SslAuthenticationException` and
+`SaslAuthenticationException` do, not after `default.api.timeout.ms`. librdkafka itself
+would retry: the client keeps the first such error it reports while the call waits for the
+broker. The text is the Java exception's name followed by librdkafka's words, which carry
+the broker's message for SASL (`Invalid username or password`) and OpenSSL's for TLS
+(`certificate verify failed`); Java's words differ (`PARITY.md` A5). After a table exists,
+such an error ends its consumption, as an `AuthenticationException` from Java's `poll`.
+
+The errors are recognised by librdkafka's codes, `RD_KAFKA_RESP_ERR__AUTHENTICATION` and
+`RD_KAFKA_RESP_ERR__SSL`, with one exception. Under TLS 1.3 a client certificate the broker
+refuses (or none) shows only as `RD_KAFKA_RESP_ERR__TRANSPORT`, and there the text decides:
+OpenSSL's `SSL alert number`. While waiting, the client reads every event librdkafka has
+queued between two requests for metadata, not one. A name that resolves to an address
+nobody listens on, as `localhost` does to `::1` on a runner whose broker listens on
+`127.0.0.1` only, makes librdkafka alternate between two errors. Neither is then identical
+to the one before, so it reports every attempt, with a log line each. Read one event at a
+time, the refusal stayed queued behind them until the timeout: the first CI run of task
+7.4.5 failed so. Every error event is also logged (`tracing`, target `librdkafka`), and the
+broker tests print them with a failing test's output.
+
 ## The engine side
 
 Since task 7.4.2 (`tasks/7.4.2-stream-adapter.md`) the engine has Java's stream adapter,
@@ -654,15 +709,35 @@ Java; each holds the blink table, which ends when they are dropped.
 
 ### What is built
 
-`rdkafka` 0.39.0 and `rdkafka-sys` 4.10.0 (MIT) with the features `zstd` and nothing else:
-no default features (`libz`, `tokio`), and librdkafka's own `configure` build, not the
-`cmake-build` feature, which would add the `cmake` crate for nothing. `rdkafka-sys`
-compiles the librdkafka 2.12.1 sources it carries and links the result statically. Its
-build script passes `--disable-ssl --disable-gssapi --disable-zlib --disable-curl
---disable-lz4-ext --enable-zstd`, so nothing is taken from the machine it is built on
-even where the machine has it (this one and GitHub's runners have the zlib and OpenSSL
-headers). The server binary links no library it did not link before (`ldd`: libc, libm,
-libgcc, libpython).
+`rdkafka` 0.39.0 and `rdkafka-sys` 4.10.0 (MIT) with the features `zstd`, `libz-static`
+and `ssl` (the last two since task 7.4.5) and nothing else: no default features (`libz`,
+`tokio`), and librdkafka's own `configure` build, not the `cmake-build` feature, which
+would add the `cmake` crate for nothing. `rdkafka-sys` compiles the librdkafka 2.12.1
+sources it carries and links the result statically. Its build script passes
+`--enable-ssl --disable-gssapi --disable-curl --disable-lz4-ext --enable-zstd` and leaves
+zlib on, with the headers of `libz-sys`'s own copy first. librdkafka's `config.h` then
+has `WITH_SSL`, `WITH_SASL_SCRAM`, `WITH_SASL_OAUTHBEARER` (librdkafka's own unsecured
+tokens; nothing uses them, as OAUTHBEARER is refused) and `WITH_ZLIB`, and neither
+`WITH_SASL_CYRUS` nor `WITH_CURL`.
+
+**OpenSSL: the system's, not vendored.** The `ssl` feature links the machine's OpenSSL
+through `openssl-sys`, which finds it with `pkg-config`; `ssl-vendored` would compile
+OpenSSL from source with `openssl-src`. The system's was chosen:
+
+- this machine has `libssl-dev` 3.0.13 and GitHub's `ubuntu-latest` (24.04) has the
+  same package, so the build needs nothing installed and no job changes;
+- `openssl-src` would add minutes of C build to every job that compiles the workspace and
+  some hundreds of megabytes to each build directory, where disk is short here;
+- a server linked to the system's `libssl.so.3` and `libcrypto.so.3` gets the
+  distribution's security fixes without a rebuild, and trusts the system's certificates
+  when no trust store is given, as Java trusts the JVM's.
+
+The cost is a run-time dependency: the server binary now links `libssl.so.3` and
+`libcrypto.so.3` (`ldd`), as it links `libpython`. OpenSSL 3 is under Apache-2.0; a build
+against OpenSSL 1.1 (another licence) is not supported and would need the owner's word.
+A build without `libssl-dev` fails in `openssl-sys`'s build script with a message that
+names the package. zlib is not taken from the system: `libz-sys` compiles its own copy
+and links it statically, so no `libz.so` is linked.
 
 The owner's ruling of 2026-11-16 06:18 UTC: BSD-3-Clause and the zlib licence are allowed
 for the files bundled in librdkafka, next to BSD-2-Clause, MIT and Apache-2.0; `zstd-sys`
@@ -679,6 +754,8 @@ Crates added to `Cargo.lock`:
 | --- | --- | --- | --- |
 | `rdkafka` | 0.39.0 | MIT | the client's Rust interface |
 | `rdkafka-sys` | 4.10.0+2.12.1 | MIT | the librdkafka sources and their build |
+| `libz-sys` | 1.1.33 | MIT OR Apache-2.0 | since task 7.4.5: the zlib sources for gzip, compiled and linked statically (`libz-static`); zlib itself is under the zlib licence (ruling of 2026-11-17) |
+| `vcpkg` | 0.2.15 | MIT OR Apache-2.0 | of `libz-sys`, at build time; used on Windows only |
 | `num_enum`, `num_enum_derive` | 0.7.6 | BSD-3-Clause OR MIT OR Apache-2.0 | of `rdkafka-sys`: error codes as an enum |
 | `proc-macro-crate` | 3.5.0 | MIT OR Apache-2.0 | of `num_enum_derive`, at build time |
 | `toml_edit`, `toml_datetime`, `toml_parser` | 0.25.19, 1.1.3, 1.1.5 | MIT OR Apache-2.0 | of `proc-macro-crate`, at build time |
@@ -715,9 +792,8 @@ C files compiled into the library, by the licence librdkafka's `LICENSES.txt` gi
 | Feature of `rdkafka` | Gives | Adds | Licence of what it adds | Why it is off |
 | --- | --- | --- | --- | --- |
 | `libz` | gzip batches | the crate `libz-sys` (MIT OR Apache-2.0), which links the machine's `libz.so` | zlib licence | an external zlib, which the ruling excludes |
-| `libz-static` | gzip batches | `libz-sys` compiling the zlib sources it carries | zlib licence | allowed by the ruling of 2026-11-17; not turned on yet (task 7.4.5) |
-| `ssl` | TLS; SASL SCRAM and OAUTHBEARER | `openssl-sys` (MIT) with `openssl-macros`, `vcpkg` and others, and the machine's OpenSSL | Apache-2.0 (OpenSSL 3) | allowed by the ruling of 2026-11-17; not turned on yet (task 7.4.5) |
-| `ssl-vendored` | the same | `openssl-src` (MIT OR Apache-2.0), which compiles OpenSSL from source (minutes of build, needs `perl`) | Apache-2.0 | allowed by the ruling of 2026-11-17; not turned on yet (task 7.4.5) |
+| `ssl` (on since 7.4.5, so not "left off") | TLS; SASL SCRAM and OAUTHBEARER | `openssl-sys` 0.9.118 (MIT), and the machine's OpenSSL | Apache-2.0 (OpenSSL 3) | allowed by the ruling of 2026-11-17; not turned on yet (task 7.4.5) |
+| `ssl-vendored` | the same | `openssl-src` (MIT OR Apache-2.0), which compiles OpenSSL from source (minutes of build, needs `perl`) | Apache-2.0 | allowed by the ruling of 2026-11-17; the system's OpenSSL is used instead ("What is built") |
 | `gssapi` (alias `sasl`) | SASL GSSAPI (Kerberos) | `ssl`, and `sasl2-sys` (Apache-2.0) with Cyrus SASL | BSD-4-Clause-like (Cyrus SASL, with an advertising clause) | off until someone needs Kerberos (ruling of 2026-11-17) |
 | `gssapi-vendored` | the same | Cyrus SASL and MIT Kerberos (`krb5-src`) compiled from source | Cyrus SASL's licence; MIT (Kerberos) | excluded by the ruling |
 | `curl`, `curl-static` | OAUTHBEARER over OIDC | `curl-sys` (MIT) and libcurl, which needs TLS itself | curl licence (MIT-like) | off until someone needs OIDC (ruling of 2026-11-17) |
@@ -730,16 +806,14 @@ what is generally known of the C libraries; none of these crates was downloaded,
 their own dependency lists were not checked. Check them again before turning one on.
 
 **gzip, answered.** librdkafka has no zlib of its own: gzip needs the `libz` feature,
-which is an external zlib either way (the machine's, or `libz-sys`'s copy). So gzip is
-off, and a gzip batch fails the table by the name
-`org.apache.kafka.common.record.DefaultRecordBatch#compressedIterator`. Java reads it
-(probed). gzip is Kafka's oldest codec and common in old topics; the owner allowed
-`libz-static` on 2026-11-17, and turning it on is task 7.4.5.
+which is an external zlib either way (the machine's, or `libz-sys`'s copy). Until task
+7.4.5 gzip was off and a gzip batch failed the table by name. The owner allowed
+`libz-static` on 2026-11-17, and task 7.4.5 turned it on: `libz-sys` 1.1.33 compiles the
+zlib 1.4 sources it carries (`src/zlib`; its `zlib-ng` copy is not compiled) and links
+them statically, so the binaries link no `libz.so` (`ldd`).
 
-**SASL PLAIN** is in librdkafka's own BSD-2-Clause code and is compiled, so
-`SASL_PLAINTEXT` with `sasl.mechanism=PLAIN` needs no further licence. It is still
-refused with the rest of `security.protocol`: it was not asked for, no broker with SASL
-was at hand to probe it, and a password over a connection without TLS is seldom wanted.
+**SASL** PLAIN is librdkafka's own BSD-2-Clause code; SCRAM is too, with OpenSSL for its
+hashes. Both are on since task 7.4.5.
 It is the cheap first half of task 7.4.5.
 
 ### The wire client is removed
@@ -789,8 +863,10 @@ documented contents and off this machine, which has the same tools.
 | Publishing to a scripted `RecordSink`: the records of each kind of change, `last_by`, blink tables, JSON and its failures, the checks | `tests/produce.rs` | nothing | every pull request |
 | Publishing Avro and the record columns to a scripted `RecordSink`, with a registry the test serves: the wire format, the registered schemas and their requests, published schemas, the writer's failures, removed rows, a topic without metadata | `tests/produce_avro.rs`; Java's `Schema#toString` in `src/avro_text.rs` | nothing | every pull request |
 | Publishing to a broker: a round trip through `consume`, the partitions of keys on a topic of two, `partition`, the metadata timeouts, an Avro round trip through a registry the test serves, records whose topic, partition and timestamp come from columns | `tests/broker.rs`, ignored unless asked for | Docker | `tests/broker.sh` |
-| The Python modules: specs, checks, refusals, an unreachable broker | `console::python::kafka` | Python | the `python-console-on` job |
-| The client against a broker: offsets, groups and what is committed, snappy, lz4, zstd, the gzip refusal, the listing of topics, a broker that restarts, an Avro round trip (a registry served by the test, no registry image), a partitioned table of a topic of two partitions and of records that arrive later, and a topic made by the request that has no partitions | `tests/broker.rs`, ignored unless asked for | Docker | `tests/broker.sh`: the `kafka-broker` job |
+| The Python modules: specs, checks, refusals, an unreachable broker, TLS and SASL properties that reach the client and refusals of them as `DHError` | `console::python::kafka` | Python | the `python-console-on` job |
+| The translation of `security.protocol`, `ssl.*` and `sasl.*`, Java's JAAS parser and its texts | unit tests in `src/security.rs` | nothing | every pull request |
+| TLS and SASL against a broker: consuming, producing and listing over SSL with a PKCS#12 key store, a PEM key store file and PEM texts; hostname verification on and off; an untrusted broker and a missing client certificate; SASL PLAIN, SCRAM-SHA-256 and SCRAM-SHA-512 over SASL_PLAINTEXT and SASL_SSL; a wrong password, failing in seconds | `tests/security.rs`, ignored unless asked for | Docker, openssl | `tests/broker.sh`: the `kafka-broker` job |
+| The client against a broker: offsets, groups and what is committed, gzip (written by Java's producer and by librdkafka's), snappy, lz4, zstd, the listing of topics, a broker that restarts, an Avro round trip (a registry served by the test, no registry image), a partitioned table of a topic of two partitions and of records that arrive later, and a topic made by the request that has no partitions | `tests/broker.rs`, ignored unless asked for | Docker | `tests/broker.sh`: the `kafka-broker` job |
 | The same rows as Java | probes of both servers on one broker | Docker, the Java reference | by hand, in tasks 7.4.1, 7.4.4, 7.4.6, 7.4.7, 7.5.1 and 7.5.2; a recorded corpus is a task of its own, not yet sized (it changes `oracle/`) |
 
 **A broker on this machine.** Docker is installed but no daemon runs. One started by hand
@@ -798,11 +874,23 @@ documented contents and off this machine, which has the same tools.
 container on the host network) pulled `apache/kafka:3.9.1` (204 MB) from Docker Hub and
 ran it in KRaft mode on `127.0.0.1:19092`. `tests/broker.sh` does the same for the tests:
 it starts the container, creates and fills three topics with the image's own tools (one
-of them compressed with gzip, which the tests' own producer cannot write), runs the tests
-and removes the container. The other records the tests produce themselves, with
+of them compressed with gzip by Java's producer), runs the tests and removes the
+container. After the tests it reads the log of the topics that `produce` wrote with
+`compression.type=gzip` with the broker's `kafka-dump-log.sh`, and fails unless every batch
+there is gzip. The other records the tests produce themselves, with
 librdkafka's producer, into topics named after the time. The test of a restart runs
 alone, after the others, with `docker restart` as the command it is given. The tests
 refuse a broker address that is not `127.0.0.1` or `localhost`.
+
+**TLS and SASL.** broker.sh also makes, with `openssl`, a certificate authority, a broker
+certificate for the name `localhost` only, a client certificate (as PEM files and a
+PKCS#12 key store) and a second authority that signs nothing the broker shows, in a
+temporary directory it removes at the end: no key or certificate is in the repository. It
+gives the broker three more listeners: SSL on the port after the controller's (asking for
+a client certificate), SASL_SSL and SASL_PLAINTEXT after it, with PLAIN users from a JAAS
+file in that directory and SCRAM users created with `kafka-configs.sh`. The SSL listeners
+are advertised as `localhost`, so that a connection to `127.0.0.1` tests hostname
+verification. `OXHAVEN_KAFKA_HOLD=1` starts the broker and waits, for probes.
 
 **A broker in CI.** The job `kafka-broker` in `.github/workflows/ci.yml` runs the script
 on `ubuntu-latest`, whose Docker daemon may pull public images. It uses no secret and no
@@ -816,7 +904,9 @@ restarts is tested and probed); a topic with more than three partitions (three w
 probed in task 7.4.6, two are tested); aborted
 transactions under `read_committed`; `SEEK_TO_END` under `read_committed` while a
 transaction is open (librdkafka's last offset is the high watermark, Java's the last
-stable offset); SASL PLAIN; `group.instance.id`.
+stable offset); `group.instance.id`; brokers whose certificates are signed through an
+intermediate authority; a password-protected PEM key (`ssl.key.password` with a PEM key
+store).
 
 ## Differences from Java seen in the probes
 
@@ -841,9 +931,10 @@ broker under the open tables of both.
   records arrived); every table after the broker restarted and more records arrived;
   the list of topics and its order; which of the 25 calls raise.
 - Different, by design for now: a gzip topic (Java reads
-  it, Oxhaven fails the table by name); `auto.offset.reset=by_duration:PT1H` (Java
+  it, Oxhaven failed the table by name until task 7.4.5, which reads it);
+  `auto.offset.reset=by_duration:PT1H` (Java
   accepts, Oxhaven refuses by name); `security.protocol` (Java fails for want of a TLS
-  broker or a JAAS entry, Oxhaven refuses by name).
+  broker or a JAAS entry; Oxhaven refused it by name until task 7.4.5).
 - Different in text only (`PARITY.md` A5): the Python traceback around an error; an
   unreachable broker (Java: `TimeoutException: Timeout expired while fetching topic
   metadata`, here librdkafka's words, both after `default.api.timeout.ms`); a malformed
@@ -921,6 +1012,19 @@ broker under the open tables of both.
   held records of two partitions and one of them could not be read, Java had handed the
   other partition's records to its constituent before it failed the bad one, Oxhaven had
   not (it goes by partition number). Owner's items 26 and 27.
+- Task 7.4.5, TLS and SASL: Java on 10878, Oxhaven on 10879, the broker of
+  `tests/broker.sh` with its SSL, SASL_SSL and SASL_PLAINTEXT listeners, 56 cases of
+  `consume`, `produce` and `topics` (`tasks/7.4.5-kafka-security.md`). Same in 34: the 20
+  configurations that connect (key and trust stores of each kind, hostname verification
+  off, PLAIN and both SCRAMs with and without TLS, JAAS lines with comments, escapes and
+  unquoted values), Java's texts for the 13 it refuses, and an SSL client at the
+  plaintext port, which waits 60 s in both. Different in text only (`PARITY.md` A5) in
+  10, failing as fast in both: a wrong password, an untrusted or misnamed broker, a
+  missing client certificate, a wrong key store password. Refused by name here where Java
+  connects, in 3 (`ldaps`, `ssl.protocol=TLSv1.2`, `ssl.cipher.suites`: owner's item 31);
+  refused by name where Java fails in other words, in 5 (GSSAPI, `tokenauth`,
+  `sasl.login.class`, an unknown login module, a key password other than the store's);
+  failing at once here where Java times out after 60 s, in 4 (owner's item 32).
 - **Row order across partitions.** Within a partition both keep offset order. Where two
   partitions have records in one poll, Java delivers them in the order of a `HashMap` of
   partitions and Oxhaven by partition number, so the last rows of an append-only table,
@@ -938,7 +1042,8 @@ broker under the open tables of both.
    the crate `libz-sys` (itself MIT OR Apache-2.0): the same licence, another bundle.
    Allow that, or leave gzip refused?
 3. ~~**TLS and SASL**~~ Ruled on 2026-11-17: OpenSSL is allowed; Cyrus SASL and libcurl
-   stay off until someone needs Kerberos or OIDC. TLS and SASL (task 7.4.5) each need a
+   stay off until someone needs Kerberos or OIDC. Done by task 7.4.5; its new differences
+   are items 31 and 32. TLS and SASL (task 7.4.5) each need a
    library outside the ruling of 2026-11-16: OpenSSL
    (Apache-2.0 from version 3; the machine's, or compiled from `openssl-src`) for TLS,
    SCRAM and OAUTHBEARER; Cyrus SASL (its own BSD-style licence with an advertising
@@ -1079,12 +1184,33 @@ broker under the open tables of both.
     a blink table cannot hold these. Debezium's `connect.decimal` (any SQL `NUMERIC`) is
     common, so the engine fix is worth sizing.
 
+31. **TLS and SASL, what librdkafka cannot do.** Refused by name where Java connects
+    (probes of task 7.4.5): JKS key and trust stores and PKCS#12 trust stores (librdkafka
+    reads PEM and PKCS#12 key stores only; converting them would mean reading JKS here);
+    `ssl.protocol=TLSv1.2` and other non-default protocol lists; `ssl.cipher.suites`
+    (Java's names, not OpenSSL's); `ssl.endpoint.identification.algorithm=ldaps`
+    (other matching rules); `sasl.login.class` and the callback handlers; Kerberos and
+    OAUTHBEARER by the ruling of 2026-11-17. The protocol and cipher properties could be
+    mapped onto OpenSSL settings librdkafka does not expose today. Keep refused?
+32. **TLS and SASL, failing sooner.** A `sasl.mechanism` Java does not know or writes in
+    another case (`plain`), and a PLAIN login without `username`, make Java connect and
+    fail after `default.api.timeout.ms` (60 s) with `TimeoutException: Timeout expired
+    while fetching topic metadata`; here the call fails at once with a message naming the
+    property. Reproduce the wait, or keep the early error?
+
 ## Refused, by Java method
 
 | What | Named in the refusal |
 | --- | --- |
-| `security.protocol` other than `PLAINTEXT` | `org.apache.kafka.common.network.ChannelBuilders#clientChannelBuilder` |
-| A record batch compressed with gzip (fails the table) | `org.apache.kafka.common.record.DefaultRecordBatch#compressedIterator` |
+| `sasl.mechanism=GSSAPI`, also when no mechanism is given under SASL (Kerberos needs Cyrus SASL) | `org.apache.kafka.common.security.kerberos.KerberosLogin` |
+| `sasl.mechanism=OAUTHBEARER` (OIDC needs libcurl) | `org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule` |
+| A login module in `sasl.jaas.config` other than `PlainLoginModule` and `ScramLoginModule` | the module's class |
+| `tokenauth=true` of `ScramLoginModule` (delegation tokens) | `org.apache.kafka.common.security.scram.internals.ScramSaslClient` |
+| `sasl.login.class`, `sasl.client.callback.handler.class`, `sasl.login.callback.handler.class` | `org.apache.kafka.common.security.authenticator.LoginManager` |
+| A JKS key or trust store, a PKCS#12 trust store | `org.apache.kafka.common.security.ssl.DefaultSslEngineFactory$FileBasedStore#load` |
+| `ssl.key.password` other than `ssl.keystore.password` for a PKCS#12 key store | `java.security.KeyStore#getKey` |
+| `ssl.protocol`, `ssl.enabled.protocols`, `ssl.keymanager.algorithm`, `ssl.trustmanager.algorithm` other than Java's defaults; `ssl.cipher.suites`, `ssl.provider`, `ssl.secure.random.implementation`, `ssl.engine.factory.class` | `javax.net.ssl.SSLContext#getInstance`, `SSLEngine#setEnabledProtocols`, `SSLEngine#setEnabledCipherSuites` and the others, by property |
+| `ssl.endpoint.identification.algorithm` `ldap` or `ldaps` | `sun.security.util.HostnameChecker#matchDNS` |
 | `auto.offset.reset=by_duration:<duration>` | `org.apache.kafka.clients.consumer.internals.AutoOffsetResetStrategy#timestamp` |
 | A simple column of `UUID`, `ByteBuffer`, `Bytes` or any other type not listed above | `io.deephaven.kafka.SimpleImpl.SerDeserVisitor` |
 | Bytes that are not UTF-8 in a `String` column | `org.apache.kafka.common.serialization.StringDeserializer#deserialize` |
@@ -1110,7 +1236,6 @@ broker under the open tables of both.
 | CDC: a spec whose topic is `None` (Java fetches both schemas, then fails asking the broker for the topic's metadata) | `org.apache.kafka.clients.consumer.KafkaConsumer#partitionsFor` |
 | `deephaven.stream.add_only_to_blink` | `io.deephaven.engine.table.impl.AddOnlyToBlinkTableAdapter#toBlink` |
 | Producing: an update whose modified columns are `ModifiedColumnSet.ALL` (Java's listener throws a NullPointerException and stops; here the publication fails at the same point) | `io.deephaven.engine.table.ModifiedColumnSet#containsAny` |
-| Producing: `compression.type=gzip` | `org.apache.kafka.common.compress.GzipCompression` |
 | Producing: `transactional.id` | `org.apache.kafka.clients.producer.KafkaProducer#initTransactions` |
 | Producing: `partitioner.class`, `interceptor.classes` | `org.apache.kafka.clients.producer.Partitioner`, `ProducerInterceptor` |
 | Producing: a `nested_delim` with a regular-expression character other than an escaped one | `java.lang.String#split` |
@@ -1149,6 +1274,9 @@ No longer refused since task 7.4.8: `protobuf_spec` from a registry subject, and
 No longer refused since task 7.5.2: `producer.avro_spec` for the key and the value, and
 `produce` with `topic_col`, `partition_col` and `timestamp_col`.
 
+No longer refused since task 7.4.5: gzip batches, read and written
+(`compression.type=gzip`); `security.protocol` `SSL`, `SASL_PLAINTEXT` and `SASL_SSL`.
+
 No longer refused since task 7.4.4: `offsets` left at its default, compressed batches
 other than gzip, `isolation.level=read_committed`, record batches older than format 2
 (librdkafka reads them; not probed, the broker writes none), `deephaven.stream.kafka.
@@ -1168,7 +1296,7 @@ These replace 7.4 and 7.5. Sizes: S is a day of one implementer, M two to three,
 | 7.4.2 | Engine: public `stream_table` with a publisher, public `blink_to_append_only`, a callback when a table is released; `deephaven.stream.table_publisher`, `blink_to_append_only`; move this crate onto them | done (`tasks/7.4.2-stream-adapter.md`) | 7.4.1 |
 | 7.4.3 | JSON completely: the refused conversions (`NumberInput#parseAsInt` and friends, `BigDecimal#intValue`, Jackson's compact output), nested pointers and arrays, `char` and `Instant` columns; simple `byte[]`; raw spec | done (`tasks/7.4.3-kafka-json.md`); raw spec not reachable from Python | 7.4.1 |
 | 7.4.4 | Client: librdkafka as the record source and the translation of properties; committed offsets and `auto.offset.reset` (`DONT_SEEK`), snappy, lz4 and zstd, reconnects, `kafka.topics`; the `kafka-broker` CI job | done (`tasks/7.4.4-kafka-librdkafka.md`) | |
-| 7.4.5 | TLS and SASL: librdkafka's `ssl` and `gssapi` features and the translation of Java's `ssl.*` and `sasl.*` properties (keystores and JAAS have no counterpart in librdkafka); SASL PLAIN first, which needs no library; gzip if allowed | M | owner's rulings 2 and 3 |
+| 7.4.5 | gzip, TLS and SASL: `libz-static` and `ssl`, the translation of Java's `ssl.*` and `sasl.*` properties and its JAAS line | done (`tasks/7.4.5-kafka-security.md`); Kerberos and OIDC stay off by the owner's ruling | owner's rulings 2 and 3 |
 | 7.4.6 | `consume_to_partitioned_table`; a recorded Java corpus for consumption in `oracle/corpus` and a replay of it through a scripted source | done without the corpus (`tasks/7.4.6-kafka-partitioned.md`): the corpus changes the protected `oracle/` and is a task of its own | 7.4.2 |
 | 7.4.7 | Avro specs and the schema registry client | done (`tasks/7.4.7-kafka-avro.md`); no new crate | 7.4.3 |
 | 7.4.8 | Protobuf specs (`prost-reflect` is in the tree), both protocols | done (`tasks/7.4.8-kafka-protobuf.md`); no new crate | 7.4.7 for the registry |
