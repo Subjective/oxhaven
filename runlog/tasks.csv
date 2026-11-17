@@ -166,4 +166,4 @@ fix-input-table-stall,1,agent,2026-11-14T23:00Z,96,268843,85,merged,0,56,right-s
 9.7-refreshing-reads-formula-joins,1,agent,2026-11-17T15:49Z,62,290673,115,merged,0,150,right,"writable column places in a flat array: sorted refreshing read-back 9.1 s to 244 ms at 10M; string concat 496 to 112 ms; formula pieces into one buffer; server --threads; replay left to CI"
 9.8-benchmark-rerun,1,agent (opus),2026-11-17T17:25Z,23,193345,82,merged,0,152,right,"same results in all 74 case and size pairs; Oxhaven faster in 34, slower by over 20% in 9 (aj, last_by, ungroup, where_range, three aggregations); Deephaven held to 2 processors, Oxhaven on 4 threads"
 9.9-fast-asof-lastby-ungroup,1,agent (opus),2026-11-17T17:50Z,,,,running,,,,
-9.10-single-thread-filter-formula,1,agent,2026-11-17T17:50Z,,,,running,,,,
+9.10-single-thread-filter-formula,1,agent,2026-11-17T17:50Z,66,299914,111,in review,0,153,too large,"typed loops beside a literal, mask runs by word: one thread at 10M where_range 74 to 41 ms, update_cond 115 to 75; where_conj and update_arith still above Deephaven; wants a row set constructor from a bitmap in the contracts"

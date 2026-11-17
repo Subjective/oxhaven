@@ -1205,3 +1205,7 @@ The comparison is not even: Deephaven runs with two processors and Oxhaven with 
 ## 2026-11-17 17:56 UTC: pull request 152 merged
 
 Seven green checks. Agents of tasks 9.9 and 9.10 told that the second measurement is on main.
+
+## 2026-11-17 18:57 UTC: task 9.10 reported, pull request 153 opened
+
+Partly done. Three different causes: evaluator overhead (fixed), row set construction behind the contract (needs a constructor from a bitmap; a contract addition I will allow in a second run), and page faults on the first write of a result (not addressed; needs unsafe or a buffer pool).
