@@ -1,6 +1,7 @@
 //! Times natural joins of the shapes the end-to-end benchmark uses (`docs/BENCHMARK.md`), and
-//! the parts a join is made of: reading the key columns, the join itself, and reading an
-//! added column back through the result's row redirection.
+//! the parts a static join is made of: reading the key columns, numbering the keys of the
+//! right table, looking up the keys of the left table, making the row redirection, and
+//! reading an added column back through it. `docs/BENCHMARK.md` records a run.
 //!
 //! ```text
 //! cargo run --release -p oxhaven-engine --example join-phases             # 1 million left rows
@@ -9,10 +10,13 @@
 
 use arrow::array::{ArrayRef, Int32Array, Int64Array, RecordBatch, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
+use oxhaven_column::WritableRowRedirection;
 use oxhaven_contracts::graph::UpdateGraph;
+use oxhaven_contracts::rowset::{RowKey, NULL_ROW_KEY};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
 use oxhaven_engine::graph::SteppedUpdateGraph;
+use oxhaven_engine::ops::join::key_table::{KeyTable, NO_SLOT};
 use oxhaven_engine::ops::join::{exact_join, natural_join, JoinMatch, NaturalJoinType};
 use oxhaven_engine::table::{append_only_input_table, in_memory_table};
 use oxhaven_testkit::definition;
@@ -101,6 +105,51 @@ fn read_r(joined: &Arc<dyn Table>) -> i64 {
     values.iter().flatten().sum()
 }
 
+/// The parts of a static join of `left` and `right` on the columns `on`, one by one, done
+/// with the pieces the join is made of.
+fn phases(left: &Arc<dyn Table>, right: &Arc<dyn Table>, on: &[&str]) {
+    let chunks = |table: &Arc<dyn Table>| -> Vec<ArrayRef> {
+        let chunk = |name: &&str| {
+            let index = table.definition().index_of(name).expect("a key column");
+            table
+                .column(index)
+                .chunk(&table.row_set())
+                .expect("a chunk")
+        };
+        on.iter().map(chunk).collect()
+    };
+    let (left_rows, right_rows) = (left.row_set(), right.row_set());
+    let mut keys = KeyTable::new();
+    let right_keys = timed("  read the right keys", || chunks(right));
+    let right_slots = timed("  number the right keys", || {
+        keys.insert(&right_keys, right_rows.size() as usize)
+    });
+    let ends = timed("  first and last right row of each key", || {
+        let mut ends: Vec<Option<(RowKey, RowKey)>> = vec![None; keys.len()];
+        for (row, &slot) in right_rows.iter().zip(&right_slots) {
+            match &mut ends[slot as usize] {
+                Some((_, last)) => *last = row,
+                none => *none = Some((row, row)),
+            }
+        }
+        ends
+    });
+    let left_keys = timed("  read the left keys", || chunks(left));
+    let left_slots = timed("  look up the left keys", || {
+        keys.find(&left_keys, left_rows.size() as usize)
+    });
+    let inner = timed("  right row of each left row", || {
+        let row = |&slot: &u32| match ends.get(slot as usize) {
+            Some(Some((first, last))) if slot != NO_SLOT && first == last => *first,
+            _ => NULL_ROW_KEY,
+        };
+        left_slots.iter().map(row).collect::<Vec<RowKey>>()
+    });
+    timed("  make the redirection", || {
+        WritableRowRedirection::from_rows(&left_rows, inner)
+    });
+}
+
 fn main() {
     let rows: i64 = match std::env::args().nth(1) {
         Some(text) => text.parse().expect("the number of rows"),
@@ -128,17 +177,23 @@ fn main() {
     let sum = timed("  read the added column of every row", || read_r(&joined));
     println!("  sum of R: {sum}");
     drop(joined);
+    println!("the parts of that join");
+    phases(&left, &small, &["K10k"]);
     let joined = timed("natural join, int key, 1,000,000 right rows", || {
         natural_join(&left, &large, &on("K1M"), &[], error).expect("a join")
     });
     timed("  read the added column of every row", || read_r(&joined));
     drop(joined);
+    println!("the parts of that join");
+    phases(&left, &large, &["K1M"]);
     timed("exact join, int key, 10,000 right rows", || {
         exact_join(&left, &small, &on("K10k"), &[]).expect("a join")
     });
     timed("natural join, string key, 1,000 right rows", || {
         natural_join(&left, &texts, &on("S"), &[], error).expect("a join")
     });
+    println!("the parts of that join");
+    phases(&left, &texts, &["S"]);
     // The right table of the two-key join: every pair of a small key and a string.
     let pairs: Arc<dyn Table> = {
         let (columns, batch) = right_batch("K10k", 10_000);
@@ -172,6 +227,8 @@ fn main() {
     );
     println!("  sum of R: {}", read_r(&joined));
     drop(joined);
+    println!("the parts of that join");
+    phases(&left, &pairs, &["K10k", "S"]);
 
     // Refreshing tables: the join keeps what it needs to follow changes.
     let graph: Arc<dyn UpdateGraph> = SteppedUpdateGraph::new();

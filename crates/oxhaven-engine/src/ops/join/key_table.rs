@@ -38,7 +38,7 @@ use oxhaven_contracts::unported;
 use std::sync::Arc;
 
 /// What [`KeyTable::find`] answers for a row whose key the table does not have.
-pub(crate) const NO_SLOT: u32 = u32::MAX;
+pub const NO_SLOT: u32 = u32::MAX;
 
 /// The seeds are arbitrary and fixed (`PORTING.md`, rule 7).
 const HASHER: RandomState = RandomState::with_seeds(
@@ -48,30 +48,32 @@ const HASHER: RandomState = RandomState::with_seeds(
     0x082e_fa98_ec4e_6c89,
 );
 
-/// The keys of the slots, by slot.
+/// The keys that have a slot, hashed.
 enum Store {
     /// No key has been inserted yet, so the kind of key is not known.
     Unknown,
-    /// A join without key columns: every row has the one key.
+    /// No key columns: every row has the one key, whose slot is 0.
     Unit,
-    Ints(Vec<i64>),
-    /// The key of slot `s` is `data[ends[s - 1]..ends[s]]`.
+    /// Each key with its slot. The key is in the table itself, so that looking one up
+    /// touches one place in memory.
+    Ints(HashTable<(i64, u32)>),
+    /// Each slot with the place of its key: the key at place `n` is
+    /// `data[ends[n - 1]..ends[n]]`.
     Bytes {
+        slots: HashTable<(u32, u32)>,
         data: Vec<u8>,
         ends: Vec<usize>,
     },
 }
 
 /// The distinct keys seen so far, numbered.
-pub(crate) struct KeyTable {
-    /// The slots of the keys, hashed by key. The null key of a single key column is not in
-    /// here.
-    table: HashTable<u32>,
+pub struct KeyTable {
     store: Store,
-    /// The slot of the null key, for a single key column.
+    /// The number of slots given out.
+    len: usize,
+    /// The slot of the null key of a single key column, which is not in the store.
     null_slot: Option<u32>,
-    /// A converter for each combination of column types met. Columns that hold the same
-    /// values encode to the same bytes whatever their time zone annotation is.
+    /// A converter for each combination of column types met.
     converters: Vec<(Vec<DataType>, RowConverter)>,
 }
 
@@ -83,35 +85,45 @@ enum Chunk {
     Rows(arrow::row::Rows),
 }
 
+impl Default for KeyTable {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl KeyTable {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
-            table: HashTable::new(),
             store: Store::Unknown,
+            len: 0,
             null_slot: None,
             converters: Vec::new(),
         }
     }
 
     /// The number of slots: every slot is below it.
-    pub(crate) fn len(&self) -> usize {
-        match &self.store {
-            Store::Unknown => 0,
-            Store::Unit => 1,
-            Store::Ints(keys) => keys.len(),
-            Store::Bytes { ends, .. } => ends.len(),
-        }
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Whether no key has a slot.
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
     }
 
     /// The slot of each of the `rows` rows of the key `columns`, in row order. A key the
     /// table does not have gets the next free slot.
-    pub(crate) fn insert(&mut self, columns: &[ArrayRef], rows: usize) -> Vec<u32> {
+    ///
+    /// # Panics
+    /// With `unported!` for a column of a type that is not a key type, and if the columns
+    /// are not of the types of the columns of earlier calls.
+    pub fn insert(&mut self, columns: &[ArrayRef], rows: usize) -> Vec<u32> {
         self.slots(columns, rows, true)
     }
 
-    /// As [`KeyTable::insert`], but the table stays as it is: a row whose key it does not
-    /// have gets [`NO_SLOT`].
-    pub(crate) fn find(&mut self, columns: &[ArrayRef], rows: usize) -> Vec<u32> {
+    /// As [`KeyTable::insert`], but no key gets a slot: a row whose key the table does
+    /// not have gets [`NO_SLOT`].
+    pub fn find(&mut self, columns: &[ArrayRef], rows: usize) -> Vec<u32> {
         self.slots(columns, rows, false)
     }
 
@@ -119,16 +131,25 @@ impl KeyTable {
         if rows == 0 {
             return Vec::new();
         }
-        match self.chunk(columns) {
+        let chunk = self.chunk(columns);
+        if matches!(self.store, Store::Unknown) {
+            if !insert {
+                return vec![NO_SLOT; rows];
+            }
+            self.store = match chunk {
+                Chunk::Unit => Store::Unit,
+                Chunk::Ints(_) => Store::Ints(HashTable::new()),
+                Chunk::Texts(_) | Chunk::Rows(_) => Store::Bytes {
+                    slots: HashTable::new(),
+                    data: Vec::new(),
+                    ends: Vec::new(),
+                },
+            };
+        }
+        match chunk {
             Chunk::Unit => {
-                if matches!(self.store, Store::Unknown) && insert {
-                    self.store = Store::Unit;
-                }
-                let slot = match self.store {
-                    Store::Unit => 0,
-                    _ => NO_SLOT,
-                };
-                vec![slot; rows]
+                self.len = 1;
+                vec![0; rows]
             }
             Chunk::Ints(keys) => self.int_slots(&keys, insert),
             Chunk::Texts(keys) => {
@@ -156,7 +177,8 @@ impl KeyTable {
 
     /// The rows of `columns` in Arrow's row format, in which two rows have the same bytes
     /// exactly when every column has equal values or nulls in both. Floating point columns
-    /// are first brought to one NaN and one zero.
+    /// are first brought to one NaN and one zero, and timestamps lose their time zone
+    /// annotation, which is not part of their values.
     fn encode(&mut self, columns: &[ArrayRef]) -> arrow::row::Rows {
         let columns: Vec<ArrayRef> = columns.iter().map(canonical).collect();
         let types: Vec<DataType> = columns.iter().map(|c| c.data_type().clone()).collect();
@@ -179,44 +201,42 @@ impl KeyTable {
         }
     }
 
-    fn int_slots(&mut self, keys: &Int64Array, insert: bool) -> Vec<u32> {
-        if matches!(self.store, Store::Unknown) && insert {
-            self.store = Store::Ints(Vec::new());
+    /// The slot of the null key of a single key column.
+    fn null_slot(&mut self, insert: bool) -> u32 {
+        if self.null_slot.is_none() && insert {
+            self.null_slot = Some(next_slot(&mut self.len));
         }
-        let stored = match &mut self.store {
-            Store::Ints(stored) => stored,
-            Store::Unknown => return vec![NO_SLOT; keys.len()],
-            _ => panic!("the kind of key of a table does not change"),
-        };
+        self.null_slot.unwrap_or(NO_SLOT)
+    }
+
+    fn int_slots(&mut self, keys: &Int64Array, insert: bool) -> Vec<u32> {
         let mut slots = Vec::with_capacity(keys.len());
         for (row, &key) in keys.values().iter().enumerate() {
             if keys.is_null(row) {
-                if self.null_slot.is_none() && insert {
-                    self.null_slot = Some(next_slot(stored.len()));
-                    // A place holder: the null key is found by `null_slot`, not by value.
-                    stored.push(0);
-                }
-                slots.push(self.null_slot.unwrap_or(NO_SLOT));
+                slots.push(self.null_slot(insert));
                 continue;
             }
+            let Store::Ints(table) = &mut self.store else {
+                panic!("the kind of key of a table does not change");
+            };
             let hash = HASHER.hash_one(key);
             let slot = if insert {
-                let hasher = |slot: &u32| HASHER.hash_one(stored[*slot as usize]);
-                let entry = self
-                    .table
-                    .entry(hash, |slot| stored[*slot as usize] == key, hasher);
+                let entry = table.entry(
+                    hash,
+                    |(stored, _)| *stored == key,
+                    |(stored, _)| HASHER.hash_one(*stored),
+                );
                 match entry {
-                    Entry::Occupied(found) => *found.get(),
+                    Entry::Occupied(found) => found.get().1,
                     Entry::Vacant(free) => {
-                        let slot = next_slot(stored.len());
-                        free.insert(slot);
-                        stored.push(key);
+                        let slot = next_slot(&mut self.len);
+                        free.insert((key, slot));
                         slot
                     }
                 }
             } else {
-                let found = self.table.find(hash, |slot| stored[*slot as usize] == key);
-                found.copied().unwrap_or(NO_SLOT)
+                let found = table.find(hash, |(stored, _)| *stored == key);
+                found.map_or(NO_SLOT, |(_, slot)| *slot)
             };
             slots.push(slot);
         }
@@ -229,63 +249,60 @@ impl KeyTable {
         nulls: Option<&NullBuffer>,
         insert: bool,
     ) -> Vec<u32> {
-        if matches!(self.store, Store::Unknown) && insert {
-            self.store = Store::Bytes {
-                data: Vec::new(),
-                ends: Vec::new(),
-            };
+        fn stored<'s>(data: &'s [u8], ends: &[usize], index: u32) -> &'s [u8] {
+            let index = index as usize;
+            let start = if index == 0 { 0 } else { ends[index - 1] };
+            &data[start..ends[index]]
         }
-        let (data, ends) = match &mut self.store {
-            Store::Bytes { data, ends } => (data, ends),
-            Store::Unknown => return vec![NO_SLOT; keys.count()],
-            _ => panic!("the kind of key of a table does not change"),
-        };
-        fn stored<'s>(data: &'s [u8], ends: &[usize], slot: u32) -> &'s [u8] {
-            let slot = slot as usize;
-            let start = if slot == 0 { 0 } else { ends[slot - 1] };
-            &data[start..ends[slot]]
-        }
-        let mut slots = Vec::with_capacity(keys.size_hint().0);
+        let mut row_slots = Vec::with_capacity(keys.size_hint().0);
         for (row, key) in keys.enumerate() {
             if nulls.is_some_and(|nulls| nulls.is_null(row)) {
-                if self.null_slot.is_none() && insert {
-                    self.null_slot = Some(next_slot(ends.len()));
-                    ends.push(data.len());
-                }
-                slots.push(self.null_slot.unwrap_or(NO_SLOT));
+                row_slots.push(self.null_slot(insert));
                 continue;
             }
+            let Store::Bytes { slots, data, ends } = &mut self.store else {
+                panic!("the kind of key of a table does not change");
+            };
+            // An entry is the slot of a key with the key's place in `ends`: the two differ
+            // by one after the null key got its slot.
             let hash = HASHER.hash_one(key);
             let slot = if insert {
-                let hasher = |slot: &u32| HASHER.hash_one(stored(data, ends, *slot));
-                let entry = self
-                    .table
-                    .entry(hash, |slot| stored(data, ends, *slot) == key, hasher);
+                let entry = slots.entry(
+                    hash,
+                    |(_, index)| stored(data, ends, *index) == key,
+                    |(_, index)| HASHER.hash_one(stored(data, ends, *index)),
+                );
                 match entry {
-                    Entry::Occupied(found) => *found.get(),
+                    Entry::Occupied(found) => found.get().0,
                     Entry::Vacant(free) => {
-                        let slot = next_slot(ends.len());
-                        free.insert(slot);
+                        let slot = next_slot(&mut self.len);
+                        let index = match u32::try_from(ends.len()) {
+                            Ok(index) => index,
+                            Err(_) => panic!("fewer keys than slots"),
+                        };
+                        free.insert((slot, index));
                         data.extend_from_slice(key);
                         ends.push(data.len());
                         slot
                     }
                 }
             } else {
-                let found = self
-                    .table
-                    .find(hash, |slot| stored(data, ends, *slot) == key);
-                found.copied().unwrap_or(NO_SLOT)
+                let found = slots.find(hash, |(_, index)| stored(data, ends, *index) == key);
+                found.map_or(NO_SLOT, |(slot, _)| *slot)
             };
-            slots.push(slot);
+            row_slots.push(slot);
         }
-        slots
+        row_slots
     }
 }
 
-fn next_slot(slots: usize) -> u32 {
-    match u32::try_from(slots) {
-        Ok(slot) if slot != NO_SLOT => slot,
+/// Takes the next slot.
+fn next_slot(len: &mut usize) -> u32 {
+    match u32::try_from(*len) {
+        Ok(slot) if slot != NO_SLOT => {
+            *len += 1;
+            slot
+        }
         _ => panic!("more than {NO_SLOT} distinct keys"),
     }
 }

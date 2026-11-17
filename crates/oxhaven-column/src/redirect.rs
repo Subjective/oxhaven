@@ -70,8 +70,10 @@ struct Mappings {
     current: Current,
     /// The number of outer keys that have a mapping.
     size: usize,
-    /// The size at which sparse mappings are next looked at for having become dense.
-    look_at: usize,
+    /// The number of writes until the mappings are next looked at for having become dense.
+    /// It is set to the number of mappings each time, so that moving them all to an array
+    /// costs a constant per write however keys come and go.
+    writes_until_look: usize,
     /// What each outer key changed in this cycle mapped to when the cycle began: the first
     /// write wins. `NULL_ROW_KEY` for a key that had no mapping.
     ///
@@ -88,7 +90,7 @@ impl Mappings {
         Self {
             current,
             size,
-            look_at: DENSE_FLOOR,
+            writes_until_look: DENSE_FLOOR,
             prev: BTreeMap::new(),
             prev_step: 0,
             clock: None,
@@ -114,8 +116,9 @@ impl Mappings {
             (false, true) => self.size -= 1,
             _ => {}
         }
-        if self.size >= self.look_at {
-            self.look_at = self.size.saturating_mul(2);
+        self.writes_until_look -= 1;
+        if self.writes_until_look == 0 {
+            self.writes_until_look = self.size.max(DENSE_FLOOR);
             self.densify();
         }
         old
@@ -348,6 +351,7 @@ mod tests {
     use crate::tracked::testing::ManualClock;
     use crate::{FlatSource, WritableSource};
     use arrow::array::{Array, Int32Array};
+    use std::collections::BTreeMap;
 
     fn ints(chunk: Result<ArrayRef, TableFailure>) -> Vec<Option<i32>> {
         let chunk = chunk.unwrap();
@@ -428,5 +432,221 @@ mod tests {
 
         clock.finish_cycle();
         assert_eq!(ints(source.prev_chunk(&rows)), ints(source.chunk(&rows)));
+    }
+
+    /// Every key from 0 to `upto`, now and before.
+    fn all(redirection: &WritableRowRedirection, upto: RowKey, use_prev: bool) -> Vec<RowKey> {
+        let keys: Vec<RowKey> = (0..=upto).collect();
+        redirection.redirect(&keys, use_prev)
+    }
+
+    #[test]
+    fn dense_keys_are_kept_in_an_array_until_a_key_far_away_arrives() {
+        let redirection = WritableRowRedirection::new();
+        assert!(redirection.is_flat_array());
+        for outer in [3, 0, 700, 2] {
+            redirection.put(outer, outer + 100);
+        }
+        assert!(redirection.is_flat_array());
+        // Removing a key that was never there, beyond the array, changes nothing.
+        assert_eq!(redirection.remove(5000), NULL_ROW_KEY);
+        assert_eq!(redirection.remove(-7), NULL_ROW_KEY);
+        assert!(redirection.is_flat_array());
+
+        let far = 1 << 40;
+        assert_eq!(redirection.put(far, 9), NULL_ROW_KEY);
+        assert!(!redirection.is_flat_array());
+        assert_eq!(
+            redirection.redirect(&[0, 1, 2, 3, 700, 701, far, far + 1], false),
+            [100, -1, 102, 103, 800, -1, 9, -1]
+        );
+        assert_eq!(redirection.put(3, 4), 103);
+        assert_eq!(redirection.remove(far), 9);
+        assert_eq!(redirection.redirect(&[3, far], false), [4, -1]);
+    }
+
+    /// Keys put in descending order start out sparse, and are dense once enough of them
+    /// have arrived.
+    #[test]
+    fn sparse_mappings_move_to_an_array_when_their_keys_have_become_dense() {
+        let redirection = WritableRowRedirection::new();
+        let last = 4 * DENSE_FLOOR as RowKey + 500;
+        redirection.put(last, 1);
+        assert!(!redirection.is_flat_array());
+        for outer in (0..last).rev() {
+            redirection.put(outer, outer + 7);
+        }
+        assert!(redirection.is_flat_array());
+        let mut expected: Vec<RowKey> = (0..last).map(|outer| outer + 7).collect();
+        expected.push(1);
+        assert_eq!(all(&redirection, last, false), expected);
+        assert_eq!(redirection.redirect(&[last + 1], false), [NULL_ROW_KEY]);
+    }
+
+    #[test]
+    fn from_rows_maps_each_row_to_its_inner_key() {
+        // The keys 0..n: the inner keys are the array.
+        let flat = WritableRowRedirection::from_rows(&RowSet::flat(4), vec![9, -1, 7, 9]);
+        assert!(flat.is_flat_array());
+        assert_eq!(all(&flat, 4, false), [9, -1, 7, 9, -1]);
+        assert_eq!(flat.put(1, 5), NULL_ROW_KEY);
+        assert_eq!(flat.remove(0), 9);
+
+        // Dense keys that do not start at zero.
+        let rows = RowSet::from_keys([10, 20, 30]);
+        let dense = WritableRowRedirection::from_rows(&rows, vec![1, -1, 3]);
+        assert!(dense.is_flat_array());
+        assert_eq!(
+            dense.redirect(&[10, 11, 20, 30, 31], false),
+            [1, -1, -1, 3, -1]
+        );
+
+        // Keys far apart.
+        let far = 1 << 40;
+        let rows = RowSet::from_keys([0, far, far + 5]);
+        let sparse = WritableRowRedirection::from_rows(&rows, vec![4, -1, 6]);
+        assert!(!sparse.is_flat_array());
+        assert_eq!(
+            sparse.redirect(&[0, far, far + 5, 1], false),
+            [4, -1, 6, -1]
+        );
+        assert_eq!(sparse.remove(far), NULL_ROW_KEY);
+
+        let empty = WritableRowRedirection::from_rows(&RowSet::empty(), Vec::new());
+        assert_eq!(empty.redirect(&[0], false), [NULL_ROW_KEY]);
+        assert_eq!(empty.put(0, 3), NULL_ROW_KEY);
+    }
+
+    #[test]
+    #[should_panic(expected = "one inner key per row")]
+    fn from_rows_needs_an_inner_key_for_every_row() {
+        WritableRowRedirection::from_rows(&RowSet::flat(3), vec![1, 2]);
+    }
+
+    /// Previous mappings of an array: over several cycles, for keys the array grows to
+    /// hold, and through the move to a map and back.
+    #[test]
+    fn an_array_keeps_previous_mappings_for_the_cycle() {
+        let clock = ManualClock::idle_at(1);
+        let redirection = WritableRowRedirection::from_rows(&RowSet::flat(3), vec![10, 11, 12]);
+        redirection.start_tracking_prev(clock.clone());
+
+        clock.start_cycle();
+        redirection.put(0, 20);
+        redirection.put(0, 30);
+        redirection.remove(1);
+        redirection.put(5, 15);
+        assert!(redirection.is_flat_array());
+        assert_eq!(all(&redirection, 5, false), [30, -1, 12, -1, -1, 15]);
+        assert_eq!(all(&redirection, 5, true), [10, 11, 12, -1, -1, -1]);
+        clock.finish_cycle();
+        assert_eq!(all(&redirection, 5, true), [30, -1, 12, -1, -1, 15]);
+
+        // The second cycle sees the first cycle's result as previous, and a key far away
+        // moves the mappings to a map in the middle of it.
+        clock.start_cycle();
+        assert_eq!(all(&redirection, 5, true), [30, -1, 12, -1, -1, 15]);
+        redirection.put(1, 21);
+        redirection.remove(5);
+        let far = 1 << 40;
+        redirection.put(far, 1);
+        assert!(!redirection.is_flat_array());
+        redirection.put(2, 22);
+        assert_eq!(all(&redirection, 5, false), [30, 21, 22, -1, -1, -1]);
+        assert_eq!(all(&redirection, 5, true), [30, -1, 12, -1, -1, 15]);
+        assert_eq!(redirection.redirect(&[far], true), [NULL_ROW_KEY]);
+        assert_eq!(redirection.redirect(&[far], false), [1]);
+        clock.finish_cycle();
+
+        // Back to an array in the middle of a third cycle.
+        clock.start_cycle();
+        redirection.remove(far);
+        redirection.put(0, 40);
+        for outer in 10..2 * DENSE_FLOOR as RowKey {
+            redirection.put(outer, outer);
+        }
+        assert!(redirection.is_flat_array());
+        assert_eq!(all(&redirection, 5, false), [40, 21, 22, -1, -1, -1]);
+        assert_eq!(all(&redirection, 5, true), [30, 21, 22, -1, -1, -1]);
+        assert_eq!(redirection.redirect(&[far, 10, 11], true), [1, -1, -1]);
+        assert_eq!(redirection.redirect(&[far, 10, 11], false), [-1, 10, 11]);
+        clock.finish_cycle();
+        assert_eq!(redirection.redirect(&[far, 0, 10], true), [-1, 40, 10]);
+    }
+
+    /// A write made while the clock is idle records nothing, as for a writable source.
+    #[test]
+    fn a_write_between_cycles_is_not_a_previous_mapping() {
+        let clock = ManualClock::idle_at(1);
+        let redirection = WritableRowRedirection::from_rows(&RowSet::flat(2), vec![10, 11]);
+        redirection.start_tracking_prev(clock.clone());
+        redirection.put(0, 20);
+        assert_eq!(all(&redirection, 1, true), [20, 11]);
+        clock.start_cycle();
+        assert_eq!(all(&redirection, 1, true), [20, 11]);
+        redirection.put(1, 21);
+        assert_eq!(all(&redirection, 1, true), [20, 11]);
+        clock.finish_cycle();
+        // The record of that cycle is not used in the next one.
+        clock.start_cycle();
+        assert_eq!(all(&redirection, 1, true), [20, 21]);
+    }
+
+    /// Random puts and removes of keys near and far, over many cycles, against a plain
+    /// map with a copy of itself from the start of the cycle.
+    #[test]
+    fn a_redirection_agrees_with_a_map_through_random_changes() {
+        let clock = ManualClock::idle_at(1);
+        let redirection = WritableRowRedirection::new();
+        redirection.start_tracking_prev(clock.clone());
+        let mut model: BTreeMap<RowKey, RowKey> = BTreeMap::new();
+        let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
+        let mut random = move |below: u64| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state % below
+        };
+        let mut forms = [0, 0];
+        for cycle in 0..300 {
+            let before = model.clone();
+            clock.start_cycle();
+            // Phases of dense keys, of keys spread wide, and of removals back to few keys.
+            let (spread, removes) = match (cycle / 50) % 3 {
+                0 => (3000, 1),
+                1 => (1 << 30, 2),
+                _ => (3000, 8),
+            };
+            for _ in 0..40 {
+                let outer = random(spread) as RowKey;
+                let expected = if random(10) < removes {
+                    (redirection.remove(outer), model.remove(&outer))
+                } else {
+                    let inner = random(1000) as RowKey;
+                    (redirection.put(outer, inner), model.insert(outer, inner))
+                };
+                assert_eq!(expected.0, expected.1.unwrap_or(NULL_ROW_KEY));
+            }
+            if cycle % 50 == 49 && spread > 3000 {
+                // Drop the keys far away, so that the rest can be dense again.
+                let far: Vec<RowKey> = model.range(3000..).map(|(outer, _)| *outer).collect();
+                for outer in far {
+                    assert_eq!(redirection.remove(outer), model.remove(&outer).unwrap());
+                }
+            }
+            let mut keys: Vec<RowKey> = model.keys().chain(before.keys()).copied().collect();
+            keys.extend([0, 1, 2999, 3000, (1 << 30) - 1, NULL_ROW_KEY]);
+            let read = |map: &BTreeMap<RowKey, RowKey>| -> Vec<RowKey> {
+                let inner = |key| map.get(key).map_or(NULL_ROW_KEY, |inner| *inner);
+                keys.iter().map(inner).collect()
+            };
+            assert_eq!(redirection.redirect(&keys, false), read(&model), "{cycle}");
+            assert_eq!(redirection.redirect(&keys, true), read(&before), "{cycle}");
+            clock.finish_cycle();
+            assert_eq!(redirection.redirect(&keys, true), read(&model), "{cycle}");
+            forms[usize::from(redirection.is_flat_array())] += 1;
+        }
+        // Both forms were in use.
+        assert!(forms[0] > 20 && forms[1] > 20, "{forms:?}");
     }
 }

@@ -227,3 +227,64 @@ fn random_updates_of_the_left_table() {
 fn random_updates_of_the_right_table() {
     assert_enough(&run_all(Live::Right));
 }
+
+/// The slots of a [`KeyTable`](super::key_table::KeyTable) against the keys the joins
+/// compared before they hashed: two rows have one slot exactly when their keys are equal.
+#[test]
+fn rows_share_a_slot_exactly_when_their_keys_are_equal() {
+    use super::key_table::{KeyTable, NO_SLOT};
+    use super::keys::KeyColumns;
+    let mut pairs = [0u64; 2];
+    for seed in test_seeds(SEEDS) {
+        let mut random = RandomUpdates::new(seed);
+        let size: usize = 40;
+        let values = COLUMNS
+            .iter()
+            .map(|(_, column_type)| random.values(column_type, size as u64))
+            .collect();
+        let script = ScriptedTable::new(
+            graph(),
+            definition(&COLUMNS),
+            RowSet::flat(size as u64),
+            values,
+        );
+        let table = script.table();
+        let (first, second) = (RowSet::from_range(0, 24), RowSet::from_range(25, 39));
+        for names in KEYS {
+            let columns = names
+                .iter()
+                .map(|name| table.definition().index_of(name).unwrap())
+                .collect();
+            let columns = KeyColumns { columns };
+            let keys = columns.read(&*table, &table.row_set(), false).unwrap();
+            // The first rows are inserted, and the rest are looked up and then inserted.
+            let mut slots = KeyTable::new();
+            let chunks = columns.chunks(&*table, &first, false).unwrap();
+            let mut row_slots = slots.insert(&chunks, 25);
+            let chunks = columns.chunks(&*table, &second, false).unwrap();
+            let found = slots.find(&chunks, 15);
+            let inserted = slots.insert(&chunks, 15);
+            for (row, (found, inserted)) in found.iter().zip(&inserted).enumerate() {
+                let known = keys[..25].contains(&keys[25 + row]);
+                assert_eq!(*found != NO_SLOT, known, "{names:?}, seed {seed}");
+                assert!(!known || found == inserted, "{names:?}, seed {seed}");
+            }
+            row_slots.extend(inserted);
+            assert!(row_slots.iter().all(|slot| (*slot as usize) < slots.len()));
+            for a in 0..size {
+                for b in 0..a {
+                    let equal = keys[a] == keys[b];
+                    assert_eq!(
+                        row_slots[a] == row_slots[b],
+                        equal,
+                        "{names:?}, seed {seed}, rows {a} and {b}"
+                    );
+                    pairs[usize::from(equal)] += 1;
+                }
+            }
+        }
+    }
+    // Both answers were given often.
+    let floor = at_least_for(1000, SEEDS);
+    assert!(pairs[0] > floor && pairs[1] > floor, "{pairs:?}");
+}
