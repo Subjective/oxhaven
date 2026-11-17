@@ -35,7 +35,7 @@ impl Stream {
     /// `None` one time in eight.
     fn maybe<T>(&mut self, value: impl FnOnce(u64) -> T) -> Option<T> {
         let draw = self.next();
-        (draw % 8 != 0).then(|| value(draw >> 8))
+        (!draw.is_multiple_of(8)).then(|| value(draw >> 8))
     }
 }
 
@@ -103,7 +103,7 @@ fn table(rows: usize, seed: u64) -> TestTable {
     });
     let x: ArrayRef = column(&mut |s| {
         Arc::new(BooleanArray::from_iter(
-            (0..rows).map(|_| Some(s.next() % 3 == 0)),
+            (0..rows).map(|_| Some(s.next().is_multiple_of(3))),
         ))
     });
     let t: ArrayRef = column(&mut |s| {

@@ -206,7 +206,7 @@ pub(crate) fn cast<T: JavaPrimitive>(operand: &dyn Array) -> PrimitiveArray<T::A
 fn null_values_to_nulls<T: JavaPrimitive>(
     array: PrimitiveArray<T::Arrow>,
 ) -> PrimitiveArray<T::Arrow> {
-    if !array.values().iter().any(|value| *value == T::NULL) {
+    if !array.values().contains(&T::NULL) {
         return array;
     }
     let (_, values, nulls) = array.into_parts();
@@ -297,7 +297,7 @@ pub(crate) fn without_null_value<P: ArrowPrimitiveType>(
     null_value: P::Native,
 ) -> Option<PrimitiveArray<P>> {
     // Most columns hold the value nowhere, which a pass over the values alone shows.
-    if !array.values().iter().any(|v| *v == null_value) {
+    if !array.values().contains(&null_value) {
         return None;
     }
     let is_null_value = |v: Option<P::Native>| v.is_some_and(|v| v == null_value);
