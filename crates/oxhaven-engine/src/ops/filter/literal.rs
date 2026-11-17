@@ -22,7 +22,8 @@ pub(super) enum Key {
     },
 }
 
-/// The value of `function` (`parseLocalDate`, `parseLocalTime`, `parseZonedDateTime`) of
+/// The value of `function` (`parseLocalDate`, `parseLocalTime`, `parseLocalDateTime`,
+/// `parseZonedDateTime`) of
 /// the text `inner`, which the formula compiler computes: Java's convertor calls the same
 /// `DateTimeUtils` method. An exception of that method is an error.
 fn parse_time_value(
@@ -32,7 +33,7 @@ fn parse_time_value(
     compiler: &dyn FormulaCompiler,
 ) -> Result<Key, String> {
     use arrow::array::{Array, AsArray};
-    use arrow::datatypes::{Date32Type, Time64NanosecondType};
+    use arrow::datatypes::{Date32Type, Time64NanosecondType, TimestampNanosecondType};
     let bad = || format!("Text '{inner}' could not be parsed by {function}");
     // The text is put in a string literal of a formula; text that would end it, or escape
     // in it, is nothing these methods read.
@@ -58,6 +59,9 @@ fn parse_time_value(
     Ok(match column_type {
         ColumnType::LocalDate => Key::Int(values.as_primitive::<Date32Type>().value(0).into()),
         ColumnType::LocalTime => Key::Int(values.as_primitive::<Time64NanosecondType>().value(0)),
+        ColumnType::LocalDateTime => {
+            Key::Int(values.as_primitive::<TimestampNanosecondType>().value(0))
+        }
         _ => {
             let (_, instants, zones) = crate::ops::zoned::parts(&values).map_err(|e| e.message)?;
             Key::Zoned {
@@ -554,16 +558,21 @@ fn convert_literal_with(
                 Key::Int(nanos)
             })
         }
-        // Behavior: the `LocalDate`, `LocalTime` and `ZonedDateTime` convertors, which
-        // read the quoted text with DateTimeUtils#parseLocalDate, #parseLocalTime and
-        // #parseZonedDateTime. (Java spells the last one's message "ZoneDateTime".)
-        ColumnType::LocalDate | ColumnType::LocalTime | ColumnType::ZonedDateTime => {
+        // Behavior: the `LocalDate`, `LocalTime`, `LocalDateTime` and `ZonedDateTime`
+        // convertors, which read the quoted text with DateTimeUtils#parseLocalDate,
+        // #parseLocalTime, #parseLocalDateTime and #parseZonedDateTime. (Java spells the
+        // last one's message "ZoneDateTime".)
+        ColumnType::LocalDate
+        | ColumnType::LocalTime
+        | ColumnType::LocalDateTime
+        | ColumnType::ZonedDateTime => {
             if text == "null" {
                 return Ok(Key::Null);
             }
             let (class, function) = match column_type {
                 ColumnType::LocalDate => ("LocalDate", "parseLocalDate"),
                 ColumnType::LocalTime => ("LocalTime", "parseLocalTime"),
+                ColumnType::LocalDateTime => ("LocalDateTime", "parseLocalDateTime"),
                 _ => ("ZoneDateTime", "parseZonedDateTime"),
             };
             if text.len() < 2 || !text.starts_with('\'') || !text.ends_with('\'') {

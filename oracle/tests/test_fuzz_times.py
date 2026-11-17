@@ -67,13 +67,13 @@ def test_generation_is_the_same_in_another_process():
 
 def test_a_seed_is_the_scenario_it_was():
     """A digest over the scenarios of seeds 0 to 99 as the generator is at the end of task
-    4.24, with the restrictions `fuzz_times.RESTRICTIONS` lists. A change to what a seed
+    4.25, with the restrictions `fuzz_times.RESTRICTIONS` lists. A change to what a seed
     builds must be meant: the findings of the task are kept as scenario files in
     `tasks/4.24-fuzz-time-types/`, not as seeds."""
     digest = hashlib.sha256()
     for doc, _ in GENERATED[:100]:
         digest.update(json.dumps(doc, sort_keys=True).encode())
-    assert digest.hexdigest()[:16] == "c57be00e01b30260"
+    assert digest.hexdigest()[:16] == "630cebdc36ed90cb"
 
 
 def test_generated_scenarios_are_valid_and_stay_within_the_family():
@@ -131,7 +131,7 @@ def test_every_operation_type_and_aggregation_is_drawn():
     for kind in fuzz_times.TIME_TYPES:
         assert seen["by " + kind] > 5, kind
         assert seen["key " + kind] > 0, kind
-    for kind in set(fuzz_times.TIME_TYPES) - {fuzz_times.DATETIME}:  # R2
+    for kind in fuzz_times.TIME_TYPES:
         assert seen["sort " + kind] > 0, kind
         assert seen["match " + kind] > 0, kind
         assert seen["range " + kind] > 0, kind
@@ -153,27 +153,29 @@ def test_what_a_finding_restricts_is_not_drawn():
             for text in op["filters"]:
                 column = re.match(r"(?:isNull\()?(\w+)", text).group(1)
                 checked["filter"] += 1
-                assert types[column] != fuzz_times.DATETIME, (doc["name"], op)  # R2
-                if re.search(r" [<>]=? null$", text):  # R7
-                    checked["range with null"] += 1
-                    assert types[column] in (fuzz_times.DATE, fuzz_times.TIME,
-                                             fuzz_times.ZONED), (doc["name"], op)
+                if re.search(r" [<>]=? null$", text):  # R7, lifted by task 4.25
+                    checked["range with null " + types[column]] += 1
         elif kind == "agg_by":
             types = dict(predicted[op["source"]])
             for agg in op["aggs"]:
                 for pair in agg.get("columns", ()):
                     column = pair.split("=")[-1].strip()
-                    if types[column] in NOT_COMPARABLE:  # R3, J1
+                    if types[column] == fuzz_times.ZONE:  # J1
                         checked["aggregated"] += 1
                         assert agg["agg"] in ("first", "last", "sorted_first",
                                               "sorted_last"), (doc["name"], op)
+                    elif types[column] == fuzz_times.PERIOD:  # R3, lifted by task 4.25
+                        checked["period " + agg["agg"]] += 1
                 order = agg.get("args", {}).get("order_by")
                 if order is not None:  # R4, J1
                     checked["ordered"] += 1
                     assert types[order] not in NOT_COMPARABLE, (doc["name"], op)
     for name in ("filter", "aggregated", "ordered"):
         assert checked[name] > 5, (name, checked[name])
-    assert checked["range with null"] > 0
+    lifted = (fuzz_times.DOW, fuzz_times.DURATION, fuzz_times.PERIOD, fuzz_times.ZONE)
+    assert sum(checked["range with null " + kind] for kind in lifted) > 0
+    for agg in fuzz_times._ORDERED_AGGS:
+        assert checked["period " + agg] > 0, agg
 
 
 def test_no_join_is_drawn_that_can_fail_in_a_later_cycle():

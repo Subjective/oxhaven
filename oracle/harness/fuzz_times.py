@@ -24,6 +24,10 @@ Kept out because the table would fail in a later update cycle, which cannot be c
 (`oracle/README.md`, Known limits): a natural or exact join whose right table is not an
 aggregation by the join keys of the left table's own parent.
 
+An ordering aggregation of a `Period` (`min`, `count_distinct`, ...) fails a group once
+two periods meet in it, which on a refreshing parent can be in a later cycle: that is
+drawn, since the rules compare the cycle a table fails in (PARITY.md, A11).
+
 `RESTRICTIONS` lists what it steps around because of a finding.
 """
 
@@ -36,15 +40,10 @@ from .fuzz_second import _Second
 
 # Findings of tasks/4.24-fuzz-time-types.md that the generator steps around, and where.
 RESTRICTIONS: dict[str, str] = {
-    "R2": "time_filter: no filter on a LocalDateTime column, the null forms neither",
-    "R3": "time_agg: no min, max, median, percentile, count_distinct, unique or distinct of "
-          "a Period column",
     "R4": "time_agg: no sorted first or last by a Period column",
     "J1": "time_agg: no min, max, median, percentile, count_distinct, unique or distinct of "
           "a ZoneId column, and no sorted first or last by one (the reference fails when "
           "two zones meet in a group)",
-    "R7": "time_filter: no range comparison with null of a DayOfWeek, Duration, Period or "
-          "ZoneId column (the reference computes it as a formula)",
     "R6": "time_aj: no as-of join on a column of these types",
 }
 
@@ -79,7 +78,9 @@ _LITERALS = {
            "'2023-3-5'", "'2023-11-14T00:00'"),
     TIME: ("'22:13:20'", "'17:13:20'", "'07:13'", "'22:13:20.000000001'", "'9:13'",
            "'00:00'", "'24:00'"),
-    DATETIME: ("'2023-11-14T22:13:20'", "'2023-11-15T07:13:20'"),
+    DATETIME: ("'2023-11-14T22:13:20'", "'2023-11-15T07:13:20'", "'2023-11-14'",
+               "'2023-11-14T22:13:20.000000001'", "'2023-11-15T7:13:20'", "'2023-11-14T24:00'",
+               "'2024-03-10t02:00'", "'2023-11-14 22:13:20'"),
     DURATION: ("'PT1H'", "'PT-2M'", "'PT0.5S'", "'PT0S'"),
     DOW: ("MONDAY", "TUESDAY", "WEDNESDAY", "SUNDAY", "Tuesday", "`TUESDAY`"),
     ZONED: ("'2023-11-14T22:13:20 UTC'", "'2023-11-14T17:13:20 ET'",
@@ -220,10 +221,7 @@ class _Times(_Second):
 
     def time_filter(self, source: _Table) -> str | None:
         rng = self.rng
-        columns = [c for c in self.timed(source) if source.type_of(c) != DATETIME]  # R2
-        if not columns:
-            return None
-        column = rng.choice(columns)
+        column = rng.choice(self.timed(source))
         kind = source.type_of(column)
         literal = lambda: "null" if self.chance(0.12) else rng.choice(_LITERALS[kind])  # noqa: E731
         shape = rng.choice(["match", "match", "in", "range", "range", "null"])
@@ -235,8 +233,6 @@ class _Times(_Second):
         if shape == "in":
             return f"{column} {rng.choice(['in', 'not in'])} {literal()}, {literal()}"
         value = literal()
-        if value == "null" and kind in (DOW, DURATION, PERIOD, ZONE):  # R7
-            value = rng.choice(_LITERALS[kind])
         return f"{column} {rng.choice(['<', '<=', '>', '>='])} {value}"
 
     def time_where(self, name: str, source: _Table) -> bool:
@@ -287,7 +283,7 @@ class _Times(_Second):
             column = rng.choice(timed)
             kind = source.type_of(column)
             agg = rng.choice(_AGGS)
-            if kind in (PERIOD, ZONE) and agg in _ORDERED_AGGS:  # R3, J1
+            if kind == ZONE and agg in _ORDERED_AGGS:  # J1
                 agg = rng.choice(["first", "last"])
             out = self.fresh("A")
             spec: dict[str, Any] = {"agg": agg, "columns": [f"{out} = {column}"]}

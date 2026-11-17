@@ -402,3 +402,117 @@ fn random_updates_of_zoned_date_times() {
         "only {updates} updates were checked"
     );
 }
+
+/// The ordering aggregations of a `Period` that Java can answer, with their result names.
+fn period_specs() -> Vec<(AggSpec, &'static str)> {
+    vec![
+        (AggSpec::Min, "Mn"),
+        (AggSpec::Max, "Mx"),
+        (
+            AggSpec::Median {
+                average_evenly_divided: false,
+            },
+            "Md",
+        ),
+        (
+            AggSpec::Percentile {
+                percentile: 0.25,
+                average_evenly_divided: false,
+            },
+            "Pc",
+        ),
+        (AggSpec::CountDistinct { count_nulls: false }, "Cd"),
+        (AggSpec::CountDistinct { count_nulls: true }, "Cn"),
+        (
+            AggSpec::Unique {
+                include_nulls: false,
+                non_unique: Sentinel::Null,
+            },
+            "U",
+        ),
+        (
+            AggSpec::Distinct {
+                include_nulls: false,
+            },
+            "D",
+        ),
+        (
+            AggSpec::Distinct {
+                include_nulls: true,
+            },
+            "Dn",
+        ),
+    ]
+}
+
+fn period_orderings(input: &str) -> Vec<Aggregation> {
+    period_specs()
+        .into_iter()
+        .map(|(spec, out)| agg(spec, &[&format!("{out} = {input}")]))
+        .collect()
+}
+
+/// The rows `rows` of the probe table.
+fn rows_in(rows: &[i64]) -> Arc<dyn Table> {
+    let filter = format!(
+        "I in {}",
+        rows.iter()
+            .map(|r| r.to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    crate::ops::filter::unstructured_filter(&table(), &[filter], &oxhaven_expr::Compiler)
+        .expect("a filter")
+}
+
+/// Seen on Java 42.9: a group of nulls and one period is answered by every ordering
+/// aggregation (K = 1 holds P1D and a null, K = 0 holds P2D); a group of two periods that
+/// differ fails each of them with a `ClassCastException`.
+#[test]
+fn orderings_of_a_period_answer_a_group_of_one_period() {
+    let result = aggregate(&rows_in(&[1, 2, 3]), &period_orderings("P"), false, &["K"])
+        .expect("an aggregation");
+    let one = |days: i32| format!("{{years: 0, months: 0, days: {days}}}");
+    let (p1, p2) = (one(1), one(2));
+    assert_eq!(
+        super::rows(&*result),
+        [
+            format!("1|{p1}|{p1}|{p1}|{p1}|1|2|{p1}|[{p1}]|[null, {p1}]"),
+            format!("0|{p2}|{p2}|{p2}|{p2}|1|1|{p2}|[{p2}]|[{p2}]"),
+        ]
+    );
+    for aggregation in period_orderings("P") {
+        let Err(error) = aggregate(
+            &rows_in(&[1, 5]),
+            std::slice::from_ref(&aggregation),
+            false,
+            &[],
+        ) else {
+            panic!("{aggregation:?} of two periods was answered");
+        };
+        assert!(error.to_string().contains("ClassCastException"), "{error}");
+    }
+}
+
+/// Seen on Java 42.9 with `Q = I == 2 ? null : 'P1D'`, whose periods are one object: the
+/// minimum and maximum of a static parent are answered, and the aggregations that sort
+/// the rows of a group fail, as they do for one object given twice at once.
+#[test]
+fn one_period_twice_is_answered_only_by_the_minimum_and_maximum() {
+    let parent = update(
+        &rows_in(&[0, 1, 2]),
+        &["Q = I == 2 ? null : 'P1D'"],
+        &oxhaven_expr::Compiler,
+    )
+    .expect("an update");
+    for (index, aggregation) in period_orderings("Q").into_iter().enumerate() {
+        let outcome = aggregate(&parent, &[aggregation], false, &[]);
+        match index {
+            0 | 1 => assert_eq!(
+                super::rows(&*outcome.expect("the minimum or maximum")),
+                ["{years: 0, months: 0, days: 1}"]
+            ),
+            _ => assert!(outcome.is_err(), "aggregation {index} was answered"),
+        }
+    }
+}

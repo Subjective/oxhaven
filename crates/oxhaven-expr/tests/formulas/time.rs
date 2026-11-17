@@ -546,3 +546,65 @@ fn a_date_is_made_of_its_year_month_and_day() {
         "{failure}"
     );
 }
+
+/// Behavior: `DateTimeUtils#parseLocalDateTime` and `#parseLocalDateTimeQuiet`. The values
+/// are those Java 42.9 returned for the same texts.
+#[test]
+fn text_is_parsed_as_a_local_date_time() {
+    const DAY: i64 = 86_400_000_000_000;
+    const HOUR: i64 = 3_600_000_000_000;
+    // 2023-11-14 and 2021-02-28 as days since the epoch.
+    let (nov_14, feb_28) = (19_675, 18_686);
+    let cases: [(&str, Option<i64>); 15] = [
+        (
+            "2023-11-14T22:13:20",
+            Some(nov_14 * DAY + 80_000_000_000_000),
+        ),
+        ("2023-11-14", Some(nov_14 * DAY)),
+        ("2023-11-14T", Some(nov_14 * DAY)),
+        (
+            "2023-11-14t22:13",
+            Some(nov_14 * DAY + 22 * HOUR + 780_000_000_000),
+        ),
+        (
+            "2023-11-14T22:13:20.5",
+            Some(nov_14 * DAY + 80_000_500_000_000),
+        ),
+        ("2021-02-29T10:00", Some(feb_28 * DAY + 10 * HOUR)),
+        ("2023-11-14T24:00", Some((nov_14 + 1) * DAY)),
+        ("2021-02-29T24:00", Some((feb_28 + 1) * DAY)),
+        (
+            "2023-11-14T12:30:45.",
+            Some(nov_14 * DAY + 45_045_000_000_000),
+        ),
+        ("2023-3-5", None),
+        ("2020-04-32T00:00", None),
+        ("2023-11-14 22:13", None),
+        ("2023-11-14T24:30", None),
+        ("2023-11-14T22:13:20.1234567891", None),
+        ("2023-11-14T22", None),
+    ];
+    let table = TestTable::new([("S", strings(cases.map(|(text, _)| Some(text))))]);
+    let expected = TimestampNanosecondArray::from(cases.map(|(_, nanos)| nanos).to_vec())
+        .with_data_type(ColumnType::LocalDateTime.arrow_type());
+    table.assert(
+        "parseLocalDateTimeQuiet(S)",
+        (ColumnType::LocalDateTime, Arc::new(expected)),
+    );
+    let one = TestTable::new([("S", strings([Some("2023-3-5T1:2:3.5")]))]);
+    let expected = TimestampNanosecondArray::from(vec![19_421 * DAY + HOUR + 123_500_000_000])
+        .with_data_type(ColumnType::LocalDateTime.arrow_type());
+    one.assert(
+        "parseLocalDateTime(S)",
+        (ColumnType::LocalDateTime, Arc::new(expected)),
+    );
+    let Err(failure) = table.evaluate("parseLocalDateTime(S)") else {
+        panic!("parseLocalDateTime of text it does not read did not fail");
+    };
+    assert!(
+        failure
+            .message
+            .contains("Cannot parse local date time: 2023-3-5"),
+        "{failure}"
+    );
+}
