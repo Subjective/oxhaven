@@ -138,6 +138,11 @@ prints a row.
 access 1000 times faster, changes 3.6 to 10000 times, set algebra 1.2 to 5.5 times, memory a
 quarter.
 
+A second run after the row set moved into the contracts (task 7.7b; the machine was busier)
+gave the same picture. `filtered-half`: `get` x1000 993 ms against 0.55 ms, one key added 100
+times 8216 ms against 0.27 ms, `clone` 2.96 ms against 1.6 us, a walk of every range 1.5 ms
+against 18 ms, memory 32.0 MB against 1.06 MB.
+
 ### Where blocks are slower
 
 - **Walking every range** costs about 4 ns a range for run lists and 7 ns for bitmaps, against
