@@ -255,3 +255,36 @@ fn a_prefix_orders_short_strings_exactly_and_long_ones_by_their_start() {
     assert_eq!(prefix(b"fifteen bytes..A"), prefix(b"fifteen bytes..B"));
     assert_eq!(prefix(b"fifteen bytes..A").1 & 0xff, PREFIX_LONG);
 }
+
+#[test]
+fn a_radix_sort_is_a_stable_sort_by_value() {
+    for seed in test_seeds(0..10) {
+        let mut random = Random(seed * 31337 + 5);
+        let size = 1024 + random.below(5000);
+        // Values that differ in a few bytes only, with many ties, and some that differ in
+        // every byte.
+        let values: Vec<u64> = (0..size)
+            .map(|_| match random.below(4) {
+                0 => random.0,
+                _ => (random.below(50) as u64) << (8 * random.below(8)),
+            })
+            .collect();
+        let mut pairs: Vec<(u64, u32)> = values.iter().copied().zip(0..).collect();
+        let mut expected = pairs.clone();
+        expected.sort_by_key(|pair| pair.0);
+        radix_sort(&mut pairs);
+        assert_eq!(pairs, expected, "seed {seed}");
+    }
+    // A large sort by a fixed-width key, as the row format sorts it.
+    let size = 5000;
+    let values = (0..size).map(|row| (row * 7919 % 1013) as i32 - 500);
+    let table = static_table(&[(
+        "K",
+        ColumnType::Int,
+        Arc::new(Int32Array::from_iter_values(values)),
+    )]);
+    for column in [SortColumn::ascending("K"), SortColumn::descending("K")] {
+        let (order, expected, _) = orders(&table, std::slice::from_ref(&column));
+        assert_eq!(order, expected, "{column:?}");
+    }
+}

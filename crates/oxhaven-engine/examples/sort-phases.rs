@@ -6,6 +6,7 @@
 //! ```text
 //! cargo run --release -p oxhaven-engine --example sort-phases             # 1 million rows
 //! cargo run --release -p oxhaven-engine --example sort-phases -- 10000000 # or this many
+//! cargo run --release -p oxhaven-engine --example sort-phases -- 10000000 --sorts-only
 //! ```
 
 use arrow::array::{Array, ArrayRef, Float64Array, Int32Array, Int64Array, RecordBatch};
@@ -138,6 +139,8 @@ fn main() {
         Some(text) => text.parse().expect("the number of rows"),
         None => 1_000_000,
     };
+    // `--sorts-only` after the number of rows leaves out the parts of the boxed sort.
+    let sorts_only = std::env::args().nth(2).as_deref() == Some("--sorts-only");
     let table: Arc<dyn Table> =
         in_memory_table(definition(&COLUMNS), &[batch(0..rows)]).expect("a table");
     println!("{rows} rows");
@@ -169,8 +172,10 @@ fn main() {
         let sum = timed("  read a column of every row back", || read_id(&sorted));
         println!("  weighted sum of Id: {sum}");
         drop(sorted);
-        println!("the parts of a sort by boxed row-format keys");
-        boxed_phases(&table, &on);
+        if !sorts_only {
+            println!("the parts of a sort by boxed row-format keys");
+            boxed_phases(&table, &on);
+        }
     }
 
     // A refreshing table: the sort places each cycle's rows among the others.

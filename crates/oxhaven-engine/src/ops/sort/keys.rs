@@ -342,7 +342,7 @@ impl SortKeys {
                         pairs.push((value, position));
                     }
                 }
-                pairs.sort_unstable();
+                radix_sort(&mut pairs);
                 pairs.into_iter().map(|(_, position)| position).collect()
             }
             Values::Text { .. } | Values::Rows(_) => {
@@ -378,6 +378,42 @@ impl SortKeys {
             nulls.extend(sorted);
             nulls
         }
+    }
+}
+
+/// Sorts `pairs` by their first element, keeping pairs with equal first elements in their
+/// order: a least-significant-digit radix sort by bytes, which skips the bytes that every
+/// value has the same.
+fn radix_sort(pairs: &mut Vec<(u64, u32)>) {
+    let size = pairs.len();
+    if size < 1024 {
+        // The positions are distinct, so the second element breaks every tie in order.
+        pairs.sort_unstable();
+        return;
+    }
+    let mut counts = vec![[0usize; 256]; 8];
+    for &(value, _) in pairs.iter() {
+        for (digit, counts) in counts.iter_mut().enumerate() {
+            counts[((value >> (8 * digit)) & 0xff) as usize] += 1;
+        }
+    }
+    let mut buffer = vec![(0u64, 0u32); size];
+    for (digit, counts) in counts.iter().enumerate() {
+        if counts.contains(&size) {
+            continue;
+        }
+        let mut next = [0usize; 256];
+        let mut sum = 0;
+        for (next, &count) in next.iter_mut().zip(counts) {
+            *next = sum;
+            sum += count;
+        }
+        for &pair in pairs.iter() {
+            let byte = ((pair.0 >> (8 * digit)) & 0xff) as usize;
+            buffer[next[byte]] = pair;
+            next[byte] += 1;
+        }
+        std::mem::swap(pairs, &mut buffer);
     }
 }
 
