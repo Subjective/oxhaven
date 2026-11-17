@@ -5,7 +5,7 @@
 //! insertion shifts every row after it. The rows, their order and their values are the same,
 //! and row keys are not compared (`PARITY.md` A4).
 
-use super::keys::{KeyEncoder, SortKey};
+use super::keys::{KeyEncoder, SortKeys};
 use super::{SortColumn, SortDirection, SortError};
 use crate::ops::merge::flattened_shift_data;
 use crate::table::{
@@ -17,6 +17,7 @@ use oxhaven_column::{Clock, RedirectedSource, RowRedirection, WritableRowRedirec
 use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::table::{ColumnSource, InputTable, Table, TableAttributes, TableFailure};
 use oxhaven_contracts::update::TableUpdate;
+use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -26,29 +27,47 @@ fn failure(message: impl Into<String>) -> TableFailure {
     }
 }
 
-/// One row of the result: the parent row it shows and what it sorts by.
-struct Entry {
-    parent_key: RowKey,
-    key: SortKey,
+/// The parent keys of `rows` at the positions `order`.
+fn parent_keys(rows: &RowSet, order: &[u32]) -> Vec<RowKey> {
+    if let Some(range) = rows.as_single_range() {
+        let first = range.first();
+        return order.iter().map(|&p| first + RowKey::from(p)).collect();
+    }
+    let keys: Vec<RowKey> = rows.iter().collect();
+    order.iter().map(|&p| keys[p as usize]).collect()
 }
 
-/// `rows` of the parent with their sort keys, in sorted order. Rows with equal keys keep
-/// the parent's order.
+/// `rows` of the parent in sorted order: their parent keys, and with them their sort keys
+/// in row-key order and the position of each sorted row among those. Rows with equal keys
+/// keep the parent's order.
 ///
 /// Behavior: io.deephaven.engine.table.impl.SortHelpers#getSortedKeys (a stable sort)
-fn sorted_entries(
+fn sorted_keys(
     encoder: &KeyEncoder,
     parent: &dyn Table,
     rows: &RowSet,
-) -> Result<Vec<Entry>, TableFailure> {
+) -> Result<(Vec<RowKey>, SortKeys, Vec<u32>), TableFailure> {
     let keys = encoder.encode(parent, rows)?;
-    let mut entries: Vec<Entry> = rows
-        .iter()
-        .zip(keys)
-        .map(|(parent_key, key)| Entry { parent_key, key })
-        .collect();
-    entries.sort_by(|a, b| a.key.cmp(&b.key));
-    Ok(entries)
+    let order = keys.order();
+    Ok((parent_keys(rows, &order), keys, order))
+}
+
+/// The rows of a sorted result: the parent key at each position, with its sort key.
+struct Sorted {
+    parents: Vec<RowKey>,
+    keys: SortKeys,
+}
+
+impl Sorted {
+    /// `rows` of the parent in sorted order, with their sort keys.
+    fn of(encoder: &KeyEncoder, parent: &dyn Table, rows: &RowSet) -> Result<Self, TableFailure> {
+        let (parents, unordered, order) = sorted_keys(encoder, parent, rows)?;
+        let mut keys = encoder.empty(order.len(), &unordered);
+        for &position in &order {
+            keys.push_from(&unordered, position as usize);
+        }
+        Ok(Self { parents, keys })
+    }
 }
 
 /// `rows` of `parent` in the order a sort by `columns` gives them: rows that compare
@@ -64,10 +83,7 @@ pub(crate) fn sorted_rows(
     columns: &[SortColumn],
 ) -> Result<Vec<RowKey>, SortError> {
     let encoder = KeyEncoder::new(parent, columns)?;
-    Ok(sorted_entries(&encoder, parent, rows)?
-        .into_iter()
-        .map(|entry| entry.parent_key)
-        .collect())
+    Ok(sorted_keys(&encoder, parent, rows)?.0)
 }
 
 /// Whether `parent` can be sorted by `columns`: it has them, of types that sort, and the
@@ -323,11 +339,11 @@ fn static_sort(
         return Err(failure("the parent table has failed"));
     }
     let rows = parent.row_set();
-    let entries = sorted_entries(encoder, &**parent, &rows)?;
+    let (parents, _, order) = sorted_keys(encoder, &**parent, &rows)?;
     // A table that is already in order keeps its own row keys, unless the result is to
     // lose the parent's input table.
     let keeps_input = input.is_some() == parent.input_table().is_some();
-    if keeps_input && entries.iter().map(|entry| entry.parent_key).eq(rows.iter()) {
+    if keeps_input && (0..).zip(&order).all(|(position, &p)| position == p) {
         let Some((column, descending)) = first else {
             return Ok(parent.clone());
         };
@@ -342,11 +358,11 @@ fn static_sort(
             marks.sort_redirection = Some(IDENTITY_REDIRECTION.to_string());
         });
     }
-    let redirection = Arc::new(WritableRowRedirection::new());
-    remap(&redirection, &[], entries.iter().map(|e| e.parent_key));
+    let flat = RowSet::flat(parents.len() as u64);
+    let redirection = Arc::new(WritableRowRedirection::from_rows(&flat, parents));
     let spec = TableSpec::new(
         parent.definition().clone(),
-        RowSet::flat(entries.len() as u64),
+        flat,
         redirected_columns(parent, &redirection),
     )
     .with_attributes(sort_attributes(&**parent))
@@ -366,16 +382,16 @@ fn blink_sort(
     first: Option<(&str, bool)>,
 ) -> Result<Arc<dyn Table>, TableFailure> {
     let result = QueryTable::derive(parent, || {
-        let entries = sorted_entries(&encoder, &**parent, &parent.row_set())?;
-        let redirection = Arc::new(WritableRowRedirection::new());
-        remap(&redirection, &[], entries.iter().map(|e| e.parent_key));
+        let (shown, _, _) = sorted_keys(&encoder, &**parent, &parent.row_set())?;
+        let flat = RowSet::flat(shown.len() as u64);
+        let redirection = Arc::new(WritableRowRedirection::from_rows(&flat, shown.clone()));
         if let Some(graph) = parent.update_graph() {
             let clock: Arc<dyn Clock> = Arc::new(graph);
             redirection.start_tracking_prev(clock);
         }
         let spec = TableSpec::new(
             parent.definition().clone(),
-            RowSet::flat(entries.len() as u64),
+            flat,
             redirected_columns(parent, &redirection),
         )
         .with_attributes(sort_attributes(&**parent))
@@ -383,12 +399,7 @@ fn blink_sort(
         let spec = TableSpec { input, ..spec };
 
         let parent = parent.clone();
-        let shown = Mutex::new(
-            entries
-                .into_iter()
-                .map(|e| e.parent_key)
-                .collect::<Vec<_>>(),
-        );
+        let shown = Mutex::new(shown);
         let operator = move |_result: &QueryTable, upstream: &TableUpdate| {
             if !upstream.modified.is_empty() || !upstream.shifted.is_empty() {
                 return Err(failure(
@@ -401,10 +412,10 @@ fn blink_sort(
                     "a blink table did not remove all of its rows from its sort",
                 ));
             }
-            let entries = sorted_entries(&encoder, &*parent, &upstream.added)?;
-            remap(&redirection, &shown, entries.iter().map(|e| e.parent_key));
+            let (added, _, _) = sorted_keys(&encoder, &*parent, &upstream.added)?;
+            remap(&redirection, &shown, added.iter().copied());
             let removed = RowSet::flat(shown.len() as u64);
-            *shown = entries.into_iter().map(|e| e.parent_key).collect();
+            *shown = added;
             let mut downstream = TableUpdate::empty();
             downstream.added = RowSet::flat(shown.len() as u64);
             downstream.removed = removed;
@@ -423,20 +434,25 @@ fn blink_sort(
 enum Fate {
     /// The row is not placed again.
     Untouched,
-    /// The row was placed again and stays where it is, with this sort key.
-    Kept(SortKey),
+    /// The row was placed again and stays where it is, with the sort key at this index of
+    /// the incoming keys.
+    Kept(usize),
     /// The row was placed again and leaves its position for another.
     Moved,
 }
 
 /// A row of the previous result that the parent did not remove.
 struct Survivor {
-    /// The row's previous position.
+    /// The row's previous position, which is also the index of its previous sort key.
     position: usize,
-    /// The row's current parent key with its previous sort key.
-    entry: Entry,
+    /// The row's current parent key.
+    parent_key: RowKey,
     fate: Fate,
 }
+
+/// A row to place: its current parent key and the index of its sort key among the incoming
+/// keys.
+type Incoming = (RowKey, usize);
 
 /// The index of the last of `survivors` that does not sort after `target`, comparing the
 /// target's current sort key with the previous sort keys of the survivors, and current
@@ -448,10 +464,18 @@ struct Survivor {
 /// Behavior: io.deephaven.engine.table.impl.SortListener.TargetComparator#compareTargetTo,
 /// as io.deephaven.engine.rowset.RowSet.SearchIterator#binarySearchValue applies it in
 /// io.deephaven.engine.table.impl.SortListener#onUpdate
-fn place_among(survivors: &[Survivor], target: &Entry) -> Option<usize> {
+fn place_among(
+    survivors: &[Survivor],
+    previous: &SortKeys,
+    incoming: &SortKeys,
+    (parent_key, key): Incoming,
+) -> Option<usize> {
     survivors
         .partition_point(|survivor| {
-            (&survivor.entry.key, survivor.entry.parent_key) <= (&target.key, target.parent_key)
+            previous
+                .compare(survivor.position, incoming, key)
+                .then(survivor.parent_key.cmp(&parent_key))
+                != Ordering::Greater
         })
         .checked_sub(1)
 }
@@ -471,6 +495,15 @@ fn keeps_its_place(
     after == Some(current) && last_queued != Some(Some(current))
 }
 
+/// Where the sort key of a row that stays in the result is.
+#[derive(Clone, Copy)]
+enum KeyOf {
+    /// Among the previous keys, at this index.
+    Previous(usize),
+    /// Among the incoming keys, at this index.
+    Incoming(usize),
+}
+
 /// The incremental half of a sort.
 struct SortOperator {
     parent: Arc<dyn Table>,
@@ -480,7 +513,7 @@ struct SortOperator {
     transformer: ModifiedColumnTransformer,
     redirection: Arc<WritableRowRedirection>,
     /// The result's rows by position.
-    entries: Mutex<Vec<Entry>>,
+    sorted: Mutex<Sorted>,
 }
 
 impl SortOperator {
@@ -503,60 +536,61 @@ impl SortOperator {
         } else {
             upstream.added.clone()
         };
-        let incoming = sorted_entries(&self.encoder, &*self.parent, &to_place)?;
+        let (placed, incoming_keys, order) = sorted_keys(&self.encoder, &*self.parent, &to_place)?;
+        let incoming: Vec<Incoming> = placed
+            .into_iter()
+            .zip(order.iter().map(|&key| key as usize))
+            .collect();
 
-        let mut entries = self.entries.lock().unwrap_or_else(PoisonError::into_inner);
-        let old = std::mem::take(&mut *entries);
-        let old_keys: Vec<RowKey> = old.iter().map(|entry| entry.parent_key).collect();
+        let mut sorted = self.sorted.lock().unwrap_or_else(PoisonError::into_inner);
+        let previous = &*sorted;
+        let old_keys = &previous.parents;
 
         // Positions that leave the result, and positions that are new in it.
         let mut removed = Vec::new();
         let mut added = Vec::new();
         let mut modified = Vec::new();
 
-        // The rows the parent did not remove, in their previous order and with their
-        // previous sort keys, under the parent keys they have now.
-        let mut survivors = Vec::with_capacity(old.len());
-        for (position, entry) in old.into_iter().enumerate() {
-            if upstream.removed.contains(entry.parent_key) {
+        // The rows the parent did not remove, in their previous order, under the parent
+        // keys they have now.
+        let mut survivors = Vec::with_capacity(old_keys.len());
+        for (position, &parent_key) in old_keys.iter().enumerate() {
+            if upstream.removed.contains(parent_key) {
                 removed.push(position as RowKey);
                 continue;
             }
             survivors.push(Survivor {
                 position,
-                entry: Entry {
-                    parent_key: upstream.shifted.apply_to_key(entry.parent_key),
-                    key: entry.key,
-                },
+                parent_key: upstream.shifted.apply_to_key(parent_key),
                 fate: Fate::Untouched,
             });
         }
 
         // The rows to put into the result: the added rows and the modified rows that do
         // not keep their place.
-        let mut queued = Vec::with_capacity(incoming.len());
+        let mut queued: Vec<Incoming> = Vec::with_capacity(incoming.len());
         if resort {
             let index_of: BTreeMap<RowKey, usize> = survivors
                 .iter()
                 .enumerate()
-                .filter(|(_, survivor)| upstream.modified.contains(survivor.entry.parent_key))
-                .map(|(index, survivor)| (survivor.entry.parent_key, index))
+                .filter(|(_, survivor)| upstream.modified.contains(survivor.parent_key))
+                .map(|(index, survivor)| (survivor.parent_key, index))
                 .collect();
             // Where the row queued last goes: after this survivor, or before all of them.
             let mut last_queued: Option<Option<usize>> = None;
-            for entry in incoming {
-                let after = place_among(&survivors, &entry);
-                let current = index_of.get(&entry.parent_key).copied();
+            for target in incoming {
+                let after = place_among(&survivors, &previous.keys, &incoming_keys, target);
+                let current = index_of.get(&target.0).copied();
                 match current {
                     Some(index) if keeps_its_place(index, after, last_queued) => {
-                        survivors[index].fate = Fate::Kept(entry.key);
+                        survivors[index].fate = Fate::Kept(target.1);
                     }
                     _ => {
                         if let Some(index) = current {
                             survivors[index].fate = Fate::Moved;
                         }
                         last_queued = Some(after);
-                        queued.push(entry);
+                        queued.push(target);
                     }
                 }
             }
@@ -569,60 +603,64 @@ impl SortOperator {
         let report_modified = !resort && !upstream.modified.is_empty();
         let mut staying = Vec::with_capacity(survivors.len());
         for survivor in survivors {
-            let Survivor {
-                position,
-                mut entry,
-                fate,
-            } = survivor;
-            let changed = match fate {
+            let (key, changed) = match survivor.fate {
                 Fate::Moved => {
-                    removed.push(position as RowKey);
+                    removed.push(survivor.position as RowKey);
                     continue;
                 }
-                Fate::Kept(key) => {
-                    entry.key = key;
-                    true
-                }
-                Fate::Untouched => report_modified && upstream.modified.contains(entry.parent_key),
+                Fate::Kept(key) => (KeyOf::Incoming(key), true),
+                Fate::Untouched => (
+                    KeyOf::Previous(survivor.position),
+                    report_modified && upstream.modified.contains(survivor.parent_key),
+                ),
             };
-            staying.push((entry, changed));
+            staying.push((survivor.parent_key, key, changed));
         }
         removed.sort_unstable();
 
-        let mut merged: Vec<Entry> = Vec::with_capacity(staying.len() + queued.len());
-        let mut staying = staying.into_iter().peekable();
-        let keep = |merged: &mut Vec<Entry>,
-                    modified: &mut Vec<RowKey>,
-                    (entry, changed): (Entry, bool)| {
-            if changed {
-                modified.push(merged.len() as RowKey);
-            }
-            merged.push(entry);
+        let key_of = |key: KeyOf| match key {
+            KeyOf::Previous(index) => (&previous.keys, index),
+            KeyOf::Incoming(index) => (&incoming_keys, index),
         };
-        for entry in queued {
-            // Rows with equal sort keys are in parent order: ties go to the lower key.
-            while let Some(before) = staying.next_if(|(staying, _)| {
-                (&staying.key, staying.parent_key) < (&entry.key, entry.parent_key)
-            }) {
-                keep(&mut merged, &mut modified, before);
+        let size = staying.len() + queued.len();
+        let mut merged = Sorted {
+            parents: Vec::with_capacity(size),
+            keys: self.encoder.empty(size, &previous.keys),
+        };
+        let mut keep = |merged: &mut Sorted, (parent_key, key, changed): (RowKey, KeyOf, bool)| {
+            if changed {
+                modified.push(merged.parents.len() as RowKey);
             }
-            added.push(merged.len() as RowKey);
-            merged.push(entry);
+            merged.parents.push(parent_key);
+            let (keys, index) = key_of(key);
+            merged.keys.push_from(keys, index);
+        };
+        let mut staying = staying.into_iter().peekable();
+        for (parent_key, key) in queued {
+            // Rows with equal sort keys are in parent order: ties go to the lower key.
+            while let Some(before) = staying.next_if(|&(staying_key, of, _)| {
+                let (keys, index) = key_of(of);
+                keys.compare(index, &incoming_keys, key)
+                    .then(staying_key.cmp(&parent_key))
+                    == Ordering::Less
+            }) {
+                keep(&mut merged, before);
+            }
+            added.push(merged.parents.len() as RowKey);
+            merged.parents.push(parent_key);
+            merged.keys.push_from(&incoming_keys, key);
         }
         for kept in staying {
-            keep(&mut merged, &mut modified, kept);
+            keep(&mut merged, kept);
         }
 
-        remap(
-            &self.redirection,
-            &old_keys,
-            merged.iter().map(|entry| entry.parent_key),
-        );
-        *entries = merged;
+        let previous_size = old_keys.len() as u64;
+        remap(&self.redirection, old_keys, merged.parents.iter().copied());
+        *sorted = merged;
 
         let removed = RowSet::from_keys(removed);
         let added = RowSet::from_keys(added);
-        let shifted = flattened_shift_data(&removed, &added, old_keys.len() as u64)?;
+        let shifted = flattened_shift_data(&removed, &added, previous_size)?;
         Ok(TableUpdate {
             added,
             removed,
@@ -641,9 +679,12 @@ fn incremental_sort(
     first: Option<(&str, bool)>,
 ) -> Result<Arc<dyn Table>, TableFailure> {
     let result = QueryTable::derive(parent, || {
-        let entries = sorted_entries(&encoder, &**parent, &parent.row_set())?;
-        let redirection = Arc::new(WritableRowRedirection::new());
-        remap(&redirection, &[], entries.iter().map(|e| e.parent_key));
+        let sorted = Sorted::of(&encoder, &**parent, &parent.row_set())?;
+        let flat = RowSet::flat(sorted.parents.len() as u64);
+        let redirection = Arc::new(WritableRowRedirection::from_rows(
+            &flat,
+            sorted.parents.clone(),
+        ));
         if let Some(graph) = parent.update_graph() {
             let clock: Arc<dyn Clock> = Arc::new(graph);
             redirection.start_tracking_prev(clock);
@@ -651,12 +692,8 @@ fn incremental_sort(
         let definition = parent.definition().clone();
         let transformer = ModifiedColumnTransformer::identity(definition.columns().len());
         // Not flat, as in Java, although the row keys happen to be `0..size`.
-        let spec = TableSpec::new(
-            definition,
-            RowSet::flat(entries.len() as u64),
-            redirected_columns(parent, &redirection),
-        )
-        .with_attributes(sort_attributes(&**parent));
+        let spec = TableSpec::new(definition, flat, redirected_columns(parent, &redirection))
+            .with_attributes(sort_attributes(&**parent));
         let spec = TableSpec { input, ..spec };
         let operator = SortOperator {
             parent: parent.clone(),
@@ -664,7 +701,7 @@ fn incremental_sort(
             encoder,
             transformer,
             redirection,
-            entries: Mutex::new(entries),
+            sorted: Mutex::new(sorted),
         };
         Ok((spec, move |_result: &QueryTable, upstream: &TableUpdate| {
             operator.on_update(upstream)

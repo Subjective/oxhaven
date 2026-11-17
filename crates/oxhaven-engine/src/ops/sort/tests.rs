@@ -992,6 +992,31 @@ fn random_updates_through_sorts() {
     check_random(0..40, 30, 1, &RANDOM_COLUMNS, &operations);
 }
 
+/// Random updates through sorts by one column, whose keys are kept as one integer or one
+/// string per row rather than in the row format.
+#[test]
+fn random_updates_through_sorts_by_one_column() {
+    let sorts: [(&str, &'static [(&'static str, bool)]); 6] = [
+        ("S", &[("S", false)]),
+        ("S desc", &[("S", true)]),
+        ("B desc", &[("B", true)]),
+        ("C", &[("C", false)]),
+        ("T desc", &[("T", true)]),
+        ("K", &[("K", false)]),
+    ];
+    let mut operations: Vec<_> = sorts
+        .into_iter()
+        .map(|(name, columns)| operation(name, move |tables| by(columns)(&tables[0])))
+        .collect();
+    operations.push(operation("abs K desc", |tables| {
+        sort(&tables[0], &[SortColumn::descending("K").absolute()]).unwrap()
+    }));
+    operations.push(operation("S of D", |tables| {
+        by(&[("S", false)])(&by(&[("D", false)])(&tables[0]))
+    }));
+    check_random(0..40, 30, 1, &RANDOM_COLUMNS, &operations);
+}
+
 #[test]
 fn random_updates_through_slices() {
     let slices: [(&str, i64, i64); 9] = [
