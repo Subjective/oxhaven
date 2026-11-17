@@ -417,15 +417,20 @@ cross joins on these columns, `aj` and `raj` with all four rules on these stamps
 (the family names `aj`; `raj` is drawn as a form of it), `select_distinct`, and `agg_by`
 of and by them (`min`, `max`, `first`, `last`, `count_distinct`, `unique`, `distinct`,
 sorted first and last, `median`, percentile). The wire does not carry the zone of a
-`ZonedDateTime`, so a `view` with `hourOfDay(Z, true)` shows it now and then; a table with
+`ZonedDateTime`, so a `view` with `hourOfDay(Z, true)` shows it now and then; the `view`
+also adds two formulas that convert or format these types (`toLocalDate`, `toLocalTime`
+and `toLocalDateTime` of a `ZonedDateTime`, `getZone()`, `atTime`, `toZonedDateTime` of a
+date, a time and a zone, `toString()` of a `ZonedDateTime` or a `Period`, `formatDate`,
+`formatDateTime`), with method calls guarded against null. A table with
 a `Period` column, which the rules cannot read, is compared through a view without it.
 `fuzz_times.RESTRICTIONS` lists what it steps around because of a finding in
 `tasks/4.24-fuzz-time-types.md` that is still open: sorted first or last by a `Period`,
-the orderings of a `ZoneId`, an as-of join on a `Period` or `ZoneId` stamp, and the
+the orderings of a `ZoneId`, an as-of join on a `Period` or `ZoneId` stamp, the
 strict rules (`>`, `<`) of an as-of join whose right table is refreshing (a defect of the
-reference's ticking result). Task 4.25
-lifted the filters on a `LocalDateTime`, the range comparisons with null and the ordering
-aggregations of a `Period`; task 4.26 the as-of joins on the other six types. To shrink a seed of this family by
+reference's ticking result), and a range filter of a `DayOfWeek` on a backtick literal.
+Task 4.25 lifted the filters on a `LocalDateTime`, the range comparisons with null and the
+ordering aggregations of a `Period`; task 4.26 the as-of joins on the other six types. To
+shrink a seed of this family by
 hand when the shrinker ends at a table with a `Period` column, start from the scenario
 `--keep-going` writes.
 
