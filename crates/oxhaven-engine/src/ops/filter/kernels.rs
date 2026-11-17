@@ -204,10 +204,22 @@ where
         _ => (P::Native::ONE, P::Native::ZERO),
     };
     let nulls = kept.nulls;
-    let mask = pack(array.values(), |value| {
-        let null = value == null_value;
-        (((value >= from) & (value <= to)) & !null) | (null & nulls)
-    });
+    let values = array.values();
+    let reserved_within = null_value >= from && null_value <= to;
+    let mask = if nulls != reserved_within {
+        pack(values, |value| {
+            let null = value == null_value;
+            (((value >= from) & (value <= to)) & !null) | (null & nulls)
+        })
+    // The value reserved for null is kept or not as the stretch has it: one comparison
+    // for a stretch that is open at one end, two otherwise.
+    } else if from == P::Native::MIN_TOTAL_ORDER {
+        pack(values, |value| value <= to)
+    } else if to == P::Native::MAX_TOTAL_ORDER {
+        pack(values, |value| value >= from)
+    } else {
+        pack(values, |value| (value >= from) & (value <= to))
+    };
     with_validity(array, mask, nulls)
 }
 
@@ -225,12 +237,28 @@ fn float_interval<P: ArrowPrimitiveType>(
         to,
         nan,
     } = kept;
-    let mask = pack(array.values(), |value| {
-        let null = value == null_value;
-        let wide = widen(value);
-        // NaN is in no stretch and is not the null value.
-        (((wide >= from) & (wide <= to)) & !null) | (null & nulls) | (wide.is_nan() & nan)
-    });
+    let values = array.values();
+    let reserved = widen(null_value);
+    let reserved_within = reserved >= from && reserved <= to;
+    let mask = if nan || nulls != reserved_within {
+        pack(values, |value| {
+            let null = value == null_value;
+            let wide = widen(value);
+            // NaN is in no stretch and is not the null value.
+            (((wide >= from) & (wide <= to)) & !null) | (null & nulls) | (wide.is_nan() & nan)
+        })
+    // No NaN, and the value reserved for null is kept or not as the stretch has it: one
+    // comparison for a stretch that is open at one end, two otherwise. NaN fails each.
+    } else if from == f64::NEG_INFINITY {
+        pack(values, |value| widen(value) <= to)
+    } else if to == f64::INFINITY {
+        pack(values, |value| widen(value) >= from)
+    } else {
+        pack(values, |value| {
+            let wide = widen(value);
+            (wide >= from) & (wide <= to)
+        })
+    };
     with_validity(array, mask, nulls)
 }
 
