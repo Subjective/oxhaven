@@ -5,10 +5,11 @@
 //! that can select rows.
 
 use super::kernels;
-use super::literal::{convert_value, java_equals_ignore_case, Key};
+use super::literal::{convert_value, java_equals_ignore_case, Decimal, Key};
 use super::pattern::{full_match, Matcher};
 use super::search;
 use crate::ops::zoned;
+use arrow::array::BooleanBufferBuilder;
 use arrow::array::{
     Array, ArrayRef, ArrowPrimitiveType, AsArray, BooleanArray, PrimitiveArray, StringArray,
 };
@@ -19,7 +20,7 @@ use arrow::datatypes::{
 };
 use oxhaven_column::parallel;
 use oxhaven_column::sentinel::sentinels_to_nulls;
-use oxhaven_contracts::expr::{Formula, FormulaCompiler};
+use oxhaven_contracts::expr::{Formula, FormulaCompiler, FormulaError};
 use oxhaven_contracts::rowset::{RowKey, RowRange, RowSet};
 use oxhaven_contracts::schema::{ColumnType, TableClass, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, Table, TableFailure};
@@ -144,6 +145,18 @@ pub(super) enum Resolved {
         matcher: Matcher,
         invert_pattern: bool,
     },
+    /// The rows of a vector or array column in which at least one element passes
+    /// `element`, a filter of one column made for a column of `element_type`. A null
+    /// cell fails the filter, as it does in Java, and with `null_element_fails` so does a
+    /// null element read before one that passes.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.select.vectorchunkfilter.VectorComponentFilterWrapper
+    AnyElement {
+        column: usize,
+        element_type: ColumnType,
+        element: Box<Resolved>,
+        null_element_fails: bool,
+    },
     /// No row.
     ///
     /// Behavior: io.deephaven.engine.table.impl.select.WhereNoneFilter
@@ -194,9 +207,14 @@ fn resolve_condition(
 
 /// A simple filter that does not fit the table becomes its formula, if it has one and the
 /// formula compiles; otherwise the original problem is the error.
+///
+/// The formula of a filter on a `BigInteger` or `BigDecimal` `column`, which Java compiles
+/// (`Y == 1.5`, `Y > 1 - 2`), may read the column in a way the formula compiler does not
+/// have yet: that is refused as not ported, and not as an error.
 fn or_failover(
     simple: Result<Resolved, String>,
     failover: Option<&String>,
+    column: &str,
     definition: &TableDefinition,
     compiler: &dyn FormulaCompiler,
 ) -> Result<Resolved, String> {
@@ -204,6 +222,24 @@ fn or_failover(
         (Ok(resolved), _) => Ok(resolved),
         (Err(problem), None) => Err(problem),
         (Err(problem), Some(text)) => {
+            let big = definition.index_of(column).is_some_and(|index| {
+                let c = &definition.columns()[index];
+                matches!(
+                    c.column_type,
+                    ColumnType::BigInteger | ColumnType::BigDecimal
+                )
+            });
+            if big {
+                if let Err(FormulaError::Unsupported(what)) = compiler
+                    .parse(text)
+                    .and_then(|expr| compiler.compile(&expr, definition).map(|_| ()))
+                {
+                    oxhaven_contracts::unported!(
+                        "io.deephaven.engine.table.impl.select.ConditionFilter#init",
+                        "the formula {text} of a filter on a big number column: {what}"
+                    );
+                }
+            }
             resolve_condition(text, definition, compiler).map_err(|_| problem)
         }
     }
@@ -343,6 +379,7 @@ pub(super) fn resolve(
         } => or_failover(
             resolve_match(column, values, *options, definition, compiler),
             failover.as_ref(),
+            column,
             definition,
             compiler,
         ),
@@ -354,6 +391,7 @@ pub(super) fn resolve(
         } => or_failover(
             resolve_range(column, *op, value, definition, compiler),
             failover.as_ref(),
+            column,
             definition,
             compiler,
         ),
@@ -408,6 +446,35 @@ enum Cells {
     Object(Vec<bool>),
     /// A `ZonedDateTime` column.
     Zoned(ArrayRef),
+    /// A `BigInteger` or, with `decimal`, a `BigDecimal` column: each cell as its scale
+    /// (0 for a `BigInteger`) and its unscaled integer in the fewest bytes.
+    Big {
+        decimal: bool,
+        values: Vec<Option<(i32, Vec<u8>)>>,
+    },
+}
+
+/// The scale and the unscaled integer of a `BigInteger` key (scale 0) or, for a
+/// `decimal` column, a `BigDecimal` key; `None` for the null key.
+fn big_key(key: &Key, decimal: bool) -> Result<Option<(i32, Vec<u8>)>, TableFailure> {
+    match (key, decimal) {
+        (Key::Null, _) => Ok(None),
+        (Key::BigInteger(unscaled), false) => Ok(Some((0, unscaled.clone()))),
+        (Key::BigDecimal { scale, unscaled }, true) => Ok(Some((*scale, unscaled.clone()))),
+        (other, _) => Err(wrong_key(other)),
+    }
+}
+
+/// Behavior: io.deephaven.util.compare.ObjectComparisons#compare with
+/// java.math.BigDecimal#compareTo and java.math.BigInteger#compareTo: null first, then by
+/// value, whatever the scales.
+fn compare_big(a: &Option<(i32, Vec<u8>)>, b: &Option<(i32, Vec<u8>)>) -> Ordering {
+    match (a, b) {
+        (None, None) => Ordering::Equal,
+        (None, Some(_)) => Ordering::Less,
+        (Some(_), None) => Ordering::Greater,
+        (Some((sa, ua)), Some((sb, ub))) => Decimal::of(*sa, ua).compare(&Decimal::of(*sb, ub)),
+    }
 }
 
 /// The cells of `chunk`, values of a column of `column_type`.
@@ -424,6 +491,29 @@ fn cells(column_type: &ColumnType, chunk: ArrayRef) -> Result<Cells, TableFailur
             ))
         }
         _ => {}
+    }
+    if let ColumnType::BigInteger | ColumnType::BigDecimal = column_type {
+        let decimal = *column_type == ColumnType::BigDecimal;
+        let values = chunk
+            .as_binary_opt::<i32>()
+            .ok_or_else(|| failure("a big number column needs binary cells"))?;
+        let parts = |cell: &[u8]| -> Result<(i32, Vec<u8>), TableFailure> {
+            let (scale, unscaled) = if decimal {
+                oxhaven_column::java_values::big_decimal_parts(cell)
+                    .ok_or_else(|| failure("a BigDecimal cell without its parts"))?
+            } else {
+                (0, cell)
+            };
+            Ok((
+                scale,
+                oxhaven_column::java_values::minimal(unscaled).to_vec(),
+            ))
+        };
+        let values = values
+            .iter()
+            .map(|cell| cell.map(parts).transpose())
+            .collect::<Result<_, _>>()?;
+        return Ok(Cells::Big { decimal, values });
     }
     if column_type.list_element().is_some() {
         return Ok(Cells::Object(
@@ -592,6 +682,16 @@ fn matches(cells: &Cells, keys: &[Key], options: MatchOptions) -> Result<Vec<boo
                 })
                 .collect())
         }
+        // Behavior: ObjectChunkMatchFilterFactory: `Objects.equals`, which for a
+        // `BigDecimal` is java.math.BigDecimal#equals: the same value with the same scale
+        // (`1.5` is not `1.50`).
+        Cells::Big { decimal, values } => {
+            let keys: Vec<Option<(i32, Vec<u8>)>> = keys
+                .iter()
+                .map(|key| big_key(key, *decimal))
+                .collect::<Result<_, _>>()?;
+            Ok(values.iter().map(|value| keys.contains(value)).collect())
+        }
         // Behavior: ObjectChunkMatchFilterFactory: `Objects.equals` with each value, and
         // `MatchFilter.ColumnTypeConvertorFactory#getConvertor` makes no value but null
         // for such a column.
@@ -724,6 +824,13 @@ fn in_range(cells: &Cells, op: RangeOp, pivot: &Key) -> Result<Vec<bool>, TableF
                 })
                 .collect::<Result<_, TableFailure>>()?
         }
+        Cells::Big { decimal, values } => {
+            let pivot = big_key(pivot, *decimal)?;
+            values
+                .iter()
+                .map(|value| keep(compare_big(value, &pivot)))
+                .collect()
+        }
         Cells::Object(_) => oxhaven_contracts::unported!(
             "io.deephaven.engine.table.impl.select.RangeFilter#init",
             "a range filter of a vector or array column"
@@ -777,6 +884,15 @@ fn between(
             values
                 .iter()
                 .map(|value| keep(order(value, &lower), order(value, &upper)))
+                .collect()
+        }
+        // Behavior: io.deephaven.engine.table.impl.select.ComparableRangeFilter, with
+        // ObjectComparisons
+        Cells::Big { decimal, values } => {
+            let (lower, upper) = (big_key(lower, *decimal)?, big_key(upper, *decimal)?);
+            values
+                .iter()
+                .map(|value| keep(compare_big(value, &lower), compare_big(value, &upper)))
                 .collect()
         }
         Cells::Bool(_) | Cells::Str(_) | Cells::Object(_) | Cells::Zoned(_) => {
@@ -879,6 +995,73 @@ fn has_typed_kernel(column_type: &ColumnType) -> bool {
     )
 }
 
+/// Whether each cell of `chunk`, a chunk of a vector or array column whose elements are of
+/// `element_type`, has an element that `element` keeps. The elements of all the cells are
+/// judged in one pass, and a cell is kept when one of its bits is set; an empty cell is
+/// never kept.
+///
+/// Java reads each cell without a check for null, so a null cell fails the filter with a
+/// `NullPointerException`. A `boolean[]` cell is read as an `Object[]`, which fails with a
+/// `ClassCastException`. With `null_element_fails`, the column is a vector of a primitive
+/// type, whose elements Java reads one by one, boxed, into a primitive: a null element
+/// fails the filter with a `NullPointerException` when it is read, which is when no element
+/// before it in its cell has passed.
+///
+/// Behavior: io.deephaven.engine.table.impl.select.vectorchunkfilter.VectorChunkFilter
+/// and its subclasses (`IntVectorChunkFilter#applySingleElements`,
+/// `IntArrayChunkFilter#applySingleElements`, `ObjectArrayChunkFilter#doFilter` and the
+/// others): a row matches when any element passes the element's chunk filter, and the
+/// elements of a vector are read through `ValueIteratorOfInt#next` and the like, which box
+/// a null element as `null` (io.deephaven.util.type.TypeUtils#box)
+fn any_element_mask(
+    element_type: &ColumnType,
+    element: &Resolved,
+    null_element_fails: bool,
+    chunk: &ArrayRef,
+) -> Result<BooleanBuffer, TableFailure> {
+    let list = chunk
+        .as_list_opt::<i32>()
+        .ok_or_else(|| failure("an element filter needs a vector or array column"))?;
+    if list.null_count() > 0 {
+        return Err(failure(
+            "java.lang.NullPointerException: a null vector or array in a filter of its elements",
+        ));
+    }
+    if *element_type == ColumnType::PrimitiveBoolean && !list.is_empty() {
+        return Err(failure(
+            "java.lang.ClassCastException: class [Z cannot be cast to class [Ljava.lang.Object;",
+        ));
+    }
+    let offsets = list.value_offsets();
+    let (start, end) = (offsets[0] as usize, offsets[list.len()] as usize);
+    let elements = list.values().slice(start, end - start);
+    let nulls = if null_element_fails {
+        sentinels_to_nulls(&elements)?.logical_nulls()
+    } else {
+        None
+    };
+    let passed = element.mask(element_type, elements)?;
+    let mut kept = BooleanBufferBuilder::new(list.len());
+    for row in 0..list.len() {
+        let (from, to) = (
+            offsets[row] as usize - start,
+            offsets[row + 1] as usize - start,
+        );
+        let first_passed = (from..to).find(|at| passed.value(*at));
+        if let Some(nulls) = &nulls {
+            let read = first_passed.map_or(to, |at| at + 1);
+            if (from..read).any(|at| nulls.is_null(at)) {
+                return Err(failure(
+                    "java.lang.NullPointerException: a null element of a vector in a filter \
+                     of its elements",
+                ));
+            }
+        }
+        kept.append(first_passed.is_some());
+    }
+    Ok(kept.finish())
+}
+
 /// Scattered rows of an array in memory are judged with all the rows between them when the
 /// rows from the first to the last are at most this many times the selected ones.
 const WHOLE_PER_ROW: u64 = 32;
@@ -956,6 +1139,15 @@ impl Resolved {
         let primitive = has_typed_kernel(column_type);
         if let Some(mask) = primitive.then(|| self.primitive_kernel(&chunk)).flatten() {
             return Ok(mask);
+        }
+        if let Resolved::AnyElement {
+            element_type,
+            element,
+            null_element_fails,
+            ..
+        } = self
+        {
+            return any_element_mask(element_type, element, *null_element_fails, &chunk);
         }
         self.generic_mask(column_type, chunk)
     }
@@ -1211,7 +1403,8 @@ impl Resolved {
             }
             Resolved::Range { column, .. }
             | Resolved::Between { column, .. }
-            | Resolved::Pattern { column, .. } => {
+            | Resolved::Pattern { column, .. }
+            | Resolved::AnyElement { column, .. } => {
                 self.filter_column(table, *column, selection, use_prev)
             }
             Resolved::Nothing => Ok(RowSet::empty()),
@@ -1288,7 +1481,8 @@ impl Resolved {
             Resolved::Match { column, .. }
             | Resolved::Range { column, .. }
             | Resolved::Between { column, .. }
-            | Resolved::Pattern { column, .. } => {
+            | Resolved::Pattern { column, .. }
+            | Resolved::AnyElement { column, .. } => {
                 columns.insert(*column);
                 false
             }

@@ -1,0 +1,176 @@
+{
+  "format": 2,
+  "scenario": "ticking_search_vectors",
+  "scenario_sha256": "31bb178f6309a77f183ecd6fe56ef0048e2a3d44c850723455e301224ceef8bf",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "g",
+      "file": "step000.g.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "s_7",
+      "file": "step000.s_7.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "s_ab",
+      "file": "step000.s_ab.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "s_1_5",
+      "file": "step000.s_1_5.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "g",
+      "file": "step001.g.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "s_7",
+      "file": "step001.s_7.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "s_ab",
+      "file": "step001.s_ab.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "s_1_5",
+      "file": "step001.s_1_5.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "g",
+      "file": "step002.g.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "s_7",
+      "file": "step002.s_7.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "s_ab",
+      "file": "step002.s_ab.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "s_1_5",
+      "file": "step002.s_1_5.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "g",
+      "file": "step003.g.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "s_7",
+      "file": "step003.s_7.arrow",
+      "rows": 0
+    },
+    {
+      "step": 3,
+      "table": "s_ab",
+      "file": "step003.s_ab.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "s_1_5",
+      "file": "step003.s_1_5.arrow",
+      "rows": 0
+    },
+    {
+      "step": 4,
+      "table": "g",
+      "file": "step004.g.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "s_7",
+      "file": "step004.s_7.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "s_ab",
+      "file": "step004.s_ab.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "s_1_5",
+      "file": "step004.s_1_5.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "g",
+      "file": "step005.g.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "s_7",
+      "file": "step005.s_7.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "s_ab",
+      "file": "step005.s_ab.arrow",
+      "rows": 0
+    },
+    {
+      "step": 5,
+      "table": "s_1_5",
+      "file": "step005.s_1_5.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "g",
+      "file": "step006.g.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "s_7",
+      "file": "step006.s_7.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "s_ab",
+      "file": "step006.s_ab.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "s_1_5",
+      "file": "step006.s_1_5.arrow",
+      "rows": 1
+    }
+  ]
+}
