@@ -34,6 +34,7 @@ pub mod producer;
 mod protobuf;
 mod protobuf_spec;
 mod registry;
+mod security;
 mod serialize;
 mod stream;
 
