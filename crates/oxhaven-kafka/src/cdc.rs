@@ -13,6 +13,7 @@
 use std::sync::Arc;
 
 use oxhaven_contracts::graph::UpdateGraph;
+use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
 use oxhaven_engine::ops::agg::{aggregate_all_with, AggSpec, Pair};
 use oxhaven_engine::ops::{filter, select};
@@ -205,6 +206,27 @@ pub fn current_rows(
         )));
     }
     let keys: Vec<&str> = key_fields.iter().map(String::as_str).collect();
+    // The engine's last of a blink table keeps each group's values itself, and keeps no
+    // BigDecimal: the table would fail at its first row, where Java's
+    // `BlinkLastChunkedOperator` keeps a reference to the row's value (probe main, whose
+    // `balance` is a Debezium decimal).
+    let held = narrow.definition().columns().iter().find(|column| {
+        !keys.contains(&column.name.as_str())
+            && matches!(
+                column.column_type,
+                ColumnType::BigDecimal | ColumnType::BigInteger
+            )
+    });
+    if let Some(column) = held {
+        return Err(not_ported(
+            "io.deephaven.engine.table.impl.by.BlinkLastChunkedOperator",
+            &format!(
+                "the current rows of a column of {:?} ({}), which the engine's last of a \
+                 blink table does not hold yet; the events (stream_table=True) have it",
+                column.column_type, column.name
+            ),
+        ));
+    }
     let pairs = columns
         .iter()
         .filter(|column| !keys.contains(column))
