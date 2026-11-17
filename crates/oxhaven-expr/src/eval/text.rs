@@ -230,6 +230,14 @@ pub(crate) fn object_text(
                 .map(|nanos| java_values::local_date_time_text(*nanos))
                 .collect()
         }
+        ColumnType::ZonedDateTime => crate::functions::java_time::zoned_texts(values)?
+            .into_iter()
+            .flatten()
+            .collect(),
+        ColumnType::Period => crate::functions::java_time::period_texts(values)
+            .into_iter()
+            .flatten()
+            .collect(),
         other => unreachable!("the type checker passed a {other:?} column to toString()"),
     };
     Ok(StringArray::from_iter_values(texts))

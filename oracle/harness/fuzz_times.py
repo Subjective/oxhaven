@@ -44,7 +44,13 @@ RESTRICTIONS: dict[str, str] = {
     "J1": "time_agg: no min, max, median, percentile, count_distinct, unique or distinct of "
           "a ZoneId column, and no sorted first or last by one (the reference fails when "
           "two zones meet in a group)",
-    "R6": "time_aj: no as-of join on a column of these types",
+    "R8": "time_aj: no as-of join on a Period or ZoneId stamp (the reference fails once it "
+          "compares two that are not one object)",
+    "J2": "time_aj: no strict rule (> or <) when the right table is refreshing (the "
+          "reference's ticking result joins a right row added later with a stamp equal to "
+          "the left one)",
+    "R9": "time_filter: no range filter of a DayOfWeek column on a backtick string literal "
+          "(refused before any row is read; the reference fails only on a row it compares)",
 }
 
 DATE, TIME, DATETIME, DURATION, DOW, ZONED, PERIOD, ZONE = (
@@ -233,6 +239,8 @@ class _Times(_Second):
         if shape == "in":
             return f"{column} {rng.choice(['in', 'not in'])} {literal()}, {literal()}"
         value = literal()
+        if kind == DOW and "R9" in RESTRICTIONS and value.startswith("`"):
+            value = "null"
         return f"{column} {rng.choice(['<', '<=', '>', '>='])} {value}"
 
     def time_where(self, name: str, source: _Table) -> bool:
@@ -253,17 +261,44 @@ class _Times(_Second):
         return True
 
     def time_view(self, name: str, source: _Table) -> bool:
-        """What the wire leaves out of a `ZonedDateTime`: its hour in its own zone."""
+        """What the wire leaves out of a `ZonedDateTime`: its hour in its own zone; and two
+        formulas that convert or format values of these types."""
         zoned = source.usable((ZONED,))
-        if not zoned:
+        derived = self.derived(source)
+        if not zoned and not derived:
             return False
         keep = [c for c in source.usable() if source.type_of(c) != PERIOD]
-        formulas = keep + [f"{self.fresh('H')} = hourOfDay({z}, true)" for z in zoned]
+        made = [(f"{self.fresh('H')} = hourOfDay({z}, true)", "int32") for z in zoned]
+        for formula, kind in self.rng.sample(derived, min(2, len(derived))):
+            made.append((f"{self.fresh('F')} = {formula}", kind))
+        formulas = keep + [formula for formula, _ in made]
         columns = [(c, source.type_of(c)) for c in keep] + [
-            (f.split(" = ")[0], "int32") for f in formulas[len(keep):]]
+            (formula.split(" = ")[0], kind) for formula, kind in made]
         self.add({"name": name, "op": "view", "source": source.name, "formulas": formulas},
                  columns, source.rows)
         return True
+
+    def derived(self, source: _Table) -> list[tuple[str, str]]:
+        """Formulas of task 4.26 over the columns of `source`, with the kinds of their
+        results. A method is called only where its receiver is not null, as a method call on
+        null fails."""
+        out: list[tuple[str, str]] = []
+        for z in source.usable((ZONED,)):
+            out += [(f"toLocalDate({z})", DATE), (f"toLocalTime({z})", TIME),
+                    (f"toLocalDateTime({z})", DATETIME), (f"formatDateTime({z})", "string"),
+                    (f"formatDate({z})", "string"),
+                    (f"isNull({z}) ? null : {z}.getZone()", ZONE),
+                    (f"isNull({z}) ? null : {z}.toString()", "string")]
+        times = source.usable((TIME,))
+        for d in source.usable((DATE,)):
+            out.append((f"formatDate({d})", "string"))
+            for t in times:
+                zone = self.rng.choice(_ZONES)
+                out += [(f"isNull({d}) || isNull({t}) ? null : {d}.atTime({t})", DATETIME),
+                        (f"toZonedDateTime({d}, {t}, timeZone(`{zone}`))", ZONED)]
+        for p in source.usable((PERIOD,)):
+            out.append((f"isNull({p}) ? null : {p}.toString()", "string"))
+        return out
 
     def time_update(self, name: str, source: _Table) -> bool:
         return self.time_view(name, source)
@@ -374,18 +409,30 @@ class _Times(_Second):
     time_natural_join = time_exact_join = time_join
 
     def time_aj(self, name: str, left: _Table) -> bool:
-        """An as-of join on a time column of the other parent, whatever its type."""
-        if "R6" in RESTRICTIONS:
-            return False
+        """An as-of join, `aj` or `raj` with any of its two rules, on a time column of the
+        other parent, with `K` and now and then another time column (of any type) as exact
+        matches."""
         rng = self.rng
         right = self.tables["c" if self.parent.get(left.name) == "b" else "b"]
-        stamps = [c for c in self.timed(left) if c in dict(right.columns)]
+        shared = [c for c in self.timed(left)
+                  if c in dict(right.columns) and left.type_of(c) == right.type_of(c)]
+        stamps = [c for c in shared
+                  if "R8" not in RESTRICTIONS or left.type_of(c) not in (PERIOD, ZONE)]
         if not stamps:
             return False
         stamp = rng.choice(stamps)
-        on = (["K"] if "K" in dict(left.columns) and self.chance(0.6) else []) + [
-            f"{stamp} {rng.choice(['>=', '>'])} {stamp}"]
+        kind = rng.choice(["aj", "raj"])
+        rule = rng.choice([">=", ">"] if kind == "aj" else ["<=", "<"])
+        source = {"b": "t", "c": "r"}[right.name]
+        if len(rule) == 1 and "J2" in RESTRICTIONS and any(
+                "ticking" in doc for doc in self.inputs if doc["name"] == source):
+            rule += "="
+        on = ["K"] if "K" in dict(left.columns) and self.chance(0.5) else []
+        keys = [c for c in shared if c != stamp]
+        if keys and self.chance(0.3):
+            on.insert(rng.randrange(len(on) + 1), rng.choice(keys))
+        on.append(f"{stamp} {rule} {stamp}")
         out = self.fresh("J")
-        self.add({"name": name, "op": "aj", "left": left.name, "right": right.name, "on": on,
+        self.add({"name": name, "op": kind, "left": left.name, "right": right.name, "on": on,
                   "joins": [f"{out} = V"]}, list(left.columns) + [(out, "int32")], left.rows)
         return True

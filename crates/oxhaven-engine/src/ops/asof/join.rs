@@ -199,11 +199,14 @@ impl Plan {
         };
         let left_type = type_of(left_definition, left_stamp);
         let right_type = type_of(right_definition, right_stamp);
-        if primitive(&left_type) != primitive(&right_type) {
+        if !stamps::same_stamp_class(&left_type, &right_type) {
             return Err(AsOfJoinError::StampTypes {
                 left: left_type,
                 right: right_type,
             });
+        }
+        if let Some(message) = stamps::incomparable(&left_type) {
+            return Err(AsOfJoinError::IncomparableStamps(message));
         }
         let mut key_mismatch = None;
         for ((pair, &l), &r) in exact.iter().zip(&left_keys).zip(&right_keys) {

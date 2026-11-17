@@ -1,9 +1,11 @@
 //! Stamps: the values of the as-of column of a row, in a form whose order is the order
 //! Java's stamp kernels and sorted arrays use.
 
+use crate::ops::zoned;
 use arrow::array::{
-    Array, ArrayRef, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array,
-    Int8Array, StringArray, TimestampNanosecondArray, UInt16Array,
+    Array, ArrayRef, BooleanArray, Date32Array, DurationNanosecondArray, Float32Array,
+    Float64Array, Int16Array, Int32Array, Int64Array, Int8Array, StringArray,
+    Time64NanosecondArray, TimestampNanosecondArray, UInt16Array,
 };
 use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::ColumnType;
@@ -43,6 +45,13 @@ impl Ord for Finite {
 /// `Instant` stamp with a `long` one. A `float` is widened to `double`, which keeps the
 /// order.
 ///
+/// The `java.time` classes are objects that Java compares with `compareTo`, null first.
+/// A `LocalDate` (days), `LocalTime` (nanoseconds of the day), `LocalDateTime`
+/// (nanoseconds from 1970-01-01T00:00), `Duration` (nanoseconds) and `DayOfWeek` (Monday 1
+/// to Sunday 7) order as the count a cell holds. A `ZonedDateTime` orders by its instant,
+/// then by its local date and time, which for one instant is the order of the zones'
+/// offsets, then by its zone's id; it equals another exactly when `equals` says so.
+///
 /// Behavior: the `doComparison` and `eq` of the kernels under
 /// io.deephaven.engine.table.impl.join.stamp and
 /// io.deephaven.engine.table.impl.join.dupcompact, which call
@@ -50,13 +59,18 @@ impl Ord for Finite {
 /// CharComparisons#compare and ObjectComparisons#compare, and the natural order of the
 /// integer types, whose null sentinel is their least value;
 /// io.deephaven.engine.table.impl.sources.ReinterpretUtils#maybeConvertToPrimitive for
-/// `Boolean` and `Instant`.
+/// `Boolean` and `Instant`; java.time.LocalDate#compareTo, LocalTime#compareTo,
+/// LocalDateTime#compareTo, Duration#compareTo, java.lang.Enum#compareTo and
+/// java.time.chrono.ChronoZonedDateTime#compareTo.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub(super) enum Stamp {
     Null,
     Int(i64),
     Float(Finite),
     Text(Box<[u16]>),
+    /// A `ZonedDateTime`: its instant in nanoseconds, its zone's offset at that instant in
+    /// seconds, and its zone's id as UTF-16 code units.
+    Zoned(i64, i32, Box<[u16]>),
     NaN,
 }
 
@@ -71,8 +85,10 @@ fn float_stamp(value: f64) -> Stamp {
 }
 
 /// What Java reads a column as when it is a stamp or an exact-match column of an as-of
-/// join: the chunk type of the column after `Boolean` and `Instant` are reinterpreted. Two
-/// columns can be compared when they have the same class.
+/// join: the chunk type of the column after `Boolean` and `Instant` are reinterpreted.
+/// Every class that is not reinterpreted is read as objects, the `java.time` classes among
+/// them (a `ZonedDateTime` made by a formula is not reinterpreted: only a column source
+/// that keeps the zone apart is).
 ///
 /// Behavior: io.deephaven.engine.table.impl.sources.ReinterpretUtils#maybeConvertToPrimitive
 /// as called by io.deephaven.engine.table.impl.AsOfJoinHelper#asOfJoin
@@ -97,15 +113,64 @@ pub(super) fn primitive(column_type: &ColumnType) -> Primitive {
         ColumnType::Long | ColumnType::Instant => Primitive::Long,
         ColumnType::Float => Primitive::Float,
         ColumnType::Double => Primitive::Double,
-        ColumnType::String => Primitive::Object,
+        _ => Primitive::Object,
+    }
+}
+
+/// Whether two stamp columns can be joined. Java compares the classes of the two columns
+/// after `Boolean` and `Instant` are reinterpreted: a `Boolean` stamp joins a `byte` one
+/// and an `Instant` a `long` one, and two object stamps join only when they hold one class.
+///
+/// Behavior: io.deephaven.engine.table.impl.AsOfJoinHelper#asOfJoin, its check of
+/// `getType()` of the two stamp sources
+pub(super) fn same_stamp_class(left: &ColumnType, right: &ColumnType) -> bool {
+    let class = primitive(left);
+    class == primitive(right) && (class != Primitive::Object || left == right)
+}
+
+/// Why a stamp column of `column_type` cannot be joined on, as the text of the exception
+/// Java throws once it compares two of its values; `None` when it can be.
+///
+/// A `Period` is not a `Comparable`, nor is a `ZoneId` that names a region (a
+/// `ZoneRegion`): Java fails with a `ClassCastException` when it sorts two stamps of one
+/// key or compares a left stamp with a right one, unless the two are one object
+/// (`ObjectComparisons#compare` returns 0 for identical references before it casts). This
+/// server has no object identity, and refuses such a column before it computes anything.
+///
+/// Behavior: io.deephaven.util.compare.ObjectComparisons#compare as called by the sort
+/// kernels and the stamp kernels of the as-of join
+pub(super) fn incomparable(column_type: &ColumnType) -> Option<String> {
+    let class = match column_type {
+        ColumnType::Period => "java.time.Period",
+        ColumnType::ZoneId => "java.time.ZoneRegion",
+        ColumnType::Boolean
+        | ColumnType::Byte
+        | ColumnType::Char
+        | ColumnType::Short
+        | ColumnType::Int
+        | ColumnType::Long
+        | ColumnType::Instant
+        | ColumnType::Float
+        | ColumnType::Double
+        | ColumnType::String
+        | ColumnType::LocalDate
+        | ColumnType::LocalTime
+        | ColumnType::LocalDateTime
+        | ColumnType::Duration
+        | ColumnType::DayOfWeek
+        | ColumnType::ZonedDateTime => return None,
         other => unported!(
             "io.deephaven.engine.table.impl.AsOfJoinHelper#asOfJoin",
             "an as-of join on a column of type {other:?}"
         ),
-    }
+    };
+    Some(format!(
+        "class {class} cannot be cast to class java.lang.Comparable ({class} and \
+         java.lang.Comparable are in module java.base of loader 'bootstrap')"
+    ))
 }
 
-fn stamps_of(values: &ArrayRef) -> Vec<Stamp> {
+fn stamps_of(values: &ArrayRef) -> Result<Vec<Stamp>, TableFailure> {
     fn each<A: Array + 'static>(
         values: &ArrayRef,
         stamp: impl Fn(&A, usize) -> Stamp,
@@ -124,7 +189,7 @@ fn stamps_of(values: &ArrayRef) -> Vec<Stamp> {
             .collect()
     }
     use arrow::datatypes::{DataType, TimeUnit};
-    match values.data_type() {
+    Ok(match values.data_type() {
         DataType::Boolean => each::<BooleanArray>(values, |a, row| Stamp::Int(a.value(row).into())),
         DataType::Int8 => each::<Int8Array>(values, |a, row| Stamp::Int(a.value(row).into())),
         DataType::Int16 => each::<Int16Array>(values, |a, row| Stamp::Int(a.value(row).into())),
@@ -141,11 +206,35 @@ fn stamps_of(values: &ArrayRef) -> Vec<Stamp> {
         DataType::Timestamp(TimeUnit::Nanosecond, _) => {
             each::<TimestampNanosecondArray>(values, |a, row| Stamp::Int(a.value(row)))
         }
+        DataType::Date32 => each::<Date32Array>(values, |a, row| Stamp::Int(a.value(row).into())),
+        DataType::Time64(TimeUnit::Nanosecond) => {
+            each::<Time64NanosecondArray>(values, |a, row| Stamp::Int(a.value(row)))
+        }
+        DataType::Duration(TimeUnit::Nanosecond) => {
+            each::<DurationNanosecondArray>(values, |a, row| Stamp::Int(a.value(row)))
+        }
+        DataType::Struct(_) => {
+            let (cells, instants, zones) = zoned::parts(values)?;
+            let mut stamps = Vec::with_capacity(cells.len());
+            for (row, &instant) in instants.iter().enumerate() {
+                stamps.push(if cells.is_null(row) {
+                    Stamp::Null
+                } else {
+                    let zone = zones.value(row);
+                    Stamp::Zoned(
+                        instant,
+                        zoned::offset_seconds(zone, instant)?,
+                        zone.encode_utf16().collect(),
+                    )
+                });
+            }
+            stamps
+        }
         other => unported!(
             "io.deephaven.engine.table.impl.join.stamp.StampKernel#makeStampKernel",
             "a stamp column stored as {other}"
         ),
-    }
+    })
 }
 
 /// The stamp of each row of `rows`, in row order, from column `column` of `table`; with
@@ -165,30 +254,119 @@ pub(super) fn read(
     } else {
         source.chunk(rows)?
     };
-    Ok(stamps_of(&values))
+    stamps_of(&values)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ops::zoned::tests::zoned;
     use std::sync::Arc;
+
+    fn of(values: &ArrayRef) -> Vec<Stamp> {
+        stamps_of(values).unwrap()
+    }
+
+    #[test]
+    fn a_zoned_date_time_orders_by_instant_then_local_time_then_zone() {
+        // 2023-11-14T22:13:20Z: in New York 17:13 (offset -5h), in UTC 22:13, in Tokyo
+        // 07:13 the next day (+9h). One instant orders by the local time.
+        let t = 1_700_000_000_000_000_000;
+        let found = of(&zoned(&[
+            None,
+            Some((t - 1, "Asia/Tokyo")),
+            Some((t, "America/New_York")),
+            Some((t, "UTC")),
+            Some((t, "Asia/Tokyo")),
+            Some((t + 1, "America/New_York")),
+        ]));
+        for pair in found.windows(2) {
+            assert!(pair[0] < pair[1], "{pair:?}");
+        }
+        // One instant and one offset in two zones: the zones' ids decide.
+        let same_offset = of(&zoned(&[Some((t, "UTC")), Some((t, "Europe/London"))]));
+        assert!(same_offset[1] < same_offset[0]);
+        assert_eq!(of(&zoned(&[Some((t, "UTC"))]))[0], same_offset[0]);
+    }
+
+    #[test]
+    fn dates_times_and_durations_order_by_their_counts_with_null_first() {
+        let dates: ArrayRef = Arc::new(Date32Array::from(vec![None, Some(-3), Some(19_000)]));
+        let times: ArrayRef = Arc::new(Time64NanosecondArray::from(vec![None, Some(0), Some(5)]));
+        let durations: ArrayRef =
+            Arc::new(DurationNanosecondArray::from(vec![None, Some(-7), Some(0)]));
+        let date_times: ArrayRef = Arc::new(TimestampNanosecondArray::from(vec![
+            None,
+            Some(-1),
+            Some(1),
+        ]));
+        for values in [dates, times, durations, date_times] {
+            let found = of(&values);
+            assert!(found[0] < found[1] && found[1] < found[2], "{found:?}");
+        }
+    }
+
+    #[test]
+    fn object_stamps_join_only_a_column_of_their_own_class() {
+        use ColumnType::*;
+        let objects = [
+            String,
+            LocalDate,
+            LocalTime,
+            LocalDateTime,
+            Duration,
+            DayOfWeek,
+            ZonedDateTime,
+        ];
+        for left in &objects {
+            for right in &objects {
+                assert_eq!(
+                    same_stamp_class(left, right),
+                    left == right,
+                    "{left:?} {right:?}"
+                );
+            }
+        }
+        // A DayOfWeek is held as a byte here but is an object to Java.
+        assert!(!same_stamp_class(&DayOfWeek, &Byte));
+        assert!(!same_stamp_class(&ZonedDateTime, &Instant));
+        assert!(same_stamp_class(&Instant, &Long));
+        assert!(same_stamp_class(&Boolean, &Byte));
+        // As exact-match columns every object class is read alike.
+        assert_eq!(primitive(&LocalDate), primitive(&String));
+        assert_ne!(primitive(&DayOfWeek), primitive(&Byte));
+    }
+
+    #[test]
+    fn periods_and_zones_are_not_comparable() {
+        let period = incomparable(&ColumnType::Period).unwrap();
+        assert!(period
+            .starts_with("class java.time.Period cannot be cast to class java.lang.Comparable"));
+        let zone = incomparable(&ColumnType::ZoneId).unwrap();
+        assert!(zone.starts_with("class java.time.ZoneRegion cannot be cast"));
+        for comparable in [
+            ColumnType::LocalDate,
+            ColumnType::ZonedDateTime,
+            ColumnType::DayOfWeek,
+        ] {
+            assert_eq!(incomparable(&comparable), None);
+        }
+    }
 
     #[test]
     fn doubles_order_as_java_orders_them() {
         let other_nan = f64::from_bits(f64::NAN.to_bits() | 1);
-        let found = stamps_of(
-            &(Arc::new(Float64Array::from(vec![
-                None,
-                Some(f64::NEG_INFINITY),
-                Some(-1.5),
-                Some(-0.0),
-                Some(0.0),
-                Some(2.0),
-                Some(f64::INFINITY),
-                Some(f64::NAN),
-                Some(other_nan),
-            ])) as ArrayRef),
-        );
+        let found = of(&(Arc::new(Float64Array::from(vec![
+            None,
+            Some(f64::NEG_INFINITY),
+            Some(-1.5),
+            Some(-0.0),
+            Some(0.0),
+            Some(2.0),
+            Some(f64::INFINITY),
+            Some(f64::NAN),
+            Some(other_nan),
+        ])) as ArrayRef));
         // null, -Infinity, the finite values, Infinity, NaN; the zeros and the NaNs tie.
         for pair in found.windows(2) {
             assert!(pair[0] <= pair[1], "{pair:?}");
@@ -203,14 +381,12 @@ mod tests {
 
     #[test]
     fn a_float_orders_as_the_double_of_its_value() {
-        let floats = stamps_of(
-            &(Arc::new(Float32Array::from(vec![
-                None,
-                Some(-0.0f32),
-                Some(0.1),
-                Some(f32::NAN),
-            ])) as ArrayRef),
-        );
+        let floats = of(&(Arc::new(Float32Array::from(vec![
+            None,
+            Some(-0.0f32),
+            Some(0.1),
+            Some(f32::NAN),
+        ])) as ArrayRef));
         assert_eq!(
             floats,
             vec![
@@ -226,14 +402,12 @@ mod tests {
     fn strings_order_by_utf16_code_units() {
         // U+FF5E is one code unit, 0xFF5E; U+1F600 is the surrogates 0xD83D 0xDE00. By code
         // point the second is greater, by code unit the first.
-        let found = stamps_of(
-            &(Arc::new(StringArray::from(vec![
-                Some("\u{ff5e}"),
-                Some("\u{1f600}"),
-                Some(""),
-                None,
-            ])) as ArrayRef),
-        );
+        let found = of(&(Arc::new(StringArray::from(vec![
+            Some("\u{ff5e}"),
+            Some("\u{1f600}"),
+            Some(""),
+            None,
+        ])) as ArrayRef));
         assert!(found[1] < found[0]);
         assert!(found[2] < found[1]);
         assert!(found[3] < found[2]);
@@ -241,17 +415,14 @@ mod tests {
 
     #[test]
     fn a_boolean_is_its_byte_and_an_instant_its_nanoseconds() {
-        let booleans = stamps_of(
-            &(Arc::new(BooleanArray::from(vec![None, Some(false), Some(true)])) as ArrayRef),
-        );
-        let bytes =
-            stamps_of(&(Arc::new(Int8Array::from(vec![None, Some(0), Some(1)])) as ArrayRef));
+        let booleans =
+            of(&(Arc::new(BooleanArray::from(vec![None, Some(false), Some(true)])) as ArrayRef));
+        let bytes = of(&(Arc::new(Int8Array::from(vec![None, Some(0), Some(1)])) as ArrayRef));
         assert_eq!(booleans, bytes);
-        let instants = stamps_of(
-            &(Arc::new(TimestampNanosecondArray::from(vec![None, Some(-7)]).with_timezone("UTC"))
-                as ArrayRef),
-        );
-        let longs = stamps_of(&(Arc::new(Int64Array::from(vec![None, Some(-7)])) as ArrayRef));
+        let instants = of(&(Arc::new(
+            TimestampNanosecondArray::from(vec![None, Some(-7)]).with_timezone("UTC"),
+        ) as ArrayRef));
+        let longs = of(&(Arc::new(Int64Array::from(vec![None, Some(-7)])) as ArrayRef));
         assert_eq!(instants, longs);
         assert_eq!(
             primitive(&ColumnType::Boolean),
@@ -270,12 +441,11 @@ mod tests {
 
     #[test]
     fn integers_and_chars_order_by_value_with_null_first() {
-        let chars = stamps_of(
-            &(Arc::new(UInt16Array::from(vec![None, Some(0), Some(0xFFFE)])) as ArrayRef),
-        );
+        let chars =
+            of(&(Arc::new(UInt16Array::from(vec![None, Some(0), Some(0xFFFE)])) as ArrayRef));
         assert!(chars[0] < chars[1] && chars[1] < chars[2]);
         let shorts =
-            stamps_of(&(Arc::new(Int16Array::from(vec![None, Some(-32767), Some(5)])) as ArrayRef));
+            of(&(Arc::new(Int16Array::from(vec![None, Some(-32767), Some(5)])) as ArrayRef));
         assert!(shorts[0] < shorts[1] && shorts[1] < shorts[2]);
     }
 }

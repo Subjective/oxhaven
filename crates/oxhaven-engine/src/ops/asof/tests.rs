@@ -267,6 +267,108 @@ fn stamps_of_different_types_are_refused_but_for_the_types_java_reads_alike() {
     drop(right);
 }
 
+#[test]
+fn date_and_time_stamps_order_as_java_compares_them() {
+    use arrow::array::{Date32Array, Int8Array};
+    let dates =
+        |values: &[Option<i32>]| -> ArrayRef { Arc::new(Date32Array::from(values.to_vec())) };
+    let (left, right) = stamp_tables(
+        ColumnType::LocalDate,
+        dates(&[None, Some(3), Some(10)]),
+        dates(&[Some(10), None, Some(3), Some(3)]),
+    );
+    // A null stamp is the least and joins a null stamp; of equal stamps `aj` takes the last.
+    assert_eq!(v_of(&left, &right, GreaterThanEqual), ["2", "4", "1"]);
+    assert_eq!(v_of(&left, &right, LessThan), ["3", "1", "null"]);
+
+    // One instant: New York (17:13 local) before UTC (22:13) before Tokyo (07:13 the next
+    // day), as `ZonedDateTime#compareTo` orders them.
+    let t = 1_700_000_000_000_000_000;
+    let zoned = crate::ops::zoned::tests::zoned;
+    let (left, right) = stamp_tables(
+        ColumnType::ZonedDateTime,
+        zoned(&[Some((t, "UTC"))]),
+        zoned(&[Some((t, "Asia/Tokyo")), Some((t, "America/New_York"))]),
+    );
+    assert_eq!(v_of(&left, &right, GreaterThanEqual), ["2"]);
+    assert_eq!(v_of(&left, &right, LessThanEqual), ["1"]);
+
+    // Days of the week are objects to Java, not the bytes they are held as here.
+    let days: ArrayRef = Arc::new(Int8Array::from(vec![1, 3]));
+    let day_left = static_table(&[("X", ColumnType::DayOfWeek, days.clone())]);
+    let byte_right = static_table(&[
+        ("Y", ColumnType::Byte, days),
+        ("V", ColumnType::Long, longs([1, 2])),
+    ]);
+    assert!(matches!(
+        as_of_join(
+            &day_left,
+            &byte_right,
+            &[],
+            &x_y(GreaterThanEqual),
+            &add(&["V"])
+        ),
+        Err(AsOfJoinError::StampTypes { .. })
+    ));
+    // Two object classes do not join either.
+    let time_right = static_table(&[
+        (
+            "Y",
+            ColumnType::LocalTime,
+            Arc::new(arrow::array::Time64NanosecondArray::from(vec![1, 2])) as ArrayRef,
+        ),
+        ("V", ColumnType::Long, longs([1, 2])),
+    ]);
+    let date_left = static_table(&[("X", ColumnType::LocalDate, dates(&[Some(1)]))]);
+    assert_eq!(
+        as_of_join(
+            &date_left,
+            &time_right,
+            &[],
+            &x_y(GreaterThanEqual),
+            &add(&["V"])
+        )
+        .err(),
+        Some(AsOfJoinError::StampTypes {
+            left: ColumnType::LocalDate,
+            right: ColumnType::LocalTime
+        })
+    );
+}
+
+#[test]
+fn period_and_zone_stamps_are_refused_as_not_comparable() {
+    let zones: ArrayRef = Arc::new(arrow::array::StringArray::from(vec!["UTC", "Asia/Tokyo"]));
+    let (left, right) = stamp_tables(ColumnType::ZoneId, zones.clone(), zones);
+    let refused = as_of_join(&left, &right, &[], &x_y(GreaterThanEqual), &add(&["V"])).err();
+    let Some(AsOfJoinError::IncomparableStamps(message)) = refused else {
+        panic!("{refused:?}");
+    };
+    assert!(message
+        .starts_with("class java.time.ZoneRegion cannot be cast to class java.lang.Comparable"));
+    // A zone as an exact-match column is a key like any other.
+    let ints_of = |n| ints(vec![1; n]);
+    let zones: ArrayRef = Arc::new(arrow::array::StringArray::from(vec![Some("UTC"), None]));
+    let left = static_table(&[
+        ("N", ColumnType::ZoneId, zones.clone()),
+        ("X", ColumnType::Int, ints_of(2)),
+    ]);
+    let right = static_table(&[
+        ("N", ColumnType::ZoneId, zones),
+        ("Y", ColumnType::Int, ints_of(2)),
+        ("V", ColumnType::Long, longs([1, 2])),
+    ]);
+    let result = as_of_join(
+        &left,
+        &right,
+        &on(&["N"]),
+        &x_y(GreaterThanEqual),
+        &add(&["V"]),
+    )
+    .unwrap();
+    assert_eq!(column(&*result, "V"), ["1", "2"]);
+}
+
 /// A left table `K` (int), `X` and a right table `KL` (long), `Y`, `V`.
 fn mismatched_keys(left_rows: usize, right_rows: usize) -> (Arc<dyn Table>, Arc<dyn Table>) {
     let left = static_table(&[

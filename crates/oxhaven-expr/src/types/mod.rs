@@ -688,6 +688,8 @@ impl Checker<'_> {
                 | ColumnType::LocalDate
                 | ColumnType::LocalTime
                 | ColumnType::LocalDateTime
+                | ColumnType::ZonedDateTime
+                | ColumnType::Period
         );
         if !object {
             return None;
@@ -1849,7 +1851,8 @@ impl Checker<'_> {
         if method == "toString" && arguments.is_empty() {
             // Behavior: `java.math.BigDecimal#toString`, `java.math.BigInteger#toString`,
             // `java.time.LocalDate#toString`, `java.time.LocalTime#toString`,
-            // `java.time.LocalDateTime#toString`
+            // `java.time.LocalDateTime#toString`, `java.time.ZonedDateTime#toString`,
+            // `java.time.Period#toString`
             if let Some(receiver) = self.object_column(receiver) {
                 return Ok(typed(
                     ColumnType::String,
@@ -1950,6 +1953,28 @@ impl Checker<'_> {
                     arguments: vec![receiver, zone],
                 },
             ));
+        }
+        // Behavior: `java.time.ZonedDateTime#getZone()` and
+        // `java.time.LocalDate#atTime(LocalTime)`, which throw for a null receiver or time.
+        match (&receiver.column_type, method, arguments) {
+            (ColumnType::ZonedDateTime, "getZone", []) => {
+                return Ok(time_call(
+                    java_time::TimeFn::GetZone,
+                    vec![receiver],
+                    ColumnType::ZoneId,
+                ));
+            }
+            (ColumnType::LocalDate, "atTime", [time]) if !is_null_literal(time) => {
+                let time = self.check(time)?;
+                if time.column_type == ColumnType::LocalTime {
+                    return Ok(time_call(
+                        java_time::TimeFn::AtTime,
+                        vec![receiver, time],
+                        ColumnType::LocalDateTime,
+                    ));
+                }
+            }
+            _ => {}
         }
         // Behavior: `java.time.Duration#multipliedBy(long)`, which the default
         // `ColumnExpressionValidator` lets no client call (dh-defaults.prop lists the methods
