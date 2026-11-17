@@ -23,9 +23,25 @@ pub enum FormulaSource {
     },
     /// The key column of the aggregation with this index: the formula sees the group's key.
     Key(usize),
+    /// One value for every group: the array holds it as its one element.
+    Constant(ArrayRef),
     /// An input the formula does not read, of this Arrow type. A formula that reads
     /// nothing is given one, so that there is an array to tell the number of groups by.
     Unread(DataType),
+}
+
+/// A column that a formula aggregation may read and the parent does not have: one value,
+/// the same for every group, which takes the place of a column of the parent of its name.
+///
+/// Behavior: the extra column definitions that
+/// io.deephaven.engine.table.impl.by.AggregationProcessor.Converter#prepareFormula adds to
+/// the table's (`maybeInitializeVectorColumns`), read as key columns
+#[derive(Clone, Debug)]
+pub struct FormulaConstant {
+    pub name: String,
+    pub column_type: ColumnType,
+    /// The value, as an array of one element of the type.
+    pub value: ArrayRef,
 }
 
 /// The value of a formula for each group.
@@ -157,6 +173,11 @@ impl AggOperator for FormulaAgg {
                     Arc::new(ListArray::new(field, offsets, elements, None))
                 }
                 FormulaSource::Key(index) => groups.key(*index).chunk_by_keys(&slot_keys, false)?,
+                FormulaSource::Constant(value) => {
+                    let first = UInt32Array::from(vec![0; evaluated.len()]);
+                    arrow::compute::take(&**value, &first, None)
+                        .map_err(|error| failure(format!("formula: {error}")))?
+                }
                 FormulaSource::Unread(data_type) => new_null_array(data_type, evaluated.len()),
             });
         }

@@ -69,7 +69,7 @@ mod tests;
 pub use count_where::CountWhere;
 pub use distinct::{SetMode, SortedValues};
 pub use first_last::{FirstLast, FirstLastCell, FirstLastMode};
-pub use formula::{FormulaAgg, FormulaSource};
+pub use formula::{FormulaAgg, FormulaConstant, FormulaSource};
 pub use group::Group;
 pub use min_max::MinMax;
 pub use operator::{AggOperator, Effect, GroupReader};
@@ -960,6 +960,7 @@ pub fn aggregate(
         group_by,
         None,
         false,
+        &[],
     )
 }
 
@@ -998,6 +999,7 @@ pub fn aggregate_seeded(
         group_by,
         Some(compiler),
         false,
+        &[],
     )
 }
 
@@ -1005,7 +1007,7 @@ pub fn aggregate_seeded(
 /// its data type and, for a vector or an array, for its component type.
 ///
 /// Behavior: io.deephaven.engine.table.ColumnDefinition#describeForCompatibility
-fn describe_for_compatibility(name: &str, column_type: &ColumnType) -> String {
+pub(crate) fn describe_for_compatibility(name: &str, column_type: &ColumnType) -> String {
     match column_type.list_element() {
         None => format!("[{name}, {}]", java_class(column_type)),
         Some(element) => format!(
@@ -1018,7 +1020,7 @@ fn describe_for_compatibility(name: &str, column_type: &ColumnType) -> String {
 
 /// The text of Java's `Class#toString` for the class of a column's values: the
 /// primitive's name, or `class` or `interface` and the binary name of the class.
-fn java_class(column_type: &ColumnType) -> String {
+pub(crate) fn java_class(column_type: &ColumnType) -> String {
     let primitive = match column_type {
         ColumnType::Byte => Some("byte"),
         ColumnType::Char => Some("char"),
@@ -1027,6 +1029,7 @@ fn java_class(column_type: &ColumnType) -> String {
         ColumnType::Long => Some("long"),
         ColumnType::Float => Some("float"),
         ColumnType::Double => Some("double"),
+        ColumnType::PrimitiveBoolean => Some("boolean"),
         _ => None,
     };
     if let Some(name) = primitive {
@@ -1046,6 +1049,7 @@ fn java_class(column_type: &ColumnType) -> String {
             ColumnType::Period => "java.time.Period".into(),
             ColumnType::ZoneId => "java.time.ZoneId".into(),
             ColumnType::ZonedDateTime => "java.time.ZonedDateTime".into(),
+            ColumnType::Object(_) => "java.lang.Object".into(),
             ColumnType::DayOfWeek => "java.time.DayOfWeek".into(),
             ColumnType::Table(TableClass::Table) => "io.deephaven.engine.table.Table".into(),
             ColumnType::Table(TableClass::QueryTable) => {
@@ -1085,6 +1089,7 @@ fn java_class(column_type: &ColumnType) -> String {
                 ColumnType::Long => name.push('J'),
                 ColumnType::Float => name.push('F'),
                 ColumnType::Double => name.push('D'),
+                ColumnType::PrimitiveBoolean => name.push('Z'),
                 ColumnType::Vector(_) => {
                     let interface = java_class(element);
                     let interface = interface.trim_start_matches("interface ");
@@ -1174,6 +1179,31 @@ pub fn aggregate_with(
         group_by,
         Some(compiler),
         false,
+        &[],
+    )
+}
+
+/// [`aggregate_with`] without `preserve_empty`, where a formula aggregation may also read
+/// `constants`, each the same value for every group. A rollup makes its levels with it.
+///
+/// Behavior: io.deephaven.engine.table.impl.by.AggregationProcessor#forRollupBase, whose
+/// formulas are compiled with the extra definitions of the rollup's formula columns
+pub fn aggregate_with_constants(
+    parent: &Arc<dyn Table>,
+    aggregations: &[Aggregation],
+    group_by: &[&str],
+    compiler: Option<&dyn FormulaCompiler>,
+    constants: &[FormulaConstant],
+) -> Result<Arc<dyn Table>, AggregateError> {
+    aggregate_inner(
+        parent,
+        aggregations,
+        false,
+        None,
+        group_by,
+        compiler,
+        false,
+        constants,
     )
 }
 
@@ -1205,6 +1235,7 @@ pub fn aggregate_all_with(
         group_by,
         Some(compiler),
         append_only,
+        &[],
     )
 }
 
@@ -1416,6 +1447,7 @@ fn multi_formula(
     preserve_empty: bool,
     after_group: bool,
     compiler: Option<&dyn FormulaCompiler>,
+    constants: &[FormulaConstant],
 ) -> Result<(Planned, Vec<usize>), AggregateError> {
     if kind == ParentKind::Blink {
         return Err(AggregateError::BlinkUnsupported(AggSpec::Formula {
@@ -1437,27 +1469,38 @@ fn multi_formula(
             ColumnType::vector(column.column_type.clone())
         }
     };
-    let all: Vec<(&str, ColumnType)> = columns
+    // A constant takes the place of a column of its name, as Java's extra definitions
+    // replace the table's in the map the formula is compiled against.
+    let constant = |name: &str| constants.iter().find(|constant| constant.name == name);
+    let mut all: Vec<(&str, ColumnType)> = columns
         .iter()
         .enumerate()
+        .filter(|(_, column)| constant(&column.name).is_none())
         .map(|(index, column)| (column.name.as_str(), seen(index)))
         .collect();
-    let read: Vec<usize> = ArrayFormula::compile(compiler, expression, &all)
+    all.extend(
+        constants
+            .iter()
+            .map(|constant| (constant.name.as_str(), constant.column_type.clone())),
+    );
+    let read_names: Vec<String> = ArrayFormula::compile(compiler, expression, &all)
         .map_err(invalid_formula)?
         .inputs_read()
-        .iter()
-        .map(|name| {
-            parent
-                .definition()
-                .index_of(name)
-                .expect("the formula compiled against the columns")
-        })
-        .collect();
+        .to_vec();
     let mut inputs: Vec<(&str, ColumnType)> = Vec::new();
     let mut sources = Vec::new();
     let mut reads = Vec::new();
     let mut keys_read = Vec::new();
-    for &index in &read {
+    for name in &read_names {
+        if let Some(constant) = constant(name) {
+            inputs.push((constant.name.as_str(), constant.column_type.clone()));
+            sources.push(FormulaSource::Constant(constant.value.clone()));
+            continue;
+        }
+        let index = parent
+            .definition()
+            .index_of(name)
+            .expect("the formula compiled against the columns");
         inputs.push((columns[index].name.as_str(), seen(index)));
         match key_columns.iter().position(|&key| key == index) {
             Some(key) => {
@@ -1473,6 +1516,7 @@ fn multi_formula(
             }
         }
     }
+    let read = &read_names;
     if read.is_empty() {
         let Some((name, column_type)) = all.first() else {
             unported!(
@@ -1595,6 +1639,7 @@ fn aggregate_inner(
     group_by: &[&str],
     compiler: Option<&dyn FormulaCompiler>,
     append_only: bool,
+    constants: &[FormulaConstant],
 ) -> Result<Arc<dyn Table>, AggregateError> {
     if aggregations.is_empty() {
         return Err(AggregateError::NoAggregations);
@@ -1708,6 +1753,7 @@ fn aggregate_inner(
                     preserve_empty,
                     shared_group.grouped.is_some(),
                     compiler,
+                    constants,
                 )?;
                 keys_read.extend(keys);
                 shared_group.uses(

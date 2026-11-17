@@ -16,6 +16,8 @@ mod node_ops;
 mod node_ops_tests;
 mod rollup;
 #[cfg(test)]
+mod rollup_agg_tests;
+#[cfg(test)]
 mod tests;
 mod tree;
 mod tree_filter;
