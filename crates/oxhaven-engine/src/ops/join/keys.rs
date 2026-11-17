@@ -125,6 +125,17 @@ fn append(keys: &mut [Key], values: &ArrayRef) {
     }
 }
 
+/// The key of each of the `rows` rows of the key `columns`: the keys the joins compared
+/// before they hashed, which the tests of the hash table compare it with.
+#[cfg(test)]
+pub(crate) fn keys_of(columns: &[ArrayRef], rows: usize) -> Vec<Key> {
+    let mut keys = vec![Key::with_capacity(columns.len()); rows];
+    for column in columns {
+        append(&mut keys, column);
+    }
+    keys
+}
+
 /// The match columns of one side of a join.
 pub(crate) struct KeyColumns {
     /// Indices of the match columns in the table's definition, in match order.
@@ -134,7 +145,7 @@ pub(crate) struct KeyColumns {
 impl KeyColumns {
     /// The match columns of `rows`, one array per column; with `use_prev`, as of the end of
     /// the previous cycle for `rows` of the previous key space. For hashing with a
-    /// [`KeyTable`](super::key_table::KeyTable), which needs no key per row.
+    /// [`KeyTable`](crate::ops::key_table::KeyTable), which needs no key per row.
     pub(crate) fn chunks(
         &self,
         table: &dyn Table,

@@ -228,12 +228,12 @@ fn random_updates_of_the_right_table() {
     assert_enough(&run_all(Live::Right));
 }
 
-/// The slots of a [`KeyTable`](super::key_table::KeyTable) against the keys the joins
+/// The slots of a [`KeyTable`](crate::ops::key_table::KeyTable) against the keys the joins
 /// compared before they hashed: two rows have one slot exactly when their keys are equal.
 #[test]
 fn rows_share_a_slot_exactly_when_their_keys_are_equal() {
-    use super::key_table::{KeyTable, NO_SLOT};
     use super::keys::KeyColumns;
+    use crate::ops::key_table::{KeyTable, NO_SLOT};
     let mut pairs = [0u64; 2];
     for seed in test_seeds(SEEDS) {
         let mut random = RandomUpdates::new(seed);

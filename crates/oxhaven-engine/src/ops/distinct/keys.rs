@@ -1,5 +1,5 @@
 //! Which key columns `select_distinct` takes. The keys themselves go into
-//! [`GroupKeys`](crate::ops::group_keys::GroupKeys), which compares them by the grouping
+//! [`KeyTable`](crate::ops::key_table::KeyTable), which compares them by the grouping
 //! rule of PARITY.md.
 
 use arrow::datatypes::{DataType, TimeUnit};

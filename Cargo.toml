@@ -27,7 +27,6 @@ futures-util = { version = "0.3", default-features = false, features = ["sink"] 
 h2 = "0.4"
 # The hash table of join keys, hashed and compared by this workspace's code; arrow already
 # brings it.
-hashbrown = { version = "0.17", default-features = false }
 http = "1.5"
 http-body = "1"
 http-body-util = "0.1"

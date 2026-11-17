@@ -31,7 +31,7 @@ mod where_in_tests;
 pub use where_in::{where_in, where_not_in, WhereInError};
 
 use crate::ops::agg::slot_source::ResultColumn;
-use crate::ops::group_keys::GroupKeys;
+use crate::ops::key_table::KeyTable as GroupKeys;
 use crate::table::{memoized, CopyType, QueryTable, TableSpec};
 use crate::update::modified_pre_shift;
 use arrow::array::{ArrayRef, UInt64Array};
@@ -266,7 +266,10 @@ impl Groups {
     /// never been seen.
     fn groups_before(&self, state: &mut State, rows: &RowSet) -> Result<Vec<usize>, TableFailure> {
         let mut groups = Vec::with_capacity(rows.size() as usize);
-        if state.keys.find(&self.values(rows, true)?, &mut groups)? {
+        if state
+            .keys
+            .find_all(&self.values(rows, true)?, &mut groups)?
+        {
             Ok(groups)
         } else {
             Err(no_rows())
@@ -423,7 +426,7 @@ fn with_keys(
         indices,
         blink: of_source.blink,
         state: Mutex::new(State {
-            keys: GroupKeys::new(&data_types)?,
+            keys: GroupKeys::for_types(&data_types)?,
             rows: Vec::new(),
             touched: Vec::new(),
             seen: Vec::new(),
