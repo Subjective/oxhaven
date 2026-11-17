@@ -72,6 +72,11 @@ after each update cycle.
    text is free (A5).
 8. **Result types of aggregations**, as listed in
    [Aggregation result types](#aggregation-result-types).
+9. **Array and vector cells**, confirmed by the owner on 2026-11-17: a null cell and an empty
+   cell are different values; elements compare in order under the element type's rules;
+   whether a column is a vector or an array is part of its type; on the wire, offsets start
+   at 0 and a null cell contributes no elements; `isSortable` is absent for an array whose
+   element type has no comparator.
 
 ## Allowed differences
 
@@ -103,7 +108,8 @@ when
 Null, NaN and infinities are never covered by the tolerance: they must match as in Must match,
 item 5. A cell that is finite on one side and not on the other is a failure.
 
-These numbers are a proposal; see [Open questions](#open-questions-for-the-owner), Q1.
+The owner confirmed these numbers on 2026-11-17
+([Q1](#questions-decided-by-the-owner)).
 
 The tolerance does **not** apply to, and these must be bit-exact:
 
@@ -123,9 +129,9 @@ Oxhaven reproduces.
 
 ### A2. Sign of zero where Java treats `-0.0` and `0.0` as one value
 
-**Proposed, not in force.** The owner has not approved this difference. Until Q4 is answered the
-harness compares the sign of zero exactly in these columns too, and a mismatch is recorded as a
-finding, not waived.
+**Proposed, not in force.** On 2026-11-17 the owner confirmed Q4 as written: this difference
+stays a proposal, the harness compares the sign of zero exactly in these columns too, and a
+mismatch is recorded as a finding, not waived.
 
 Java's engine comparisons treat `-0.0` and `0.0` as equal (`UC/DoubleComparisons.java:
 DoubleComparisons#compare`, `#eq`, `#hashCode`). Where an operation collapses equal values, the
@@ -144,8 +150,12 @@ Rule: for an operation whose row in [Order guarantees](#order-guarantees-per-ope
 "not guaranteed", the harness compares the result as a multiset of rows. For every other operation
 it compares rows by position.
 
-In v42.9 every operation in the table has a defined order, so this rule currently covers nothing.
-It stays so that the owner can move an operation here.
+In v42.9 every operation in the table has a defined order. One order outside the table is
+covered, approved by the owner on 2026-11-17: the order of the rows of different partitions
+that one poll brings into a Kafka consumer's table. Java follows the iteration order of a Java
+`HashMap` keyed by topic and partition, which nothing documents; Oxhaven orders by partition
+number (`docs/KAFKA.md`, "For the owner's ruling", item 4). The rule stays so that the owner
+can move an operation here.
 
 ### A4. Row keys and delta sequences
 
@@ -256,6 +266,146 @@ class behind any of them (`crates/oxhaven-server/python/jpy.py`).
 No Java class is implemented behind the module. The call-by-call table is in
 `docs/CONSOLE.md`, "The jpy module", and the recorded cases are in
 `crates/oxhaven-server/src/console/python/jpy_tests.rs`.
+
+### A11. A table after it failed in an update cycle
+
+Approved by the owner on 2026-11-17 (Q11, option (c)).
+
+When a refreshing table fails in an update cycle (a formula that throws in `update`, a
+duplicate right key arriving in a `natural_join`, an `update_by` that sees a timestamp
+decrease), what Java serves afterwards depends on the operation and is not a consistent table:
+
+- a failed natural or as-of join keeps answering snapshots, with the parent's rows and stale or
+  null values in the added columns;
+- a failed `update_by` refuses the snapshot with `INVALID_ARGUMENT`;
+- a failed function-generated table cannot be fetched;
+- a failed keyed transpose, partitioned transform or partitioned table proxy result keeps
+  following its source's changes (`docs/PARTITIONED.md`, "Differences from Java");
+- a failed chart downsample keeps its old rows.
+
+Oxhaven does one thing for all of them: a failed table keeps serving the last rows it
+published, and new operations on it fail.
+
+Rule: from the cycle in which a table fails, what it serves is not compared, neither its rows
+nor whether its snapshot answers. Both servers must still fail it in the same cycle, and every
+table that has not failed is compared as before. The harness tells a failed table by asking
+each refreshing result for `where("true")` after each step, which both servers refuse for a
+failed table, and compares that refusal and its status code in place of the table's contents
+(`oracle/README.md`, "The comparison rules"; `failed_in_cycle` in `oracle/harness/runner.py`).
+
+Evidence: `tasks/4.17-fuzz-findings.md` (A1, A7 and Notes), `tasks/4.20-fuzz-findings-2.md`
+(D5, J4, H1), `tasks/4.10-ide-table-ops.md`, `tasks/4.18-missing-engine-pieces.md`,
+`tasks/4.19-table-sources.md`, `tasks/7.6.1-partitioned-transform.md`,
+`tasks/7.6.2-partitioned-proxy.md` (item 12), and the scenario `ticking_error_after_step`.
+
+### A12. Requests that end or hang Java's server
+
+Approved by the owner on 2026-11-17.
+
+Rule: where a request ends Java's server process or hangs it for good, Oxhaven does not
+reproduce that. It fails the request or the table, or logs the error, and carries on serving.
+The cases recorded:
+
+| Request | Java | Oxhaven | Recorded in |
+| --- | --- | --- | --- |
+| `update_by` count where with a filter that compares two columns | a `NullPointerException`, then the server shuts down | refuses the request by name | `tasks/4.20-fuzz-findings-2.md` (J1) |
+| Expanding a tree row that has no identifier, with every row expanded | a stack overflow ends the process | refuses the expansion by name (`TreeTableImpl#makeChildNodeIdLookup`) | `docs/HIERARCHICAL.md` ("Refused for now") |
+| An `on_shutdown_callback` of a table publisher that raises when a failure is delivered | the update graph shuts the server down | logs the error | `tasks/7.4.2-stream-adapter.md` |
+| `jpy.destroy_jvm()` from the console | destroys the server's Java VM | does nothing (A10) | `docs/CONSOLE.md` ("The jpy module") |
+| A Python function that returns an integer beyond 64 bits | once stopped the server | fails the call | `tasks/6.11-python-udf.md` |
+| A partitioned table proxy aggregation with a formula when an update cycle falls due during the call | hangs for good | makes the result on the calling thread | `tasks/7.6.2-partitioned-proxy.md` (item 9) |
+| `function_generated_table` with source tables, called from a thread the command joins | never returns | makes the table | `tasks/4.19-table-sources.md` |
+
+A new case of the same kind is covered too, and is added to this table when it is found.
+
+### A13. As-of joins whose incremental answer contradicts Java's own
+
+Approved by the owner on 2026-11-17.
+
+On some ticking `aj` results, what Java has kept up to date after a step differs from what
+Java answers when the same join is made again from the same rows. The cases seen: a NaN left
+stamp joins a newly added NaN right row under `>`, and chains of three or four `aj` keep a
+match that is gone.
+
+Rule: where Java's incremental `aj` result differs from Java's result for the same join made
+from scratch on the same rows, Oxhaven matches the result made from scratch. Where Java's two
+answers agree, Oxhaven must match them. The fuzzer counts a seed as this difference only when
+Java's two answers differ for it (`oracle/fuzz-known-findings.json`, `aj-reference-history`
+and `aj-reference-history-rest`; `tasks/4.4-asof-join.md`, Notes;
+`tasks/4.17-fuzz-findings.md`, J5).
+
+### A14. Column types of `head_by` and `tail_by`
+
+Approved by the owner on 2026-11-17.
+
+Java's `head_by` and `tail_by` end with an `update_view` that casts each column to its raw
+vector class (`ET/QueryTable.java: QueryTable#headOrTailBy`). For a vector column of strings,
+Booleans or timestamps, such as the result of grouping a table that has a timestamp column,
+Java's result column is `list<string>`, and after `ungroup` it is `java.lang.Object`.
+
+Rule: Oxhaven keeps the element type: the column stays a vector of its strings, Booleans or
+timestamps (`list<timestamp>` for timestamps). Nothing else of `head_by` and `tail_by` is
+covered. The case is A5 of `tasks/4.17-fuzz-findings.md`, with its scenario files
+`F4-headby-*.json`; the fuzzer keeps it out (`build` in `oracle/harness/fuzz_wide.py`).
+
+### A15. Refusals where Java's result is undefined, inconsistent or wrong
+
+Approved by the owner on 2026-11-17.
+
+Rule: Oxhaven refuses these by name (`UNIMPLEMENTED` over gRPC, `NotImplementedError` inside a
+`DHError` in Python), or fails them, where Java answers, rather than reproduce a result that
+is undefined, differs between runs or is silently wrong:
+
+| Request | Java | Recorded in |
+| --- | --- | --- |
+| Initial groups that a refreshing table has no rows for, without `preserve_empty` | later shows the group with null key columns | `tasks/4.18-missing-engine-pieces.md`; `tasks/4.20-fuzz-findings-2.md` (R4) |
+| `count_where` with no filter | counts an uninitialised chunk, and gave different answers for the same table on two runs | `tasks/4.18-missing-engine-pieces.md` |
+| A function-generated table whose function later omits a column, or returns another reference type for it | keeps stale values, or stores the objects under the old declared type | `tasks/4.19-table-sources.md` |
+| `SortedFirst` and `SortedLast` in a rollup with group-by columns, by a column that is not their own result | fails, or sorts the aggregated results rather than the source rows | `docs/HIERARCHICAL.md` ("Which aggregations", "Refused for now") |
+| A rollup filter that reads row position (`i`, `ii`, `k`) | takes it for a filter of group-by columns and evaluates it on the rows of the finest level | `docs/HIERARCHICAL.md` ("Refused for now") |
+| A tree walk deeper than 200 levels | has no limit and overflows its stack | `docs/HIERARCHICAL.md` ("Refused for now"); `tasks/7.9-tree.md` |
+| An `Instant` scope variable outside the years 1677 to 2262 | silently turns the year 1600 into 2184 | `tasks/5.8-plot-formulas.md` ("For the owner's ruling") |
+| Kafka: text that is not UTF-8 in a `String` column | replaces the bad bytes | `docs/KAFKA.md` ("For the owner's ruling", item 7) |
+| Kafka: the records of a poll before a record that cannot be read | shows them for a cycle before the table fails; Oxhaven fails the table without them, and the failed table is the same | `docs/KAFKA.md` ("For the owner's ruling", item 5) |
+| Kafka: a consumer property value that Java accepts and librdkafka does not | accepts it; Oxhaven fails the call rather than clamp the value | `docs/KAFKA.md` ("For the owner's ruling", item 10) |
+
+The order of rows across Kafka partitions within one poll, the other Kafka item of this
+ruling, is under A3.
+
+### A16. The Python console's locks, execution contexts and table lifetimes
+
+Approved by the owner on 2026-11-17.
+
+Rule: Oxhaven's Python console differs from Java's in these four ways
+(`docs/CONSOLE.md`, "Listeners, locks, liveness scopes and execution contexts"):
+
+- **Execution context.** Java refuses formula operations on a Python thread, in a listener or
+  in an executor task without an `ExecutionContext`. Oxhaven needs none and runs them, so a
+  script that works on Oxhaven can fail on Java.
+- **Locks.** A Java command holds the update graph's exclusive lock. An Oxhaven command holds
+  the shared lock and reports it to scripts as exclusive, so another thread's `shared_lock` or
+  table operation does not wait for the command. `auto_locking = False` has no effect.
+- **`del` of a table.** A table made outside a liveness scope and then dropped by Python ends
+  its stream in Oxhaven (a Kafka or publisher table stops); in Java the console session keeps
+  it alive. A released table raises on every use, reads included, where Java still reads its
+  rows.
+- **`modified_prev()`** in a cycle that shifts rows returns the rows' true previous values in
+  Oxhaven; Java returns other rows' values or nulls.
+
+Recorded in `tasks/6.12-python-listeners-contexts.md` and `tasks/7.4.2-stream-adapter.md`
+("Differences from Java, for the owner").
+
+### A17. `NewSession`
+
+Approved by the owner on 2026-11-17.
+
+Java's `SessionService/NewSession` gives any caller a superuser session without credentials
+(`server/src/main/java/io/deephaven/server/session/SessionServiceGrpcImpl.java:
+SessionServiceGrpcImpl#newSession`), which bypasses the pre-shared key.
+
+Rule: Oxhaven refuses every `NewSession` call with `UNAUTHENTICATED`. Nothing else of the
+session service is covered. The recorded case is `new_session_without_credentials_is_refused`
+in `crates/oxhaven-server/src/session/tests.rs`; `tasks/2.1-session-service.md`, Notes.
 
 ## Determinism
 
@@ -608,7 +758,11 @@ Schema-level attributes the harness compares, because clients change behavior on
 marker written by `#attributesToMetadata`, and the blink, add-only and append-only markers. The
 exact attribute names for the last three and the full set clients read are **UNVERIFIED**; see Q8.
 
-## Open questions for the owner
+## Questions decided by the owner
+
+These were open until the owner answered them on 2026-11-17. Q1 to Q10 were confirmed as
+written, so the rules above stand as they were; Q11 became A11. Each question keeps its text,
+with the decision after it.
 
 **Q1. Tolerance values.** A1 proposes relative `1e-9` with absolute floor `1e-12` for `double`,
 and `1e-5` / `1e-6` for `float`. A relative tolerance cannot bound the error of a sum with heavy
@@ -619,11 +773,15 @@ magnitude range where it holds; (b) require Oxhaven to port the running-total al
 that it accumulates the same error, and tighten the tolerance; (c) scale the absolute floor by the
 largest magnitude that ever entered the group. The proposal assumes (a).
 
+Decided 2026-11-17, confirmed by the owner: option (a), the values of A1.
+
 **Q2. Variance formula.** Java computes `var` and `std` as `(sum2 - sum*sum/n) / (n - 1)` on
 running totals (`IntChunkedVarOperator#addChunk`). This is numerically poor: it can lose all
 precision and can go slightly negative, which makes `std` NaN. A better algorithm in Oxhaven would
 differ by more than the tolerance on such inputs. Should Oxhaven reproduce the formula (the file
 assumes yes), or is a deviation acceptable here?
+
+Decided 2026-11-17, confirmed by the owner: Oxhaven reproduces Java's formula.
 
 **Q3. Encounter order inside one cycle.** That keys from key-changing modifications are
 encountered before keys from additions is a consequence of statement order in
@@ -631,10 +789,14 @@ encountered before keys from additions is a consequence of statement order in
 treats it as a rule because the result order is observable and stable in v42.9. Confirm, or move
 "order among groups first seen in the same cycle" to A3.
 
+Decided 2026-11-17, confirmed by the owner: it is a rule, as the order table states.
+
 **Q4. Sign of zero.** A2 lets `min`, `max` and the distinct family return either zero. The
 alternative is to require Oxhaven to reproduce which one Java's sorted multiset keeps
 (`ET/ssms/DoubleSegmentedSortedMultiset.java`), which means porting its insertion behavior
 exactly. For group keys the file already requires the first-encountered value. Confirm the split.
+
+Decided 2026-11-17, confirmed by the owner: the split stands, and A2 stays proposed and not in force, so the sign of zero is compared exactly.
 
 **Q5. Inconsistent comparison semantics.** Java has three behaviors for the same comparison:
 `where("X < 0.0")` (range filter: `-0.0` is not less than `0.0`; nulls pass), a formula such as
@@ -643,23 +805,33 @@ look incidental, especially `0.0 <= -0.0` being false in formulas. The file requ
 reproduce all of them. Confirm that incidental behavior is in scope, in particular the signed-zero
 case.
 
+Decided 2026-11-17, confirmed by the owner: all three behaviours are in scope, the signed-zero case included.
+
 **Q6. `long` sum wrapping onto the null sentinel.** A `long` sum that wraps to exactly
 `Long.MIN_VALUE` reads as null and then restarts from the next value
 (`NullSafeAddition#plusLong`). This is a bug-shaped corner. The file requires parity; the owner
 may prefer to exclude it from fuzzing instead.
 
+Decided 2026-11-17, confirmed by the owner: Oxhaven reproduces it.
+
 **Q7. Decimal equality.** "Decimals must match exactly" is read here as value and scale
 (`1.10` differs from `1.1`), because `BigDecimal` travels as its own type and scale is visible to
 clients. Confirm, or relax to numeric equality.
+
+Decided 2026-11-17, confirmed by the owner: value and scale.
 
 **Q8. Schema metadata scope.** Which schema-level `deephaven:attribute.*` entries must match was
 not settled from source. The file compares field-level metadata fully and schema-level attributes
 only for flat, blink, add-only and append-only. The pinned Python client's use of these keys was
 not read. Confirm the list, and whether `tableMetadata` for input tables is in scope.
 
+Decided 2026-11-17, confirmed by the owner: the schema-level attributes compared are flat, blink, add-only and append-only, as written.
+
 **Q9. Status codes.** Must match item 7 requires the same gRPC status code on failure. The mapping
 from Java exceptions to status codes was not researched for this file. If only "fails or not"
 should be compared, say so and item 7 narrows.
+
+Decided 2026-11-17, confirmed by the owner: the status code is compared (Must match, item 7).
 
 **Q10. Unverified rows.** These claims are marked UNVERIFIED above and need a source reading or an
 oracle run before the harness encodes them:
@@ -678,6 +850,9 @@ Formula library functions (the numeric, string and time functions callable from 
 `update_by` null and NaN behavior are not covered by this file at all. Each needs its own section
 before the tasks that port them start.
 
+Decided 2026-11-17, confirmed by the owner: these claims stay **UNVERIFIED** and are not
+encoded in the harness until a reading of the source or an oracle run confirms them.
+
 **Q11. A ticking table that failed during an update cycle.** When a ticking table fails in a cycle
 (a formula that throws in `update`, a duplicate right key arriving in a `natural_join`), Java
 keeps answering snapshots of it, with contents that are not a consistent table: rows of the
@@ -687,3 +862,6 @@ not compare such a table afterwards (`oracle/README.md`, "Known limits"; scenari
 `oracle/corpus/ticking_error_after_step`). Options: (a) a failed table refuses every later
 request; (b) Oxhaven reproduces what Java serves; (c) the state of a table after it failed is
 left out of the comparison, which would be a new allowed difference.
+
+Decided 2026-11-17 by the owner: option (c), allowed difference
+[A11](#a11-a-table-after-it-failed-in-an-update-cycle).
