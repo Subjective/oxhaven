@@ -131,6 +131,15 @@ fn batch_of(columns: &[(String, ColumnType)], rows: &Json) -> RecordBatch {
 /// Each cell as text, with floats by their bits so that `-0.0` differs from `0.0`, and a
 /// cell holding its type's null value as null.
 fn rendered(values: &ArrayRef) -> Vec<String> {
+    // A vector or an array is its elements, each rendered so.
+    if let Some(lists) = values.as_list_opt::<i32>() {
+        return (0..lists.len())
+            .map(|index| match lists.is_null(index) {
+                true => "null".to_string(),
+                false => format!("[{}]", rendered(&lists.value(index)).join(", ")),
+            })
+            .collect();
+    }
     let values = sentinels_to_nulls(values).expect("a column type");
     // A timestamp is compared as its nanoseconds.
     let values = match values.data_type() {
@@ -417,6 +426,34 @@ fn operation_of(operation: &Json) -> Result<Operation, String> {
                 filter(parent, &conditions, &Compiler)
             }))
         }
+        // Operations of other modules that make the vector columns a search reads: made
+        // here so that the filters of their results are compared, never compared
+        // themselves.
+        "group_by" => {
+            let by: Vec<String> = operation["by"]
+                .as_array()
+                .expect("by")
+                .iter()
+                .map(|c| c.as_str().expect("a string").to_string())
+                .collect();
+            Ok(Arc::new(move |parent| {
+                let by: Vec<&str> = by.iter().map(String::as_str).collect();
+                crate::ops::agg::group_by(parent, &by)
+                    .map_err(|e| FilterError::Invalid(e.to_string()))
+            }))
+        }
+        "update" => {
+            let formulas: Vec<String> = operation["formulas"]
+                .as_array()
+                .expect("formulas")
+                .iter()
+                .map(|f| f.as_str().expect("a string").to_string())
+                .collect();
+            Ok(Arc::new(move |parent| {
+                crate::ops::select::update(parent, &formulas, &Compiler)
+                    .map_err(|e| FilterError::Invalid(e.to_string()))
+            }))
+        }
         other => Err(other.to_string()),
     }
 }
@@ -523,12 +560,21 @@ fn replay(scenario: &Json, tally: &mut Tally) {
             Ok(run) => match &tables[parent_name.expect("a source")] {
                 Made::NotRun(why) => Made::NotRun(why.clone()),
                 Made::Refused(_) => Made::NotRun("the source is refused".to_string()),
+                // An update is made here only of a static table, for the vectors of
+                // `search_vectors`: a ticking one may fail in a cycle, which this replay
+                // does not follow.
+                Made::Table(parent) if op == "update" && parent.is_refreshing() => {
+                    Made::NotRun(op.to_string())
+                }
                 Made::Table(parent) => {
                     // An operation may report a construct that is not ported yet by
                     // panicking.
                     match catch_unwind(AssertUnwindSafe(|| run(parent))) {
                         Ok(Ok(table)) => {
-                            if table.is_refreshing() {
+                            // Another module's result is checked by its own tests: the
+                            // groups of a `group_by` made again from scratch need not be in
+                            // the order the ticking result keeps.
+                            if table.is_refreshing() && OURS.contains(&op) {
                                 let parent = parent.clone();
                                 let recompute = move || {
                                     let snapshot = TableSnapshot::current(&*parent).unwrap();
@@ -681,7 +727,7 @@ fn scenarios_match_the_recorded_java_results() {
         }
     }
     paths.sort();
-    assert_eq!(paths.len(), 89);
+    assert_eq!(paths.len(), 91);
     let mut tally = Tally::default();
     for path in &paths {
         replay(&json(path), &mut tally);
@@ -773,6 +819,40 @@ fn scenarios_match_the_recorded_java_results() {
         "flatten_reverse.big x1",
         "null_sentinel_inputs.nulls x1",
         "pipeline.valid x1",
+        "search_vectors.a_0 x1",
+        "search_vectors.a_2 x1",
+        "search_vectors.a_3 x1",
+        "search_vectors.a_minus_1_5 x1",
+        "search_vectors.a_null_int x1",
+        "search_vectors.h_0 x1",
+        "search_vectors.h_11 x1",
+        "search_vectors.h_1_5 x1",
+        "search_vectors.h_2 x1",
+        "search_vectors.h_5 x1",
+        "search_vectors.h_9 x1",
+        "search_vectors.h_abc x1",
+        "search_vectors.h_minus_1_5 x1",
+        "search_vectors.h_second x1",
+        "search_vectors.h_true x1",
+        "search_vectors.n_5 x1",
+        "search_vectors.n_7 x1",
+        "search_vectors.n_columns x1",
+        "search_vectors.n_x x1",
+        "search_vectors.na_9 x1",
+        "search_vectors.s_0 x1",
+        "search_vectors.s_11 x1",
+        "search_vectors.s_1_5 x1",
+        "search_vectors.s_2 x1",
+        "search_vectors.s_5 x1",
+        "search_vectors.s_abc x1",
+        "search_vectors.s_columns x1",
+        "search_vectors.s_minus_1_5 x1",
+        "search_vectors.s_minute x1",
+        "search_vectors.s_nan x1",
+        "search_vectors.s_none x1",
+        "search_vectors.s_null_int x1",
+        "search_vectors.s_second x1",
+        "search_vectors.s_true x1",
         "slice_positions.big x1",
         "snapshot_static.big x1",
         "ticking_column_arrays.appended_kept x6",
@@ -791,6 +871,9 @@ fn scenarios_match_the_recorded_java_results() {
         "ticking_filter_structured.small x9",
         "ticking_head_tail.big x9",
         "ticking_merge_refreshing.a_big x8",
+        "ticking_search_vectors.s_1_5 x7",
+        "ticking_search_vectors.s_7 x7",
+        "ticking_search_vectors.s_ab x7",
         "ticking_slice_flatten_reverse.big x9",
         "ticking_snapshot_when.big x9",
         "ticking_where_sort.positive x8",

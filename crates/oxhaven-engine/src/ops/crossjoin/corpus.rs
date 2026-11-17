@@ -558,7 +558,7 @@ fn results_match_the_recorded_java_results_of_the_oracle() {
         (tally.comparisons, tally.refusals, tally.failures),
         (5 + 8, 1, 0)
     );
-    assert_eq!(tally.not_run.len(), 841, "{:#?}", tally.not_run);
+    assert_eq!(tally.not_run.len(), 880, "{:#?}", tally.not_run);
 }
 
 #[test]

@@ -1,0 +1,826 @@
+{
+ "format": 1,
+ "name": "search_vectors",
+ "description": "The search box (a structured filter with a search condition) over a table that group_by made, whose columns are vectors: each element type reads the text as a column of that type would, and a row is kept when an element of one of its vectors passes. Also the arrays that array() makes of the vectors, and a null vector, which fails the search when the search reads it and does not when an earlier column keeps its row.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    },
+    {
+     "name": "B",
+     "type": "bool"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    },
+    {
+     "name": "L",
+     "type": "int64"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     2,
+     1.5,
+     "Abc",
+     1700000000000000000,
+     true,
+     0.5,
+     10
+    ],
+    [
+     2,
+     "a",
+     null,
+     "NaN",
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    [
+     3,
+     "b",
+     5,
+     -1.5,
+     "x",
+     1700000001000000000,
+     false,
+     1.5,
+     11
+    ],
+    [
+     4,
+     "b",
+     2,
+     1.59,
+     "y",
+     1700000060000000000,
+     false,
+     2.0,
+     12
+    ],
+    [
+     5,
+     "z5",
+     7,
+     0.0,
+     "q",
+     1700000000000000000,
+     true,
+     -0.0,
+     13
+    ],
+    [
+     6,
+     "d",
+     9,
+     -0.0,
+     "abc",
+     1700000002000000000,
+     null,
+     0.25,
+     14
+    ],
+    [
+     7,
+     "e",
+     3,
+     4.0,
+     "",
+     1700000003000000000,
+     false,
+     4.0,
+     15
+    ]
+   ]
+  },
+  {
+   "name": "u",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    },
+    {
+     "name": "B",
+     "type": "bool"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     2,
+     1.5,
+     "Abc",
+     1700000000000000000,
+     true,
+     0.5
+    ],
+    [
+     2,
+     "a",
+     4,
+     "NaN",
+     null,
+     null,
+     null,
+     9.5
+    ],
+    [
+     3,
+     "b",
+     5,
+     -1.5,
+     "x",
+     1700000001000000000,
+     false,
+     1.5
+    ],
+    [
+     4,
+     "b",
+     2,
+     1.59,
+     "y",
+     1700000060000000000,
+     false,
+     2.0
+    ],
+    [
+     5,
+     "z5",
+     7,
+     0.0,
+     "q",
+     1700000000000000000,
+     true,
+     -0.0
+    ],
+    [
+     6,
+     "d",
+     9,
+     -0.0,
+     "abc",
+     1700000002000000000,
+     null,
+     0.25
+    ],
+    [
+     7,
+     "e",
+     11,
+     4.0,
+     "",
+     1700000003000000000,
+     false,
+     4.0
+    ]
+   ]
+  }
+ ],
+ "operations": [
+  {
+   "name": "g",
+   "op": "group_by",
+   "source": "t",
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "h",
+   "op": "group_by",
+   "source": "u",
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "h_2",
+   "op": "filter",
+   "source": "h",
+   "conditions": [
+    {
+     "search": {
+      "text": "2"
+     }
+    }
+   ]
+  },
+  {
+   "name": "h_1_5",
+   "op": "filter",
+   "source": "h",
+   "conditions": [
+    {
+     "search": {
+      "text": "1.5"
+     }
+    }
+   ]
+  },
+  {
+   "name": "h_minus_1_5",
+   "op": "filter",
+   "source": "h",
+   "conditions": [
+    {
+     "search": {
+      "text": "-1.5"
+     }
+    }
+   ]
+  },
+  {
+   "name": "h_abc",
+   "op": "filter",
+   "source": "h",
+   "conditions": [
+    {
+     "search": {
+      "text": "abc"
+     }
+    }
+   ]
+  },
+  {
+   "name": "h_true",
+   "op": "filter",
+   "source": "h",
+   "conditions": [
+    {
+     "search": {
+      "text": "true"
+     }
+    }
+   ]
+  },
+  {
+   "name": "h_second",
+   "op": "filter",
+   "source": "h",
+   "conditions": [
+    {
+     "search": {
+      "text": "2023-11-14T22:13:20 UTC"
+     }
+    }
+   ]
+  },
+  {
+   "name": "h_0",
+   "op": "filter",
+   "source": "h",
+   "conditions": [
+    {
+     "search": {
+      "text": "0"
+     }
+    }
+   ]
+  },
+  {
+   "name": "h_5",
+   "op": "filter",
+   "source": "h",
+   "conditions": [
+    {
+     "search": {
+      "text": "5"
+     }
+    }
+   ]
+  },
+  {
+   "name": "h_11",
+   "op": "filter",
+   "source": "h",
+   "conditions": [
+    {
+     "search": {
+      "text": "11"
+     }
+    }
+   ]
+  },
+  {
+   "name": "h_9",
+   "op": "filter",
+   "source": "h",
+   "conditions": [
+    {
+     "search": {
+      "text": "9",
+      "columns": [
+       "D",
+       "I"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "s_2",
+   "op": "filter",
+   "source": "g",
+   "conditions": [
+    {
+     "search": {
+      "text": "2"
+     }
+    }
+   ]
+  },
+  {
+   "name": "s_1_5",
+   "op": "filter",
+   "source": "g",
+   "conditions": [
+    {
+     "search": {
+      "text": "1.5"
+     }
+    }
+   ]
+  },
+  {
+   "name": "s_minus_1_5",
+   "op": "filter",
+   "source": "g",
+   "conditions": [
+    {
+     "search": {
+      "text": "-1.5"
+     }
+    }
+   ]
+  },
+  {
+   "name": "s_abc",
+   "op": "filter",
+   "source": "g",
+   "conditions": [
+    {
+     "search": {
+      "text": "abc"
+     }
+    }
+   ]
+  },
+  {
+   "name": "s_true",
+   "op": "filter",
+   "source": "g",
+   "conditions": [
+    {
+     "search": {
+      "text": "true"
+     }
+    }
+   ]
+  },
+  {
+   "name": "s_second",
+   "op": "filter",
+   "source": "g",
+   "conditions": [
+    {
+     "search": {
+      "text": "2023-11-14T22:13:20 UTC"
+     }
+    }
+   ]
+  },
+  {
+   "name": "s_minute",
+   "op": "filter",
+   "source": "g",
+   "conditions": [
+    {
+     "search": {
+      "text": "2023-11-14T22:13 UTC"
+     }
+    }
+   ]
+  },
+  {
+   "name": "s_null_int",
+   "op": "filter",
+   "source": "g",
+   "conditions": [
+    {
+     "search": {
+      "text": "-2147483648"
+     }
+    }
+   ]
+  },
+  {
+   "name": "s_nan",
+   "op": "filter",
+   "source": "g",
+   "conditions": [
+    {
+     "search": {
+      "text": "NaN"
+     }
+    }
+   ]
+  },
+  {
+   "name": "s_0",
+   "op": "filter",
+   "source": "g",
+   "conditions": [
+    {
+     "search": {
+      "text": "0"
+     }
+    }
+   ]
+  },
+  {
+   "name": "s_5",
+   "op": "filter",
+   "source": "g",
+   "conditions": [
+    {
+     "search": {
+      "text": "5"
+     }
+    }
+   ]
+  },
+  {
+   "name": "s_11",
+   "op": "filter",
+   "source": "g",
+   "conditions": [
+    {
+     "search": {
+      "text": "11"
+     }
+    }
+   ]
+  },
+  {
+   "name": "s_none",
+   "op": "filter",
+   "source": "g",
+   "conditions": [
+    {
+     "search": {
+      "text": "nothing"
+     }
+    }
+   ]
+  },
+  {
+   "name": "s_columns",
+   "op": "filter",
+   "source": "g",
+   "conditions": [
+    {
+     "search": {
+      "text": "2",
+      "columns": [
+       "S",
+       "D"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "r",
+   "op": "update",
+   "source": "g",
+   "formulas": [
+    "IA = array(I)",
+    "DA = array(D)",
+    "FA = array(F)"
+   ]
+  },
+  {
+   "name": "a_2",
+   "op": "filter",
+   "source": "r",
+   "conditions": [
+    {
+     "search": {
+      "text": "2",
+      "columns": [
+       "IA",
+       "DA"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "a_null_int",
+   "op": "filter",
+   "source": "r",
+   "conditions": [
+    {
+     "search": {
+      "text": "-2147483648",
+      "columns": [
+       "IA"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "a_3",
+   "op": "filter",
+   "source": "r",
+   "conditions": [
+    {
+     "search": {
+      "text": "3",
+      "columns": [
+       "IA"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "a_minus_1_5",
+   "op": "filter",
+   "source": "r",
+   "conditions": [
+    {
+     "search": {
+      "text": "-1.5",
+      "columns": [
+       "DA",
+       "FA"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "a_0",
+   "op": "filter",
+   "source": "r",
+   "conditions": [
+    {
+     "search": {
+      "text": "0",
+      "columns": [
+       "FA"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "n",
+   "op": "update",
+   "source": "h",
+   "formulas": [
+    "I = G == `z5` ? null : I"
+   ]
+  },
+  {
+   "name": "n_5",
+   "op": "filter",
+   "source": "n",
+   "conditions": [
+    {
+     "search": {
+      "text": "5"
+     }
+    }
+   ]
+  },
+  {
+   "name": "n_7",
+   "op": "filter",
+   "source": "n",
+   "conditions": [
+    {
+     "search": {
+      "text": "7"
+     }
+    }
+   ]
+  },
+  {
+   "name": "n_x",
+   "op": "filter",
+   "source": "n",
+   "conditions": [
+    {
+     "search": {
+      "text": "x"
+     }
+    }
+   ]
+  },
+  {
+   "name": "n_columns",
+   "op": "filter",
+   "source": "n",
+   "conditions": [
+    {
+     "search": {
+      "text": "9",
+      "columns": [
+       "I"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "na",
+   "op": "update",
+   "source": "n",
+   "formulas": [
+    "IA = array(I)"
+   ]
+  },
+  {
+   "name": "na_9",
+   "op": "filter",
+   "source": "na",
+   "conditions": [
+    {
+     "search": {
+      "text": "9",
+      "columns": [
+       "IA"
+      ]
+     }
+    }
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "h_2"
+  },
+  {
+   "table": "h_1_5"
+  },
+  {
+   "table": "h_minus_1_5"
+  },
+  {
+   "table": "h_abc"
+  },
+  {
+   "table": "h_true"
+  },
+  {
+   "table": "h_second"
+  },
+  {
+   "table": "h_0"
+  },
+  {
+   "table": "h_5"
+  },
+  {
+   "table": "h_11"
+  },
+  {
+   "table": "h_9"
+  },
+  {
+   "table": "s_2"
+  },
+  {
+   "table": "s_1_5"
+  },
+  {
+   "table": "s_minus_1_5"
+  },
+  {
+   "table": "s_abc"
+  },
+  {
+   "table": "s_true"
+  },
+  {
+   "table": "s_second"
+  },
+  {
+   "table": "s_minute"
+  },
+  {
+   "table": "s_null_int"
+  },
+  {
+   "table": "s_nan"
+  },
+  {
+   "table": "s_0"
+  },
+  {
+   "table": "s_5"
+  },
+  {
+   "table": "s_11"
+  },
+  {
+   "table": "s_none"
+  },
+  {
+   "table": "s_columns"
+  },
+  {
+   "table": "a_2"
+  },
+  {
+   "table": "a_null_int"
+  },
+  {
+   "table": "a_3"
+  },
+  {
+   "table": "a_minus_1_5"
+  },
+  {
+   "table": "a_0"
+  },
+  {
+   "table": "n_5"
+  },
+  {
+   "table": "n_7"
+  },
+  {
+   "table": "n_x"
+  },
+  {
+   "table": "n_columns"
+  },
+  {
+   "table": "na_9"
+  },
+  {
+   "table": "g"
+  }
+ ]
+}

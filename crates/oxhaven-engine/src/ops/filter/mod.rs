@@ -331,7 +331,11 @@ pub(crate) fn where_attributes(parent: &dyn Table) -> TableAttributes {
 fn is_memoized(filter: &Resolved) -> bool {
     match filter {
         Resolved::Match { .. } | Resolved::Pattern { .. } | Resolved::Nothing => true,
-        Resolved::Range { .. } | Resolved::Between { .. } | Resolved::Condition { .. } => false,
+        // Behavior: VectorComponentFilterWrapper takes the default of WhereFilter.
+        Resolved::Range { .. }
+        | Resolved::Between { .. }
+        | Resolved::Condition { .. }
+        | Resolved::AnyElement { .. } => false,
         Resolved::And(parts) | Resolved::Or(parts) => parts.iter().all(is_memoized),
     }
 }
