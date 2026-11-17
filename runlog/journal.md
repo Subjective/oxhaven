@@ -1153,3 +1153,7 @@ Task 7.5.1 (Kafka producing) reported after its resume: all gates passed on the 
 ## 2026-11-17 14:12 UTC: task 9.4 reported, pull request 146 opened
 
 The agent found per-row overhead, not the single thread, was the main cost of filters and formulas at 10M rows. It stopped at its context budget with only the three changed crates tested locally; the workspace tests and replay run in CI. The end-to-end benchmark rerun waits until task 9.3 has released its build.
+
+## 2026-11-17 14:18 UTC: pull request 146 merged
+
+Seven green checks. Task 9.3 agent told that main moved. Follow-ups from 9.4: scattered row set building in filters, piece joins for 8-byte results, thread count server option, end-to-end benchmark rerun.
