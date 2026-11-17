@@ -11,6 +11,7 @@
 //! | [`RandomUpdates`] | A seeded generator of valid `TableChange`s: adds, removes, modifies and shifts |
 //! | [`ConsistencyChecker`] | A listener that checks every update of any table, and optionally compares the table with a recompute |
 //! | [`test_seeds`], [`at_least_for`] | The seeds a randomized test runs: a quick share by default, all with `OXHAVEN_TEST_SEEDS=full` |
+//! | [`RangeRowSet`] | The row set as a sorted vector of ranges, to compare the contract row set with |
 //! | [`Recorder`] | A listener that records the updates and failures it receives |
 //! | [`diff_tables`], [`assert_tables_equal`] | Row-by-row comparison of two tables |
 //!
@@ -81,6 +82,7 @@ mod checker;
 mod compare;
 mod graph;
 mod random;
+mod range_rowset;
 mod recorder;
 mod script;
 mod seeds;
@@ -90,6 +92,7 @@ pub use checker::{ConsistencyChecker, ConsistencyError};
 pub use compare::{assert_tables_equal, diff_tables, TableSnapshot};
 pub use graph::ReferenceGraph;
 pub use random::RandomUpdates;
+pub use range_rowset::RangeRowSet;
 pub use recorder::Recorder;
 pub use script::ScriptedTable;
 pub use seeds::{at_least_for, test_seeds, SEED_BUDGET_VARIABLE};

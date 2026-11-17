@@ -1,14 +1,13 @@
-//! Every operation of `BlockRowSet` is compared with the contract `RowSet` on the same keys,
-//! and every result is checked to be in the one layout its keys allow.
+//! Every operation of the row set is compared with the vector-of-ranges reference
+//! (`oxhaven_testkit::RangeRangeRowSet`) on the same keys, and every result is checked to be in the
+//! one layout its keys allow.
 
-use super::container::{count_runs, Body, Run, BLOCK_KEYS, MAX_RUNS};
-use super::{BlockRowSet, BLOCK_BITS};
-use oxhaven_contracts::rowset::{RowKey, RowRange, RowSet, RowSetError};
-use oxhaven_testkit::{at_least_for, test_seeds};
+use oxhaven_contracts::rowset::{RowKey, RowRange, RowSet, RowSetError, SpanCounts};
+use oxhaven_testkit::{at_least_for, test_seeds, RangeRangeRowSet};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-const B: RowKey = BLOCK_KEYS as RowKey;
+const B: RowKey = 1 << 16;
 /// The last block of the key space.
 const TOP: RowKey = RowKey::MAX - (B - 1);
 
@@ -33,67 +32,25 @@ impl Rng {
     }
 }
 
-/// How often each layout turned up, so the tests can say they reached all of them.
-#[derive(Default)]
-struct Seen {
-    full: u64,
-    one: u64,
-    runs: u64,
-    bits: u64,
-}
+/// How often each layout turned up, so the test can say it reached all of them.
+type Seen = SpanCounts;
 
-/// Panics unless `rows` is in the layout the module documents.
-fn validate(rows: &BlockRowSet, seen: &mut Seen) {
-    assert_eq!(rows.spans.len(), rows.ends.len());
-    let mut total = 0;
-    for (i, span) in rows.spans.iter().enumerate() {
-        let keys = match &span.body {
-            Body::Full(blocks) => {
-                seen.full += 1;
-                assert!(*blocks >= 1);
-                blocks * BLOCK_KEYS
-            }
-            Body::One(run) => {
-                seen.one += 1;
-                assert!(run.first <= run.last);
-                assert_ne!(*run, Run::WHOLE, "a whole block stored as a run");
-                run.len()
-            }
-            Body::Runs(runs) => {
-                seen.runs += 1;
-                assert!((2..=MAX_RUNS).contains(&runs.len()), "{} runs", runs.len());
-                for w in runs.windows(2) {
-                    assert!(u32::from(w[0].last) + 1 < u32::from(w[1].first));
-                }
-                runs.iter().map(|r| r.len()).sum()
-            }
-            Body::Bits(words) => {
-                seen.bits += 1;
-                assert!(count_runs(words) > MAX_RUNS, "a bitmap with few runs");
-                words.iter().map(|w| u64::from(w.count_ones())).sum()
-            }
-        };
-        assert!(span.end() <= 1 << (63 - BLOCK_BITS), "beyond the key space");
-        total += keys;
-        assert_eq!(rows.ends[i], total, "key count of span {i}");
-        if let Some(next) = rows.spans.get(i + 1) {
-            assert!(span.end() <= next.block, "spans {i} and the next overlap");
-            let both_full =
-                matches!(span.body, Body::Full(_)) && matches!(next.body, Body::Full(_));
-            assert!(!(both_full && span.end() == next.block), "unjoined blocks");
-        }
-    }
+fn add(seen: &mut Seen, counts: SpanCounts) {
+    seen.full += counts.full;
+    seen.one += counts.one;
+    seen.runs += counts.runs;
+    seen.bits += counts.bits;
 }
 
 /// `actual` holds exactly the keys of `expected`, in the one layout for them.
-fn assert_same(context: &str, actual: &BlockRowSet, expected: &RowSet, seen: &mut Seen) {
-    validate(actual, seen);
+fn assert_same(context: &str, actual: &RowSet, expected: &RangeRowSet, seen: &mut Seen) {
+    add(seen, actual.check_layout());
     let ranges: Vec<RowRange> = actual.ranges().collect();
     assert_eq!(ranges, expected.ranges(), "{context}");
     assert_eq!(actual.size(), expected.size(), "{context}: size");
     assert_eq!(
         actual,
-        &BlockRowSet::from(expected),
+        &RowSet::from(expected),
         "{context}: same keys, different layout"
     );
 }
@@ -184,7 +141,7 @@ fn ranges(rng: &mut Rng) -> Vec<RowRange> {
 
 /// Keys worth probing in `rows`: the ends of some ranges and their neighbours, block
 /// boundaries, and random keys.
-fn probes(rows: &RowSet, rng: &mut Rng) -> Vec<RowKey> {
+fn probes(rows: &RangeRowSet, rng: &mut Rng) -> Vec<RowKey> {
     let mut keys = vec![-1, 0, B - 1, B, RowKey::MAX];
     let ranges = rows.ranges();
     for _ in 0..12.min(ranges.len()) {
@@ -203,34 +160,34 @@ fn probes(rows: &RowSet, rng: &mut Rng) -> Vec<RowKey> {
     keys
 }
 
-fn hash_of(rows: &BlockRowSet) -> u64 {
+fn hash_of(rows: &RowSet) -> u64 {
     let mut hasher = DefaultHasher::new();
     rows.hash(&mut hasher);
     hasher.finish()
 }
 
 #[test]
-fn every_operation_matches_the_contract_row_set() {
+fn every_operation_matches_the_reference_row_set() {
     let seeds = 0..300;
     let mut seen = Seen::default();
     for seed in test_seeds(seeds.clone()) {
         let mut rng = Rng(seed);
         let (in_a, in_b) = (ranges(&mut rng), ranges(&mut rng));
         let (ra, rb) = (
-            RowSet::from_ranges(in_a.iter().copied()),
-            RowSet::from_ranges(in_b.iter().copied()),
+            RangeRowSet::from_ranges(in_a.iter().copied()),
+            RangeRowSet::from_ranges(in_b.iter().copied()),
         );
         let (a, b) = (
-            BlockRowSet::from_ranges(in_a.iter().copied()),
-            BlockRowSet::from_ranges(in_b.iter().copied()),
+            RowSet::from_ranges(in_a.iter().copied()),
+            RowSet::from_ranges(in_b.iter().copied()),
         );
         let ctx = |what: &str| format!("seed {seed}: {what}");
         assert_same(&ctx("from_ranges a"), &a, &ra, &mut seen);
         assert_same(&ctx("from_ranges b"), &b, &rb, &mut seen);
         assert_eq!(
-            RowSet::from(&a),
+            RangeRowSet::from(&a),
             ra,
-            "seed {seed}: back to the contract type"
+            "seed {seed}: back to the reference type"
         );
         assert_eq!(format!("{a:?}"), format!("{ra:?}"), "seed {seed}: Debug");
         assert_eq!(a.is_empty(), ra.is_empty());
@@ -274,8 +231,8 @@ fn every_operation_matches_the_contract_row_set() {
             let key = BASES[rng.below(BASES.len() as u64) as usize] + rng.key_below(2 * B);
             let last = key.saturating_add(rng.key_below(4) * rng.key_below(B));
             let (piece, rpiece) = (
-                BlockRowSet::from_range(key, last),
                 RowSet::from_range(key, last),
+                RangeRowSet::from_range(key, last),
             );
             if step % 2 == 0 {
                 x.insert(&piece);
@@ -332,8 +289,8 @@ fn every_operation_matches_the_contract_row_set() {
             })
             .collect();
         let (pb, pr) = (
-            BlockRowSet::from_ranges(picks.iter().copied()),
             RowSet::from_ranges(picks.iter().copied()),
+            RangeRowSet::from_ranges(picks.iter().copied()),
         );
         for reversed in [false, true] {
             assert_same(
@@ -385,8 +342,8 @@ fn every_operation_matches_the_contract_row_set() {
         }
         assert_same(
             &ctx("from_keys"),
-            &keys.iter().copied().collect::<BlockRowSet>(),
-            &RowSet::from_keys(keys.iter().copied()),
+            &keys.iter().copied().collect::<RowSet>(),
+            &RangeRowSet::from_keys(keys.iter().copied()),
             &mut seen,
         );
     }
@@ -404,183 +361,3 @@ fn every_operation_matches_the_contract_row_set() {
     }
 }
 
-#[test]
-fn whole_blocks_are_one_span_however_many() {
-    let rows = BlockRowSet::flat(1_000_000_000_000);
-    assert_eq!(rows.size(), 1_000_000_000_000);
-    // 10^12 keys are 15258789 whole blocks and 4096 keys of the next one.
-    assert_eq!(rows.spans.len(), 2);
-    assert_eq!(rows.spans[0].body, Body::Full(15_258_789));
-    assert_eq!(rows.get(999_999_999_999), Some(999_999_999_999));
-    assert_eq!(rows.find(123_456_789_012), Some(123_456_789_012));
-    assert_eq!(
-        rows.heap_bytes(),
-        rows.spans.capacity() * 32 + rows.ends.capacity() * 8
-    );
-
-    // Removing one key from the middle splits the span and rebuilds one block only.
-    let mut holed = rows.clone();
-    holed.remove(&BlockRowSet::from_range(500_000_000_000, 500_000_000_000));
-    assert_eq!(holed.size(), 999_999_999_999);
-    assert_eq!(holed.spans.len(), 4);
-    assert!(!holed.contains(500_000_000_000));
-    assert_eq!(holed.get(500_000_000_000), Some(500_000_000_001));
-    // Putting it back gives the original layout.
-    holed.insert(&BlockRowSet::from_range(500_000_000_000, 500_000_000_000));
-    assert_eq!(holed, rows);
-}
-
-#[test]
-fn a_block_is_a_bitmap_exactly_when_it_has_more_than_2047_runs() {
-    // Every other key: `runs` runs of one key each.
-    let alternate = |runs: RowKey| BlockRowSet::from_keys((0..runs).map(|i| 2 * i));
-    let at_limit = alternate(MAX_RUNS as RowKey);
-    assert!(matches!(at_limit.spans[0].body, Body::Runs(_)));
-    let over = alternate(MAX_RUNS as RowKey + 1);
-    assert!(matches!(over.spans[0].body, Body::Bits(_)));
-    assert_eq!(over.size(), MAX_RUNS as u64 + 1);
-
-    // One more key takes the run list over the limit, and taking it away brings it back.
-    let extra = BlockRowSet::from_range(2 * MAX_RUNS as RowKey, 2 * MAX_RUNS as RowKey);
-    let mut rows = at_limit.clone();
-    rows.insert(&extra);
-    assert_eq!(rows, over);
-    rows.remove(&extra);
-    assert_eq!(rows, at_limit);
-    assert!(matches!(rows.spans[0].body, Body::Runs(_)));
-
-    // Filling the gaps of a bitmap leaves one run, and a whole block when it is all of it.
-    let odd = BlockRowSet::from_keys((0..=MAX_RUNS as RowKey).map(|i| 2 * i + 1));
-    assert_eq!(
-        over.union(&odd).spans[0].body,
-        Body::One(Run {
-            first: 0,
-            last: 2 * MAX_RUNS as u16 + 1
-        })
-    );
-    let half = BlockRowSet::from_keys((0..B / 2).map(|i| 2 * i));
-    let other_half = BlockRowSet::from_keys((0..B / 2).map(|i| 2 * i + 1));
-    assert_eq!(half.union(&other_half).spans[0].body, Body::Full(1));
-    assert!(half.intersect(&other_half).is_empty());
-    assert_eq!(half.union(&other_half).minus(&half), other_half);
-}
-
-#[test]
-fn a_copy_shares_blocks_and_changes_leave_the_original() {
-    let rows = BlockRowSet::from_keys((0..3 * B).filter(|k| k % 3 != 0));
-    let before: Vec<RowRange> = rows.ranges().collect();
-    let mut copy = rows.clone();
-    let Body::Bits(original) = &rows.spans[2].body else {
-        panic!("two of three keys in a block is a bitmap");
-    };
-    let Body::Bits(shared) = &copy.spans[2].body else {
-        panic!("a copy has the same layout");
-    };
-    assert!(std::sync::Arc::ptr_eq(original, shared));
-
-    // A change in the first block leaves the third block shared.
-    copy.insert(&BlockRowSet::from_range(0, 0));
-    let Body::Bits(shared) = &copy.spans[2].body else {
-        panic!("the third block did not change");
-    };
-    assert!(std::sync::Arc::ptr_eq(original, shared));
-    assert_eq!(copy.size(), rows.size() + 1);
-    assert_eq!(rows.ranges().collect::<Vec<_>>(), before);
-}
-
-#[test]
-fn the_last_key_of_the_key_space() {
-    let rows = BlockRowSet::from_range(RowKey::MAX - B - 5, RowKey::MAX);
-    assert_eq!(rows.size(), B as u64 + 6);
-    assert_eq!(rows.last_row_key(), Some(RowKey::MAX));
-    assert!(rows.contains(RowKey::MAX));
-    assert_eq!(rows.find(RowKey::MAX), Some(B as u64 + 5));
-    assert_eq!(rows.get(B as u64 + 5), Some(RowKey::MAX));
-    assert_eq!(
-        rows.ranges().collect::<Vec<_>>(),
-        [RowRange::new(RowKey::MAX - B - 5, RowKey::MAX)]
-    );
-    assert_eq!(
-        rows.minus(&BlockRowSet::from_range(0, RowKey::MAX - 1)),
-        BlockRowSet::from_range(RowKey::MAX, RowKey::MAX)
-    );
-    assert_eq!(BlockRowSet::from_range(0, RowKey::MAX).size(), 1 << 63);
-}
-
-#[test]
-fn intersecting_skips_the_spans_between_the_other_sets_blocks() {
-    // A million scattered blocks against two keys far apart: the walk must not visit them all.
-    let many = BlockRowSet::from_keys((0..1_000_000).map(|i| i * 3 * B + 17));
-    let two = BlockRowSet::from_keys([17, 999_999 * 3 * B + 17]);
-    let started = std::time::Instant::now();
-    for _ in 0..2000 {
-        assert_eq!(many.intersect(&two), two);
-    }
-    // A walk of every span would be 2000 x 1M steps; with the skip it is 2000 x 40.
-    assert!(
-        started.elapsed() < std::time::Duration::from_secs(5),
-        "took {:?}",
-        started.elapsed()
-    );
-}
-
-#[test]
-fn invert_rejects_a_range_whose_ends_are_present_but_not_its_middle() {
-    let rows = BlockRowSet::from_keys([1, 2, 5, 6]);
-    assert_eq!(
-        rows.invert(&BlockRowSet::from_keys([2, 5])),
-        Ok(BlockRowSet::from_keys([1, 2]))
-    );
-    assert_eq!(
-        rows.invert(&BlockRowSet::from_range(2, 5)),
-        Err(RowSetError::NotASubset)
-    );
-    // The same with the gap between two whole blocks.
-    let rows = BlockRowSet::from_ranges([RowRange::new(0, B - 1), RowRange::new(2 * B, 3 * B - 1)]);
-    assert_eq!(
-        rows.invert(&BlockRowSet::from_keys([B - 1, 2 * B])),
-        Ok(BlockRowSet::from_range(B - 1, B))
-    );
-    assert_eq!(
-        rows.invert(&BlockRowSet::from_range(B - 1, 2 * B)),
-        Err(RowSetError::NotASubset)
-    );
-}
-
-#[test]
-fn whole_blocks_side_by_side_become_one_span() {
-    let (low, high) = (
-        BlockRowSet::from_range(0, 2 * B - 1),
-        BlockRowSet::from_range(2 * B, 5 * B - 1),
-    );
-    let both = BlockRowSet::from_range(0, 5 * B - 1);
-    assert_eq!(both.spans.len(), 1);
-    for (a, b) in [(&low, &high), (&high, &low)] {
-        assert_eq!(a.union(b), both);
-        let mut joined = a.clone();
-        joined.insert(b);
-        assert_eq!(joined, both);
-    }
-    // What is left on either side of a removed block is two spans, and one again when the
-    // block comes back from the other operand.
-    let middle = BlockRowSet::from_range(2 * B, 3 * B - 1);
-    let holed = both.minus(&middle);
-    assert_eq!(holed.spans.len(), 2);
-    assert_eq!(holed.union(&middle), both);
-    // Blocks that stay whole next to blocks that the other set completes.
-    let evens = BlockRowSet::from_keys((2 * B..3 * B).filter(|k| k % 2 == 0));
-    let odds = BlockRowSet::from_keys((2 * B..3 * B).filter(|k| k % 2 == 1));
-    assert_eq!(holed.union(&evens).union(&odds), both);
-    let mut rows = holed.clone();
-    rows.insert(&evens);
-    rows.insert(&odds);
-    assert_eq!(rows, both);
-    validate(&rows, &mut Seen::default());
-}
-
-#[test]
-#[should_panic(expected = "beyond the key space")]
-fn shifting_past_the_last_key_panics() {
-    let rows = BlockRowSet::from_range(RowKey::MAX - 2 * B, RowKey::MAX - 5);
-    let _ = rows.shift(B);
-}
