@@ -22,7 +22,9 @@ were in this first measurement, which brings them to Java's times or below them;
 [After task 9.1](#after-task-91-natural-and-exact-joins-2026-11-17). Task 9.3 has made
 `sort` 3x to 19x faster, below Java's earlier times at both sizes; see
 [After task 9.3](#after-task-93-2026-11-17-sort-and-reads-through-a-row-redirection). The tables and the
-reading of the first measurement are kept below as they were written.
+reading of the first measurement are kept below as they were written. Task 9.8 measured
+both servers again after tasks 9.1 to 9.7; see
+[Second measurement](#second-measurement-after-tasks-91-to-97) at the end.
 
 ## What is measured
 
@@ -76,6 +78,8 @@ other two kinds of case say what they wait for in the table below.
 | `ungroup` | `view(["K10k", "A"]).group_by("K10k")`, made once | `ungroup("A")` (n rows back) | export answered |
 | `doget_1m` | the first 1M rows of `Id`, `A`, `B` | `to_arrow()`: Arrow Flight DoGet | the client has every record batch |
 | `ticking_append_where_sum_by` | an append-only input table `(K int, V long)` with `where("V % 2 == 0").sum_by("K")` downstream; a batch of 100,000 rows imported | add the batch, wait for the barrier, fetch the 100-row result | see "Ticking" |
+| `sort_refreshing_append` (added by task 9.8) | once: an append-only input table `(Id long, A int, B double)` given the source's n rows on the server, then `sort("A")` of it; per repetition a batch of 1,000 new rows (the source's formulas for the next ids) imported | add the batch, wait for the barrier | the cycle that sorted the batch in has finished; checked on a `snapshot()` of the sorted table |
+| `doget_sorted_refreshing` (added by task 9.8) | `head(1_000_000)` of that sorted refreshing table | `to_arrow()`: Arrow Flight DoGet | the client has every record batch; the check also weighs the first column by row position |
 
 The source table has n rows:
 
@@ -105,7 +109,9 @@ added so far. Both servers start a cycle as soon as an input table is changed
 (`PeriodicUpdateGraph#requestRefresh` and its Oxhaven counterpart), so the time is not the
 1-second cycle period. It is dominated by round trips and cycle overhead, not by the 100,000-row
 `where` and `sum_by`, so it says little about incremental throughput; a `time_table` was left
-out because nothing can make the two servers tick in step.
+out because nothing can make the two servers tick in step. Task 9.8 added a second case of
+the same kind, `sort_refreshing_append`: 1,000 rows appended per repetition to an input
+table of n rows that a `sort` keeps ordered, timed to the barrier.
 
 ## How to run it
 
@@ -1003,3 +1009,202 @@ the branch runs 3.4% fewer instructions for `agg_by_multi` and the same number f
   sets. Making the vectors lazy, as Java's `AggregateColumnSource` does, would move the last
   part to the reader rather than remove it, and every reader of the benchmark reads every
   vector, so it was not done.
+
+## Second measurement (after tasks 9.1 to 9.7)
+
+Task 9.8 (`tasks/9.8-benchmark-rerun.md`) ran the whole benchmark again, Deephaven and
+Oxhaven, once tasks 9.1 to 9.7 were merged. It is the first end-to-end run with Deephaven
+since the first measurement; the blocks of tasks 9.4 to 9.7 measured inside the engine only.
+
+The short reading: every case gave the same result on both servers in all three runs, and
+none failed. Of the 74 pairs of case and size, Oxhaven is now faster than Deephaven in 34
+(ratio below 0.8 in both runs), level or between level and slower in 31, and slower by
+more than 20% in both runs in 9: `aj` (2x at 1M rows, 3x at 10M), `last_by` (2x to 2.7x), `ungroup` at 10M rows (a few
+milliseconds), `where_range` at 10M rows, and three low- and medium-cardinality
+aggregations at 10M rows (1.2x to 1.5x).
+
+**How it was measured.** As the first measurement (see "The machine and the servers"),
+with these differences:
+
+- **Oxhaven:** `main` at `8a21018b` (which contains 9.1 to 9.7, the last merged as
+  `55bb54de`), built with `cargo build --release --locked -p oxhaven-server`, default
+  release profile, without the `python` feature, run with default options. The engine now
+  has parallel code (tasks 9.4, 9.6, 9.7): by default a table operation may use 4 threads
+  on this machine (the server logs "Table operations use up to 4 threads"). A third run
+  restarted the same binary with `--threads 1`.
+- **Deephaven:** unchanged: 42.9 from `oracle/requirements.txt`, started with
+  `oracle/bin/java_server.py --port 10868 --psk oxhaven --heap 5g`, so
+  `-XX:ActiveProcessorCount=2` and a 5 GB heap as in the first measurement; OpenJDK
+  21.0.12.1. One process for all three runs.
+- **Both servers and the client shared the machine's 4 cores.** Deephaven is held to 2
+  processors by its JVM setting; Oxhaven's default uses all 4. That is part of the
+  comparison, not corrected for; the one-thread column shows Oxhaven without it.
+- **Load: low this time.** No other agent was building. Run 1 started when the one-minute
+  load average was 0.87; it was 1.21 at the end of run 1, 1.29 at the end of run 2, and 1.03
+  at the end of run 3. The load recorded before each case was 0.9 to 2.0, all of it the
+  benchmark itself. The first measurement ran at a load of 2.9 to 9.2, so its ratios in the
+  "first" column were taken under very different conditions.
+- **Runs:** run 1 17:31:59 to 17:36:21, run 2 17:36:21 to 17:40:30, run 3 (`--threads 1`)
+  17:40:36 to 17:44:50; default repetitions (2 warm-up and 5 timed at 1M rows, 1 and 3 at
+  10M). A whole run now takes about 4 minutes, where the first took 14 to 15.
+- **Two new cases** (see the table of cases): `sort_refreshing_append` and
+  `doget_sorted_refreshing`. The other cases the performance tasks measured only inside the
+  engine were already in `bench.py`: the keyed cross join is `join_on_key`, and `group_by`
+  is `group_by`.
+
+Raw results: `bench/results/2026-11-17-task-9.8-run1.json`, `-run2.json` and
+`-threads1.json`; the table with min-max and load per case of every run is
+`bench/results/2026-11-17-task-9.8.md`.
+
+Median milliseconds, run 1 / run 2. "Oxhaven, 1 thread" is run 3. "ratio" is Oxhaven over
+Deephaven per run; "ratio, first measurement" is the same ratio from the first measurement's
+runs 1 / 2 above. "same result" is runs 1 / 2 / 3.
+
+### 1,000,000 rows
+
+| case | Deephaven | Oxhaven | Oxhaven, 1 thread | ratio | ratio, first measurement | same result |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `build` | 203 / 77.2 | 42.0 / 27.8 | 71.9 | 0.21 / 0.36 | 1.90 / 2.87 | yes / yes / yes |
+| `update_arith` | 37.9 / 23.7 | 8.0 / 9.3 | 12.0 | 0.21 / 0.39 | 1.26 / 2.31 | yes / yes / yes |
+| `update_string` | 71.5 / 32.0 | 10.6 / 9.4 | 16.2 | 0.15 / 0.29 | 1.72 / 3.96 | yes / yes / yes |
+| `update_cond` | 17.5 / 16.2 | 3.5 / 4.1 | 7.4 | 0.20 / 0.25 | 1.39 / 0.95 | yes / yes / yes |
+| `where_range` | 15.6 / 10.1 | 4.6 / 5.9 | 9.3 | 0.29 / 0.59 | 0.90 / 2.81 | yes / yes / yes |
+| `where_string` | 16.9 / 15.0 | 3.6 / 2.7 | 6.6 | 0.22 / 0.18 | 0.54 / 0.52 | yes / yes / yes |
+| `where_conj` | 18.8 / 12.1 | 8.3 / 9.0 | 8.7 | 0.44 / 0.74 | 1.22 / 1.70 | yes / yes / yes |
+| `sort_int` | 105 / 136 | 45.9 / 23.5 | 64.5 | 0.44 / 0.17 | 5.25 / 4.04 | yes / yes / yes |
+| `sort_two` | 223 / 204 | 125 / 181 | 146 | 0.56 / 0.89 | 2.28 / 2.48 | yes / yes / yes |
+| `sort_string` | 256 / 231 | 118 / 109 | 106 | 0.46 / 0.47 | 1.48 / 1.42 | yes / yes / yes |
+| `sum_by_low` | 19.7 / 17.9 | 21.4 / 22.9 | 23.5 | 1.08 / 1.28 | 1.89 / 1.97 | yes / yes / yes |
+| `avg_by_low` | 28.6 / 18.1 | 35.0 / 20.8 | 20.9 | 1.23 / 1.15 | 1.58 / 1.83 | yes / yes / yes |
+| `count_by_low` | 22.6 / 12.7 | 18.2 / 25.8 | 17.7 | 0.80 / 2.03 | 2.03 / 2.16 | yes / yes / yes |
+| `sum_by_med` | 39.3 / 41.2 | 56.8 / 41.6 | 49.9 | 1.44 / 1.01 | 1.26 / 1.75 | yes / yes / yes |
+| `avg_by_med` | 42.0 / 55.1 | 47.2 / 46.0 | 49.2 | 1.13 / 0.83 | 1.52 / 1.51 | yes / yes / yes |
+| `count_by_med` | 26.4 / 19.5 | 20.6 / 23.1 | 20.5 | 0.78 / 1.18 | 2.22 / 3.68 | yes / yes / yes |
+| `sum_by_high` | 179 / 160 | 215 / 170 | 190 | 1.20 / 1.06 | 6.17 / 5.58 | yes / yes / yes |
+| `avg_by_high` | 140 / 170 | 237 / 181 | 212 | 1.69 / 1.06 | 5.25 / 5.83 | yes / yes / yes |
+| `count_by_high` | 114 / 114 | 119 / 111 | 112 | 1.04 / 0.97 | 7.62 / 6.98 | yes / yes / yes |
+| `agg_by_multi` | 67.8 / 80.1 | 89.8 / 87.3 | 68.3 | 1.32 / 1.09 | 1.62 / 1.27 | yes / yes / yes |
+| `last_by` | 18.2 / 20.1 | 39.4 / 39.6 | 38.3 | 2.16 / 1.97 | 9.95 / 8.36 | yes / yes / yes |
+| `natural_join_small` | 22.6 / 23.8 | 9.9 / 9.9 | 15.1 | 0.44 / 0.42 | 22.82 / 27.58 | yes / yes / yes |
+| `natural_join_large` | 94.6 / 102 | 96.6 / 94.7 | 95.1 | 1.02 / 0.93 | 18.57 / 20.59 | yes / yes / yes |
+| `exact_join_small` | 29.3 / 36.2 | 10.3 / 9.5 | 8.1 | 0.35 / 0.26 | 26.30 / 27.86 | yes / yes / yes |
+| `exact_join_large` | 106 / 96.9 | 94.4 / 97.7 | 104 | 0.89 / 1.01 | 18.45 / 19.92 | yes / yes / yes |
+| `join_on_key` | 258 / 239 | 22.5 / 32.8 | 22.2 | 0.09 / 0.14 | 1.63 / 1.87 | yes / yes / yes |
+| `aj` | 212 / 193 | 412 / 392 | 443 | 1.94 / 2.03 | 2.82 / 2.89 | yes / yes / yes |
+| `select_distinct_one` | 12.7 / 13.1 | 7.5 / 6.8 | 6.3 | 0.59 / 0.52 | 19.50 / 19.96 | yes / yes / yes |
+| `select_distinct_two` | 27.2 / 26.4 | 24.1 / 22.0 | 22.0 | 0.89 / 0.83 | 9.36 / 8.44 | yes / yes / yes |
+| `head_half` | 2.1 / 2.1 | 0.84 / 1.1 | 0.96 | 0.39 / 0.52 | 0.43 / 0.51 | yes / yes / yes |
+| `tail_half` | 2.1 / 2.1 | 0.86 / 1.0 | 0.81 | 0.40 / 0.49 | 0.47 / 0.54 | yes / yes / yes |
+| `group_by` | 80.3 / 82.9 | 76.8 / 95.1 | 79.6 | 0.96 / 1.15 | 3.35 / 3.94 | yes / yes / yes |
+| `ungroup` | 5.4 / 3.0 | 1.8 / 2.2 | 2.0 | 0.33 / 0.73 | 0.34 / 1.54 | yes / yes / yes |
+| `doget_1m` | 68.4 / 64.5 | 27.2 / 29.4 | 31.6 | 0.40 / 0.46 | 0.40 / 0.46 | yes / yes / yes |
+| `sort_refreshing_append` | 33.0 / 21.1 | 30.4 / 31.1 | 33.2 | 0.92 / 1.47 | new case | yes / yes / yes |
+| `doget_sorted_refreshing` | 139 / 117 | 43.6 / 57.0 | 89.6 | 0.31 / 0.49 | new case | yes / yes / yes |
+| `ticking_append_where_sum_by` | 50.1 / 37.9 | 35.2 / 40.2 | 36.6 | 0.70 / 1.06 | 1.70 / 1.76 | yes / yes / yes |
+
+### 10,000,000 rows
+
+| case | Deephaven | Oxhaven | Oxhaven, 1 thread | ratio | ratio, first measurement | same result |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `build` | 1393 / 1305 | 641 / 527 | 995 | 0.46 / 0.40 | 3.11 / 2.09 | yes / yes / yes |
+| `update_arith` | 129 / 144 | 103 / 108 | 195 | 0.80 / 0.75 | 5.87 / 2.80 | yes / yes / yes |
+| `update_string` | 782 / 691 | 160 / 85.3 | 201 | 0.21 / 0.12 | 1.96 / 1.47 | yes / yes / yes |
+| `update_cond` | 83.6 / 69.7 | 62.1 / 66.7 | 118 | 0.74 / 0.96 | 5.46 / 4.47 | yes / yes / yes |
+| `where_range` | 37.0 / 31.3 | 51.8 / 56.3 | 87.7 | 1.40 / 1.80 | 8.22 / 8.29 | yes / yes / yes |
+| `where_string` | 52.0 / 73.4 | 29.3 / 29.6 | 54.2 | 0.56 / 0.40 | 0.68 / 0.60 | yes / yes / yes |
+| `where_conj` | 51.4 / 51.9 | 47.7 / 55.6 | 97.4 | 0.93 / 1.07 | 2.95 / 3.33 | yes / yes / yes |
+| `sort_int` | 1558 / 1360 | 519 / 527 | 527 | 0.33 / 0.39 | 10.02 / 9.00 | yes / yes / yes |
+| `sort_two` | 2468 / 2509 | 1737 / 1609 | 1571 | 0.70 / 0.64 | 4.21 / 3.99 | yes / yes / yes |
+| `sort_string` | 2134 / 2039 | 1308 / 1538 | 1422 | 0.61 / 0.75 | 2.69 / 2.80 | yes / yes / yes |
+| `sum_by_low` | 152 / 177 | 208 / 198 | 195 | 1.36 / 1.12 | 2.00 / 1.73 | yes / yes / yes |
+| `avg_by_low` | 156 / 140 | 212 / 216 | 200 | 1.36 / 1.54 | 1.59 / 2.11 | yes / yes / yes |
+| `count_by_low` | 106 / 107 | 158 / 154 | 155 | 1.49 / 1.43 | 2.29 / 2.18 | yes / yes / yes |
+| `sum_by_med` | 344 / 349 | 418 / 433 | 427 | 1.22 / 1.24 | 1.39 / 1.45 | yes / yes / yes |
+| `avg_by_med` | 436 / 522 | 517 / 497 | 415 | 1.19 / 0.95 | 1.55 / 1.44 | yes / yes / yes |
+| `count_by_med` | 151 / 193 | 178 / 180 | 159 | 1.17 / 0.93 | 1.77 / 2.35 | yes / yes / yes |
+| `sum_by_high` | 768 / 754 | 723 / 691 | 660 | 0.94 / 0.92 | 3.84 / 3.23 | yes / yes / yes |
+| `avg_by_high` | 967 / 885 | 715 / 821 | 700 | 0.74 / 0.93 | 2.41 / 2.70 | yes / yes / yes |
+| `count_by_high` | 479 / 499 | 396 / 429 | 369 | 0.83 / 0.86 | 5.40 / 5.60 | yes / yes / yes |
+| `agg_by_multi` | 619 / 774 | 1068 / 818 | 847 | 1.73 / 1.06 | 1.53 / 1.89 | yes / yes / yes |
+| `last_by` | 160 / 183 | 423 / 373 | 372 | 2.65 / 2.04 | 8.20 / 8.73 | yes / yes / yes |
+| `natural_join_small` | 233 / 247 | 122 / 133 | 116 | 0.52 / 0.54 | 27.62 / 28.70 | yes / yes / yes |
+| `natural_join_large` | 472 / 439 | 508 / 414 | 375 | 1.08 / 0.94 | 34.90 / 33.84 | yes / yes / yes |
+| `exact_join_small` | 224 / 229 | 136 / 120 | 121 | 0.61 / 0.53 | 40.39 / 37.30 | yes / yes / yes |
+| `exact_join_large` | 474 / 488 | 406 / 468 | 421 | 0.86 / 0.96 | 29.56 / 33.39 | yes / yes / yes |
+| `join_on_key` | 2284 / 2197 | 340 / 341 | 361 | 0.15 / 0.16 | 1.89 / 2.70 | yes / yes / yes |
+| `aj` | 1776 / 1689 | 5464 / 4950 | 5636 | 3.08 / 2.93 | 2.45 / 3.14 | yes / yes / yes |
+| `select_distinct_one` | 128 / 88.9 | 51.3 / 60.3 | 46.3 | 0.40 / 0.68 | 31.15 / 27.58 | yes / yes / yes |
+| `select_distinct_two` | 239 / 228 | 227 / 205 | 163 | 0.95 / 0.90 | 8.34 / 9.56 | yes / yes / yes |
+| `head_half` | 2.4 / 1.9 | 1.3 / 1.0 | 0.97 | 0.54 / 0.55 | 0.32 / 1.10 | yes / yes / yes |
+| `tail_half` | 2.1 / 1.8 | 1.0 / 1.2 | 0.76 | 0.48 / 0.67 | 2.40 / 2.88 | yes / yes / yes |
+| `group_by` | 838 / 942 | 872 / 845 | 983 | 1.04 / 0.90 | 7.28 / 7.19 | yes / yes / yes |
+| `ungroup` | 3.9 / 2.9 | 9.3 / 9.1 | 8.6 | 2.38 / 3.10 | 6.15 / 4.06 | yes / yes / yes |
+| `doget_1m` | 75.6 / 53.2 | 29.8 / 28.9 | 32.5 | 0.39 / 0.54 | 0.44 / 0.63 | yes / yes / yes |
+| `sort_refreshing_append` | 785 / 956 | 36.1 / 39.7 | 29.9 | 0.05 / 0.04 | new case | yes / yes / yes |
+| `doget_sorted_refreshing` | 131 / 168 | 63.3 / 66.2 | 173 | 0.48 / 0.39 | new case | yes / yes / yes |
+| `ticking_append_where_sum_by` | 98.2 / 85.0 | 36.3 / 38.2 | 38.0 | 0.37 / 0.45 | 2.21 / 2.44 | yes / yes / yes |
+
+
+**Where Oxhaven is now faster** (ratio below 0.8 in both runs): every formula case at 1M
+rows (`build`, `update_arith`, `update_string`, `update_cond`: 0.15 to 0.39) and `build`
+and `update_string` at 10M; every filter at 1M rows, and `where_string` at both sizes;
+every static sort at both sizes (`sort_int` 0.17 to 0.44, `sort_two` and `sort_string`
+0.46 to 0.75, except `sort_two` at 1M in run 2, 0.89); `natural_join_small` and
+`exact_join_small` (0.26 to 0.61); `join_on_key` (0.09 to 0.16: 22 to 33 ms against
+Deephaven's 239 to 258 ms at 1M rows, 340 ms against 2.2 s at 10M); `select_distinct_one`;
+`head_half` and `tail_half` at both sizes and `ungroup` at 1M rows; the Arrow Flight reads
+`doget_1m` and `doget_sorted_refreshing` (0.31 to 0.54); the ticking case at 10M rows (0.37
+to 0.45); and `sort_refreshing_append` at 10M rows (0.04 to 0.05: 36 to 40 ms against
+Deephaven's 785 to 956 ms; why Deephaven takes that long here was not looked into).
+
+**Where it is level** (within about 20% in both runs): `natural_join_large` and
+`exact_join_large` at both sizes; `group_by` at both sizes; `select_distinct_two` at both
+sizes; `sum_by_high` and `count_by_high` at 1M rows, and all three high-cardinality
+aggregations at 10M (0.74 to 0.94, so level to slightly faster); `avg_by_med` and
+`count_by_med` at both sizes; `update_arith` (0.80 / 0.75), `update_cond` and `where_conj`
+at 10M rows; the ticking case at 1M rows.
+
+**Between level and slower**, where one run was above 1.2 and the other within 20%, so the
+runs do not agree: `agg_by_multi` (1.32 / 1.09 at 1M, 1.73 / 1.06 at 10M), `count_by_low`
+at 1M (0.80 / 2.03), `avg_by_high` at 1M (1.69 / 1.06), `sort_refreshing_append` at 1M
+(0.92 / 1.47), `sum_by_med` at 1M (1.44 / 1.01), `sum_by_low` (1.08 / 1.28 at 1M,
+1.12 / 1.36 at 10M) and `avg_by_low` at 1M (1.15 / 1.23). Task 9.5 found `agg_by_multi` and
+`count_by_low` varying between runs with no change in their code path.
+
+**Still slower than Deephaven by more than 20% in both runs**, by ratio, largest first:
+
+| case | rows | ratio | likely cause |
+| --- | ---: | ---: | --- |
+| `aj` | 10M | 3.08 / 2.93 | `ops/asof` still reads a `Vec<Cell>` key per row and keeps its buckets in a `BTreeMap` (the "After task 9.1" block and follow-up 2); no task has changed it |
+| `ungroup` | 10M | 2.38 / 3.10 | cause not known (9.3 / 9.1 ms against 3.9 / 2.9 ms; the first reading put it down to round trips at this size, but it held in all three runs) |
+| `last_by` | 10M | 2.65 / 2.04 | the operator's own work per group, a row key compared and stored at a random slot (the "After task 9.5" block) |
+| `last_by` | 1M | 2.16 / 1.97 | as above |
+| `aj` | 1M | 1.94 / 2.03 | as `aj` at 10M |
+| `where_range` | 10M | 1.40 / 1.80 | the evaluation of the condition and the row set of the kept rows (the "After task 9.6" block); 52 to 56 ms against 31 to 37 ms |
+| `count_by_low` | 10M | 1.49 / 1.43 | cause not known |
+| `avg_by_low` | 10M | 1.36 / 1.54 | cause not known |
+| `sum_by_med` | 10M | 1.22 / 1.24 | cause not known |
+
+**What the threads contribute** (run 3 against runs 1 and 2). The operations with parallel
+code are 1.3x to 2.8x faster on the default 4 threads. At 10M rows, one thread against runs
+1 / 2: `update_arith` 195 ms against 103 / 108, `update_cond` 118 against 62 / 67,
+`where_range` 88 against 52 / 56, `where_conj` 97 against 48 / 56, `where_string` 54
+against 29 / 30, `build` 995 against 641 / 527, `update_string` 201 against 160 / 85, and
+`doget_sorted_refreshing` 173 against 63 / 66 (a scattered read of a refreshing column is
+gathered on several threads). On one thread, at 10M rows, `where_range` is 2.4x to 2.8x
+Deephaven's time, `where_conj` 1.9x, `update_cond` 1.4x to 1.7x and `update_arith` 1.4x to
+1.5x; `build`, `update_string` and `where_string` stay faster or level, and at 1M rows
+every formula and filter stays faster or level on one thread. Most other cases differ from
+runs 1 and 2 by no more than those two runs differ from each other, in both directions;
+the larger differences are `natural_join_small` at 1M rows (15.1 ms on one thread against
+9.9 / 9.9), `sort_int` at 1M (64.5 against 45.9 / 23.5), and, lower on one thread,
+`agg_by_multi` at 1M (68.3 against 89.8 / 87.3) and `select_distinct_two` at 10M (163
+against 227 / 205). Whether those use threads was not checked.
+
+**Against the first measurement.** The ratio fell for nearly every case. It did not clearly
+fall for `aj` at 10M rows (2.45 / 3.14 then, 3.08 / 2.93 now), `agg_by_multi` at 10M
+(1.53 / 1.89 then, 1.73 / 1.06 now), `sum_by_med` at 1M (1.26 / 1.75 then, 1.44 / 1.01
+now), `head_half` at 10M (0.32 / 1.10 then, 0.54 / 0.55 now) and `doget_1m` (0.40 to 0.63
+then and now). The first measurement ran under a load of 3 to 9 and this one under 1 to 2;
+Deephaven's own medians are mostly lower now too (for example `join_on_key` at 1M rows,
+365 / 314 ms then, 258 / 239 now), so part of the change of a ratio is the load.
