@@ -1,0 +1,226 @@
+{
+  "format": 2,
+  "scenario": "search_vectors",
+  "scenario_sha256": "d3b31067481f0f4bdd5dbb372c039946bc131baf273f251bd8cfe4e3b57946aa",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "h_2",
+      "file": "step000.h_2.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "h_1_5",
+      "file": "step000.h_1_5.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "h_minus_1_5",
+      "file": "step000.h_minus_1_5.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "h_abc",
+      "file": "step000.h_abc.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "h_true",
+      "file": "step000.h_true.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "h_second",
+      "file": "step000.h_second.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "h_0",
+      "file": "step000.h_0.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "h_5",
+      "file": "step000.h_5.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "h_11",
+      "file": "step000.h_11.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "h_9",
+      "file": "step000.h_9.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "s_2",
+      "file": "step000.s_2.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "s_1_5",
+      "file": "step000.s_1_5.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "s_minus_1_5",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "s_abc",
+      "file": "step000.s_abc.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "s_true",
+      "file": "step000.s_true.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "s_second",
+      "file": "step000.s_second.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "s_minute",
+      "file": "step000.s_minute.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "s_null_int",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "s_nan",
+      "file": "step000.s_nan.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "s_0",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "s_5",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "s_11",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "s_none",
+      "file": "step000.s_none.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "s_columns",
+      "file": "step000.s_columns.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "a_2",
+      "file": "step000.a_2.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "a_null_int",
+      "file": "step000.a_null_int.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "a_3",
+      "file": "step000.a_3.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "a_minus_1_5",
+      "file": "step000.a_minus_1_5.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "a_0",
+      "file": "step000.a_0.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "n_5",
+      "file": "step000.n_5.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "n_7",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "n_x",
+      "file": "step000.n_x.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "n_columns",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "na_9",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "g",
+      "file": "step000.g.arrow",
+      "rows": 5
+    }
+  ]
+}

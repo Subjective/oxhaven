@@ -1,0 +1,233 @@
+{
+ "format": 1,
+ "name": "ticking_search_vectors",
+ "description": "The search box over a ticking table that group_by makes, as rows are added to, changed in and removed from its groups: a group is kept while an element of one of its vectors passes.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     1,
+     "x",
+     0.5
+    ],
+    [
+     2,
+     "a",
+     7,
+     "y",
+     1.5
+    ],
+    [
+     3,
+     "b",
+     2,
+     "abc",
+     "NaN"
+    ],
+    [
+     4,
+     "c",
+     0,
+     null,
+     0.25
+    ]
+   ],
+   "ticking": {
+    "key_columns": [
+     "K"
+    ]
+   }
+  }
+ ],
+ "operations": [
+  {
+   "name": "g",
+   "op": "group_by",
+   "source": "t",
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "s_7",
+   "op": "filter",
+   "source": "g",
+   "conditions": [
+    {
+     "search": {
+      "text": "7"
+     }
+    }
+   ]
+  },
+  {
+   "name": "s_ab",
+   "op": "filter",
+   "source": "g",
+   "conditions": [
+    {
+     "search": {
+      "text": "ab"
+     }
+    }
+   ]
+  },
+  {
+   "name": "s_1_5",
+   "op": "filter",
+   "source": "g",
+   "conditions": [
+    {
+     "search": {
+      "text": "1.5"
+     }
+    }
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "g"
+  },
+  {
+   "table": "s_7"
+  },
+  {
+   "table": "s_ab"
+  },
+  {
+   "table": "s_1_5"
+  }
+ ],
+ "steps": [
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       5,
+       "c",
+       7,
+       "AB",
+       1.55
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       2,
+       "a",
+       8,
+       "y",
+       2.5
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       5
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       6,
+       "d",
+       7,
+       "zab",
+       1.5
+      ],
+      [
+       3,
+       "b",
+       7,
+       "q",
+       1.0
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       6
+      ],
+      [
+       1
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       1,
+       "b",
+       3,
+       "cab",
+       1.5
+      ]
+     ]
+    }
+   ]
+  }
+ ]
+}
