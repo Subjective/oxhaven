@@ -1265,3 +1265,7 @@ The agent stopped its workspace test build at 4.3 GB free, as briefed. The check
 ## 2026-11-17 22:34 UTC: pull request 158 merged
 
 Seven green checks on head 845b1454 and the full-seed engine tests (1254 passed) run locally by the orchestrator. Main is at d2bc80a0. Follow-up: docs/HIERARCHICAL.md still says count where, group and formula are refused in a rollup.
+
+## 2026-11-17 22:35 UTC: task 10.5 started
+
+The select column-array family (P1 to P4). P5 to P7 wait on the owner.
