@@ -115,7 +115,8 @@ fn an_offset_that_long_parsing_cannot_read_is_refused_as_java_refuses() {
             ("P = Nope + A_[i + 0x1]", "0x1"),
             ("P = A_[i - 1] > 3 ? A_[i + 0X1F] : 0", "0X1F"),
         ] {
-            let attempts: [(&str, Result<Arc<dyn Table>, SelectError>); 5] = [
+            type Attempt = Result<Arc<dyn Table>, SelectError>;
+            let attempts: [(&str, Attempt); 5] = [
                 ("update", update(&parent, &["B", column], &Compiler)),
                 ("update_view", update_view(&parent, &[column], &Compiler)),
                 ("lazy_update", lazy_update(&parent, &[column], &Compiler)),
@@ -732,7 +733,10 @@ fn two_different_distances_on_a_refreshing_table_are_unported() {
 
 /// What `with_shifted_column` does with a formula over `shifts`, without the refusal of two
 /// distances: the shifted columns, the formula over them, and the shifted columns dropped.
-fn over_two_distances(shifts: &'static [(&'static str, i64)], formula: &'static str) -> Operation {
+/// Columns and their distances.
+type Distances = &'static [(&'static str, i64)];
+
+fn over_two_distances(shifts: Distances, formula: &'static str) -> Operation {
     operation(move |parent| {
         let shifts: Vec<Shift> = shifts.iter().map(|(c, a)| shift(c, *a)).collect();
         let names: Vec<String> = shifts.iter().map(Shift::result_name).collect();
@@ -747,7 +751,7 @@ fn over_two_distances(shifts: &'static [(&'static str, i64)], formula: &'static 
 /// farthest distance on each side of it.
 #[test]
 fn two_distances_follow_random_changes_when_served() {
-    let cases: [(&str, &'static [(&'static str, i64)], &'static str); 6] = [
+    let cases: [(&str, Distances, &'static str); 6] = [
         (
             "the rows before and after",
             &[("A", -1), ("A", 1)],
