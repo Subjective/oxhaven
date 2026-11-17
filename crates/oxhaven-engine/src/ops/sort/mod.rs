@@ -9,6 +9,7 @@
 //! | [`head_pct`], [`tail_pct`], [`slice_pct`] | The rows of a share of the table |
 //! | [`restrict_sort_to`] | The table, sortable by the named columns only |
 
+mod gapped;
 mod keys;
 mod slice;
 mod sorted;

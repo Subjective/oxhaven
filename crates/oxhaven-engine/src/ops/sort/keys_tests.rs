@@ -144,14 +144,14 @@ fn orders(table: &Arc<dyn Table>, columns: &[SortColumn]) -> (Vec<u32>, Vec<u32>
     let rows = table.row_set();
     let typed = KeyEncoder::new(&**table, columns).unwrap();
     assert!(!matches!(typed.form, Form::Rows(_)), "{columns:?}");
-    let keys = typed.encode(&**table, &rows).unwrap();
+    let keys = typed.encode(&**table, &rows, false).unwrap();
     let order = keys.order();
     let mut appended = typed.empty(0, &keys);
     for &position in &order {
         appended.push_from(&keys, position as usize);
     }
     let general = KeyEncoder::build(&**table, columns, false).unwrap();
-    let expected = general.encode(&**table, &rows).unwrap().order();
+    let expected = general.encode(&**table, &rows, false).unwrap().order();
     (order, expected, appended)
 }
 
@@ -159,7 +159,7 @@ fn orders(table: &Arc<dyn Table>, columns: &[SortColumn]) -> (Vec<u32>, Vec<u32>
 /// unordered keys have them, and that each equals the key it was copied from.
 fn check_appended(table: &Arc<dyn Table>, column: SortColumn, keys: &SortKeys, order: &[u32]) {
     let encoder = KeyEncoder::new(&**table, &[column]).unwrap();
-    let unordered = encoder.encode(&**table, &table.row_set()).unwrap();
+    let unordered = encoder.encode(&**table, &table.row_set(), false).unwrap();
     for (index, pair) in order.windows(2).enumerate() {
         let between = keys.compare(index, keys, index + 1);
         assert_ne!(between, Ordering::Greater, "{index}");
