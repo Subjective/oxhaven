@@ -1,0 +1,69 @@
+{
+ "format": 1,
+ "name": "R7_range_with_null",
+ "description": "Task 4.24, R7. A range comparison with null on a type that has no range filter falls back to a formula, which Java computes (every row is kept, the null ones too) and Oxhaven refuses.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "V",
+     "type": "int32"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    [
+     0,
+     0,
+     1700000000000000000
+    ],
+    [
+     0,
+     3,
+     1700000000000000001
+    ],
+    [
+     1,
+     1,
+     null
+    ],
+    [
+     1,
+     null,
+     1700086400000000000
+    ]
+   ]
+  }
+ ],
+ "operations": [
+  {
+   "name": "b",
+   "op": "update",
+   "source": "t",
+   "formulas": [
+    "W = dayOfWeek(T, 'UTC')"
+   ]
+  },
+  {
+   "name": "day_at_least_null",
+   "op": "where",
+   "source": "b",
+   "filters": [
+    "W >= null"
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "day_at_least_null"
+  }
+ ]
+}

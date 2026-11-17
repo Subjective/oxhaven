@@ -1,0 +1,113 @@
+{
+ "format": 1,
+ "name": "R2_filter_on_local_date_time",
+ "description": "Task 4.24, R2. Java reads a LocalDateTime literal in a match and a range filter and matches null; Oxhaven refuses every filter on a LocalDateTime column.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "V",
+     "type": "int32"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    [
+     0,
+     0,
+     1700000000000000000
+    ],
+    [
+     0,
+     3,
+     1700000000000000001
+    ],
+    [
+     1,
+     1,
+     null
+    ],
+    [
+     1,
+     null,
+     1700086400000000000
+    ]
+   ]
+  }
+ ],
+ "operations": [
+  {
+   "name": "b",
+   "op": "update",
+   "source": "t",
+   "formulas": [
+    "M = toLocalDateTime(T, 'UTC')"
+   ]
+  },
+  {
+   "name": "is_null",
+   "op": "where",
+   "source": "b",
+   "filters": [
+    "M == null"
+   ]
+  },
+  {
+   "name": "in_null",
+   "op": "where",
+   "source": "b",
+   "filters": [
+    "M in null"
+   ]
+  },
+  {
+   "name": "not_null",
+   "op": "where",
+   "source": "b",
+   "filters": [
+    "M != null"
+   ]
+  },
+  {
+   "name": "equal",
+   "op": "where",
+   "source": "b",
+   "filters": [
+    "M == '2023-11-14T22:13:20'"
+   ]
+  },
+  {
+   "name": "after",
+   "op": "where",
+   "source": "b",
+   "filters": [
+    "M > '2023-11-14T22:13:20'"
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "is_null"
+  },
+  {
+   "table": "in_null"
+  },
+  {
+   "table": "not_null"
+  },
+  {
+   "table": "equal"
+  },
+  {
+   "table": "after"
+  }
+ ]
+}

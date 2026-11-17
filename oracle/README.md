@@ -21,6 +21,7 @@ recorded from the Java reference. The reference is pinned in [REFERENCE.md](REFE
 | `harness/fuzz.py` | Scenario generator and shrinker |
 | `harness/fuzz_wide.py` | The generator of every operation and variant (`--variants all`, `--family`) |
 | `harness/fuzz_second.py` | The generator of the second parity pass (`--variants second`, its families) |
+| `harness/fuzz_times.py` | The generator for the date and time column types (`--family time_types`) |
 | `harness/known.py`, `fuzz-known-findings.json` | Triaged differences that `fuzz` sets apart |
 | `harness/faults.py` | Fault injection, to prove the comparator sees differences |
 | `harness/smoke.py` | Client smoke checks per protocol area |
@@ -402,6 +403,23 @@ need servers with a Python console on both sides (Oxhaven built with `--features
 The module comment lists what it keeps out and why, and `fuzz_second.RESTRICTIONS` what it
 steps around because of a finding in `tasks/4.20-fuzz-findings-2.md`.
 
+The variants `times` (`harness/fuzz_times.py`, the family `time_types` of
+`fuzz.TIME_FAMILIES`) are a generator of their own for the column types `LocalDate`,
+`LocalTime`, `LocalDateTime`, `Duration`, `DayOfWeek`, `ZonedDateTime`, `Period` and
+`ZoneId`; the families above keep their scenarios. Two inputs with a key, a number and an
+instant (static, keyed or append-only) each get an `update` that makes columns of these
+types with nulls, the `ZonedDateTime` as one instant in three zones. Over them it draws
+sorts, match and range filters with the literal spellings of each type, natural, exact and
+cross joins on these columns, `select_distinct`, and `agg_by` of and by them (`min`, `max`,
+`first`, `last`, `count_distinct`, `unique`, `distinct`, sorted first and last, `median`,
+percentile). The wire does not carry the zone of a `ZonedDateTime`, so a `view` with
+`hourOfDay(Z, true)` shows it now and then; a table with a `Period` column, which the
+rules cannot read, is compared through a view without it. `fuzz_times.RESTRICTIONS` lists
+what it steps around because of a finding in `tasks/4.24-fuzz-time-types.md`: among them
+every filter on a `LocalDateTime` and every as-of join. To shrink a seed of this family by
+hand when the shrinker ends at a table with a `Period` column, start from the scenario
+`--keep-going` writes.
+
 ### What a run prints
 
 `fuzz` stops at the first seed whose results differ. It prints the first mismatch, shrinks the
@@ -610,6 +628,10 @@ They need the recordings but no server.
 - `tests/test_fuzz_second.py`: the two older generators still build the scenarios they built
   (pinned digests); the second one is deterministic, valid, draws every operation and form it
   claims, and keeps its restrictions, each of which names a finding that is written up.
+- `tests/test_fuzz_times.py`: the generator of the date and time types is deterministic
+  (a pinned digest), valid, compares only tables the rules can read, draws every operation,
+  type and aggregation it claims, and keeps its restrictions, each of which names a finding
+  with a scenario file.
 - `tests/test_known.py`: what a known finding fits and what it must not, that a scenario with
   any other mismatch is still reported and shrunk, and the comparison behind `selfcheck`.
 - `tests/test_scenario.py`: the scenario format, the `--ops` filter, the corpus, recordings.
@@ -635,7 +657,10 @@ cites the section of `PARITY.md` behind each rule. In short:
   in `rules.py`) and the table attributes `IsFlat`, `AddOnly`, `AppendOnly` and `BlinkTable`
   in the schema metadata. Nullability flags are not compared.
 - Row count is exact. Rows are compared by position, never by row key.
-- Booleans, integers, strings and timestamps are exact. Null equals only null.
+- Booleans, integers, strings and timestamps are exact. Null equals only null. So are
+  dates, times of day and durations (`LocalDate`, `LocalTime` and `Duration` on the wire),
+  compared as the integer count they hold, also inside arrays. The interval of months a
+  `Period` is sent as is a type the rules do not know.
 - Floats are compared bit for bit, except that every NaN equals every NaN. `0.0` and `-0.0`
   differ (A2 is proposed, not in force).
 - The exception is A1: a float cell of a computed column may differ by a relative `1e-9` or an
