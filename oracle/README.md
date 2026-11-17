@@ -418,8 +418,10 @@ cross joins on these columns, `select_distinct`, and `agg_by` of and by them (`m
 percentile). The wire does not carry the zone of a `ZonedDateTime`, so a `view` with
 `hourOfDay(Z, true)` shows it now and then; a table with a `Period` column, which the
 rules cannot read, is compared through a view without it. `fuzz_times.RESTRICTIONS` lists
-what it steps around because of a finding in `tasks/4.24-fuzz-time-types.md`: among them
-every filter on a `LocalDateTime` and every as-of join. To shrink a seed of this family by
+what it steps around because of a finding in `tasks/4.24-fuzz-time-types.md` that is
+still open: every as-of join, sorted first or last by a `Period`, and the orderings of a
+`ZoneId`. Task 4.25 lifted the filters on a `LocalDateTime`, the range comparisons with
+null and the ordering aggregations of a `Period`. To shrink a seed of this family by
 hand when the shrinker ends at a table with a `Period` column, start from the scenario
 `--keep-going` writes.
 
