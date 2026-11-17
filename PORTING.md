@@ -97,6 +97,14 @@ Within that exception, also approved by the owner on 2026-11-15: BSD-2-Clause is
 the `zstd-sys` crate alone, which holds the Zstandard C library and is under
 `BSD-3-Clause AND BSD-2-Clause`. No other crate may be under BSD-2-Clause.
 
+The Kafka client: the owner's ruling of 2026-11-16 allows the licences of the files bundled in
+librdkafka (`docs/KAFKA.md`, "The client library"). Approved by the owner on 2026-11-17, for
+Kafka's optional features: the zlib licence is accepted for the zlib sources that `libz-sys`
+compiles (the `libz-static` feature of `rdkafka`, for gzip batches), and OpenSSL 3, which is
+under Apache-2.0, may be added for TLS and SASL SCRAM and OAUTHBEARER. Cyrus SASL (Kerberos)
+and libcurl (OIDC) stay off until someone needs them. These features are allowed, not on:
+turning one on is task 7.4.5.
+
 ## Verification every pull request must pass
 
 1. `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`,

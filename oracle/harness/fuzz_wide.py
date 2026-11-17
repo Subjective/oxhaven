@@ -43,8 +43,13 @@ Not generated, each for a stated reason:
   whose timestamps are all null (see `aggregation`).
 - `head_by` and `tail_by` of a table with an array column of strings, booleans or
   timestamps: the reference answers with an array of objects (see `build`).
-- `agg_all_by` of an array column with anything but `first` or `last`: Oxhaven answers
-  `UNIMPLEMENTED` (the engine lists aggregations of vector columns as not ported).
+- `agg_all_by` of an array column with anything but `first` or `last`, in the two cases where
+  the reference fails or answers text (`tasks/4.17-fuzz-findings.md`, Notes on A2):
+  - of a table a step can change: an array that an aggregation made is a view of its group,
+    and the reference's operators that compare values keep the view, so a later change of
+    the group fails the result;
+  - `min`, `max`, `median`, `pct` and `unique` of an array of booleans or timestamps: the
+    reference answers an array of strings.
 
 - `rolling_formula_*`, `cum_count_where` and `rolling_count_where_*`: Oxhaven answered them
   `UNIMPLEMENTED` while this generator was written and has them since; they take formulas
@@ -84,6 +89,10 @@ ORDER_KEEPING = frozenset({
 # Operations whose result has, per row of the first source, at most one row with its columns.
 KEY_KEEPING = ORDER_KEEPING | {"sort", "reverse"}
 _UNTYPED_ARRAYS = frozenset(LIST + kind for kind in ("string", "bool", "timestamp"))
+# `agg_all_by` of these arrays with these aggregations: the reference answers an array of
+# strings (`tasks/4.17-fuzz-findings.md`, Notes on A2).
+_ARRAYS_AS_TEXT = frozenset(LIST + kind for kind in ("bool", "timestamp"))
+_TEXT_OF_ARRAYS = frozenset({"min", "max", "median", "pct", "unique"})
 
 
 def _same(kind: str) -> str:
@@ -815,9 +824,12 @@ class _Wide(_Generator):
             # that would differ on every such draw.
             agg = "min" if agg == "first" else "max"
             accepted, result = AGGREGATIONS[agg]
-        if self.has_lists(source, by) and agg not in ("first", "last"):
-            # Oxhaven answers an aggregation of an array column UNIMPLEMENTED unless it is a
-            # first or a last (the engine lists the others as not ported).
+        if self.has_lists(source, by) and agg not in ("first", "last") and (
+                source.live or (agg in _TEXT_OF_ARRAYS and any(
+                    kind in _ARRAYS_AS_TEXT for _, kind in rest))):
+            # Two behaviours of the reference that Oxhaven does not reproduce (module
+            # comment): a changing group fails the result, and these arrays come back as
+            # arrays of strings.
             return False
         spec: dict[str, Any] = {"agg": agg, "columns": []}
         even = agg == "median"
@@ -830,6 +842,8 @@ class _Wide(_Generator):
         columns = [(c, source.type_of(c)) for c in by]
         for column, kind in rest:
             predicted = result(kind) if kind in accepted else kind
+            if kind.startswith(LIST) and agg == "count_distinct":
+                predicted = "int64"
             if even and kind in ("int32", "int64"):
                 predicted = "float64"
             columns.append((column, predicted))

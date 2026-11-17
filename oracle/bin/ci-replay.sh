@@ -13,6 +13,9 @@
 # Environment:
 #   ORACLE_GATE_PYTHON    0 builds the server without the Python console (exit status 2)
 #   PYO3_PYTHON           the Python to embed; default python3 on PATH
+#   VIRTUAL_ENV           the environment whose packages the server's Python imports; default
+#                         oracle/.venv, the harness's own (docs/CONSOLE.md, "The same packages
+#                         in CI and on a developer's machine")
 #   ORACLE_GATE_PORT      port for the server; default 0, which lets the system pick a free one
 #   ORACLE_GATE_OUT       directory for report.json and server.log; default oracle/.run/gate
 #   ORACLE_GATE_TIMEOUT   seconds the replay and the smokes may take together; default 900
@@ -28,6 +31,8 @@ psk=oxhaven
 log="$out/server.log"
 report="$out/report.json"
 python="$oracle/.venv/bin/python"
+# The server's Python imports the packages of the recordings' environment, here as in CI.
+export VIRTUAL_ENV="${VIRTUAL_ENV:-$oracle/.venv}"
 
 fail() {
   echo "replay gate: $*" >&2

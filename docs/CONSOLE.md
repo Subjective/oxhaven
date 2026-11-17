@@ -193,16 +193,16 @@ runner whose Python has no pandas and works on a machine that has it. So the rep
 does not use whatever the linked Python happens to have. It runs the server in the
 harness's environment, `oracle/.venv`, which is made from `oracle/requirements-replay.txt`:
 numpy, pandas and pyarrow in the versions the Java reference had when the recordings were
-made, and `jedi` and `docstring_parser` in the versions the Java reference completes with. The `oracle-replay` job sets `VIRTUAL_ENV` to it; locally, do the same:
+made, and `jedi` and `docstring_parser` in the versions the Java reference completes with. `oracle/bin/ci-replay.sh` sets `VIRTUAL_ENV` to it unless `VIRTUAL_ENV` already names an environment, in CI and locally alike:
 
 ```bash
-VIRTUAL_ENV=$PWD/oracle/.venv oracle/bin/ci-replay.sh
+oracle/bin/ci-replay.sh
 ```
 
 `oracle/.venv` has to be made by the Python that the server is built with, which is
 Python 3.13 in both places, the version the oracle is pinned to; the server refuses an
-environment of another version. Without `VIRTUAL_ENV` the gate's server uses the
-linked Python's own packages, and its outcome is that machine's.
+environment of another version. A server started without `VIRTUAL_ENV`, outside the gate,
+uses the linked Python's own packages, and its outcome is that machine's.
 
 ### Distribution: a binary per Python minor version
 
