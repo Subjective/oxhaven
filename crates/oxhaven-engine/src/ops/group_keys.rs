@@ -35,8 +35,22 @@ fn failure(message: impl Into<String>) -> TableFailure {
     }
 }
 
-/// An empty bucket of the open-addressed table.
+/// The slot of an empty bucket.
 const EMPTY: u32 = u32::MAX;
+
+/// One entry of the open-addressed table: a slot and, to compare against, its key's bits
+/// for [`Layout::Word`] or its key's hash otherwise (from which growing the table
+/// places it again without reading the key).
+#[derive(Clone, Copy)]
+struct Bucket {
+    tag: u64,
+    slot: u32,
+}
+
+const VACANT: Bucket = Bucket {
+    tag: 0,
+    slot: EMPTY,
+};
 
 /// The fixed seeds of the hasher. Any constants do; these are digits of pi.
 const SEEDS: [u64; 4] = [
@@ -48,8 +62,9 @@ const SEEDS: [u64; 4] = [
 
 /// How the keys of each slot are kept.
 enum Layout {
-    /// One key column of 64-bit-or-narrower values: each slot's value, canonical bits.
-    Word { values: Vec<u64> },
+    /// One key column of 64-bit-or-narrower values, whose canonical bits are kept in the
+    /// buckets.
+    Word,
     /// One string column: slot `s` is `bytes[ends[s - 1]..ends[s]]`.
     Text { bytes: Vec<u8>, ends: Vec<usize> },
     /// Any key columns, each row in Arrow's row format, kept as for `Text`.
@@ -68,10 +83,10 @@ enum Layout {
 /// (io.deephaven.util.compare.DoubleComparisons#eq and its siblings)
 pub(crate) struct GroupKeys {
     layout: Layout,
-    /// The hash of each slot's key, so that growing the table hashes nothing again.
-    hashes: Vec<u64>,
-    /// Slot numbers, or `EMPTY`; its length is a power of two.
-    buckets: Vec<u32>,
+    /// The number of slots handed out.
+    slots: usize,
+    /// The open-addressed table; its length is a power of two.
+    buckets: Vec<Bucket>,
     /// For `Word` and `Text`, the slot of the null key, which is not in `buckets`.
     null_slot: Option<u32>,
     hasher: ahash::RandomState,
@@ -141,7 +156,7 @@ impl GroupKeys {
     /// A table for keys of columns of the Arrow types `data_types`, in that order.
     pub fn new(data_types: &[DataType]) -> Result<GroupKeys, TableFailure> {
         let layout = match data_types {
-            [one] if is_word(one) => Layout::Word { values: Vec::new() },
+            [one] if is_word(one) => Layout::Word,
             [DataType::Utf8] => Layout::Text {
                 bytes: Vec::new(),
                 ends: Vec::new(),
@@ -161,8 +176,8 @@ impl GroupKeys {
         };
         Ok(GroupKeys {
             layout,
-            hashes: Vec::new(),
-            buckets: vec![EMPTY; 16],
+            slots: 0,
+            buckets: vec![VACANT; 16],
             null_slot: None,
             hasher: ahash::RandomState::with_seeds(SEEDS[0], SEEDS[1], SEEDS[2], SEEDS[3]),
             #[cfg(test)]
@@ -181,7 +196,7 @@ impl GroupKeys {
 
     /// The number of slots handed out.
     pub fn len(&self) -> usize {
-        self.hashes.len()
+        self.slots
     }
 
     /// The slot of each row of `key_columns`, appended to `slots`, with a new slot for each
@@ -230,7 +245,7 @@ impl GroupKeys {
         slots.reserve(rows);
         let mut first_slot = self.len();
         match &self.layout {
-            Layout::Word { .. } => self.lookup_words(&key_columns[0], absent, slots, missing)?,
+            Layout::Word => self.lookup_words(&key_columns[0], absent, slots, missing)?,
             Layout::Text { .. } => {
                 let strings = key_columns[0].as_string_opt::<i32>().ok_or_else(|| {
                     failure("group keys: a string key column is not a string array")
@@ -354,17 +369,13 @@ impl GroupKeys {
             *missing = true;
             return usize::MAX;
         }
-        // The null key is not in `buckets`; its key storage holds a placeholder.
-        let slot = self.hashes.len() as u32;
-        match &mut self.layout {
-            Layout::Word { values } => values.push(0),
-            Layout::Text { bytes, ends } | Layout::Rows { bytes, ends, .. } => {
-                ends.push(bytes.len())
-            }
+        // The null key is not in `buckets`; byte storage holds an empty placeholder.
+        if let Layout::Text { bytes, ends } | Layout::Rows { bytes, ends, .. } = &mut self.layout {
+            ends.push(bytes.len());
         }
-        self.hashes.push(0);
-        self.null_slot = Some(slot);
-        slot as usize
+        let slot = self.next_slot();
+        self.null_slot = Some(slot as u32);
+        slot
     }
 
     #[inline]
@@ -373,23 +384,14 @@ impl GroupKeys {
             return self.null(absent, missing);
         };
         let hash = self.hash(key);
-        let Layout::Word { values } = &self.layout else {
-            unreachable!("a word key in a table of other keys")
-        };
-        let probe = probe(&self.buckets, hash, |slot| values[slot as usize] == key);
-        match probe {
+        // The bucket holds the key itself, so a lookup reads nothing else.
+        match probe(&self.buckets, hash, |bucket| bucket.tag == key) {
             Probe::Found(slot) => slot as usize,
             Probe::Vacant(_) if absent == Absent::Missing => {
                 *missing = true;
                 usize::MAX
             }
-            Probe::Vacant(bucket) => {
-                let Layout::Word { values } = &mut self.layout else {
-                    unreachable!()
-                };
-                values.push(key);
-                self.insert(bucket, hash)
-            }
+            Probe::Vacant(at) => self.insert(at, key),
         }
     }
 
@@ -399,76 +401,88 @@ impl GroupKeys {
             return self.null(absent, missing);
         };
         let hash = self.hash(key);
-        let (Layout::Text { bytes, ends } | Layout::Rows { bytes, ends, .. }) = &self.layout else {
+        let (Layout::Text { bytes, ends } | Layout::Rows { bytes, ends, .. }) = &mut self.layout
+        else {
             unreachable!("a byte key in a table of word keys")
         };
-        let hashes = &self.hashes;
-        let probe = probe(&self.buckets, hash, |slot| {
-            let slot = slot as usize;
+        // The bucket holds the key's hash; the bytes are compared when the hashes agree.
+        let found = probe(&self.buckets, hash, |bucket| {
+            let slot = bucket.slot as usize;
             let start = if slot == 0 { 0 } else { ends[slot - 1] };
-            hashes[slot] == hash && &bytes[start..ends[slot]] == key
+            bucket.tag == hash && &bytes[start..ends[slot]] == key
         });
-        match probe {
+        match found {
             Probe::Found(slot) => slot as usize,
             Probe::Vacant(_) if absent == Absent::Missing => {
                 *missing = true;
                 usize::MAX
             }
-            Probe::Vacant(bucket) => {
-                let (Layout::Text { bytes, ends } | Layout::Rows { bytes, ends, .. }) =
-                    &mut self.layout
-                else {
-                    unreachable!()
-                };
+            Probe::Vacant(at) => {
                 bytes.extend_from_slice(key);
                 ends.push(bytes.len());
-                self.insert(bucket, hash)
+                self.insert(at, hash)
             }
         }
     }
 
-    /// Makes the next slot, whose key storage the caller has just appended, at `bucket`.
-    fn insert(&mut self, bucket: usize, hash: u64) -> usize {
-        let slot = self.hashes.len();
+    fn next_slot(&mut self) -> usize {
+        let slot = self.slots;
         assert!(
             slot < EMPTY as usize,
             "group keys: more than 2^32 - 1 groups"
         );
-        self.hashes.push(hash);
-        self.buckets[bucket] = slot as u32;
+        self.slots += 1;
+        slot
+    }
+
+    /// Makes the next slot, whose key storage the caller has just appended, at bucket
+    /// `at` with `tag`.
+    fn insert(&mut self, at: usize, tag: u64) -> usize {
+        let slot = self.next_slot();
+        self.buckets[at] = Bucket {
+            tag,
+            slot: slot as u32,
+        };
         // At most half full, so that probes stay short.
-        if 2 * (self.hashes.len() - usize::from(self.null_slot.is_some())) > self.buckets.len() {
+        let stored = self.slots - usize::from(self.null_slot.is_some());
+        if 2 * stored > self.buckets.len() {
             self.grow();
         }
         slot
     }
 
     fn grow(&mut self) {
-        let mut buckets = vec![EMPTY; self.buckets.len() * 2];
+        let mut buckets = vec![VACANT; self.buckets.len() * 2];
         let mask = buckets.len() - 1;
-        for slot in self.buckets.iter().copied().filter(|&slot| slot != EMPTY) {
-            let mut at = self.hashes[slot as usize] as usize & mask;
-            while buckets[at] != EMPTY {
+        let words = matches!(self.layout, Layout::Word);
+        for bucket in self.buckets.iter().filter(|bucket| bucket.slot != EMPTY) {
+            let hash = if words {
+                self.hash(bucket.tag)
+            } else {
+                bucket.tag
+            };
+            let mut at = hash as usize & mask;
+            while buckets[at].slot != EMPTY {
                 at = (at + 1) & mask;
             }
-            buckets[at] = slot;
+            buckets[at] = *bucket;
         }
         self.buckets = buckets;
     }
 }
 
-/// The slot whose key `matches`, or the empty bucket where a key of `hash` goes.
+/// The slot of the bucket that `matches`, or the empty bucket where a key of `hash` goes.
 #[inline]
-fn probe(buckets: &[u32], hash: u64, matches: impl Fn(u32) -> bool) -> Probe {
+fn probe(buckets: &[Bucket], hash: u64, matches: impl Fn(&Bucket) -> bool) -> Probe {
     let mask = buckets.len() - 1;
     let mut at = hash as usize & mask;
     loop {
-        let slot = buckets[at];
-        if slot == EMPTY {
+        let bucket = &buckets[at];
+        if bucket.slot == EMPTY {
             return Probe::Vacant(at);
         }
-        if matches(slot) {
-            return Probe::Found(slot);
+        if matches(bucket) {
+            return Probe::Found(bucket.slot);
         }
         at = (at + 1) & mask;
     }

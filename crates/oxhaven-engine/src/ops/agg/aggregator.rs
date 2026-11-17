@@ -140,13 +140,23 @@ struct Grouped {
 /// io.deephaven.engine.table.impl.by.ChunkedOperatorAggregationHelper (`findSlotRuns`
 /// after a stable sort by slot): each group's rows stay in row order.
 fn group(positions: impl Iterator<Item = usize>, slots: &[usize]) -> Grouped {
-    let mut order: Vec<usize> = positions.collect();
-    order.sort_by_key(|&position| slots[position]);
+    // Sorting (slot, position) pairs packed in one integer keeps each slot's positions
+    // increasing without a stable sort. A chunk has at most `CHUNK_SIZE` positions.
+    let mut packed: Vec<u64> = positions
+        .map(|position| (slots[position] as u64) << 32 | position as u64)
+        .collect();
+    packed.sort_unstable();
+    let mut order = Vec::with_capacity(packed.len());
     let mut runs: Vec<(usize, Range<usize>)> = Vec::new();
-    for (index, &position) in order.iter().enumerate() {
+    for (index, &entry) in packed.iter().enumerate() {
+        let (slot, position) = (
+            (entry >> 32) as usize,
+            (entry & u64::from(u32::MAX)) as usize,
+        );
+        order.push(position);
         match runs.last_mut() {
-            Some((slot, range)) if *slot == slots[position] => range.end = index + 1,
-            _ => runs.push((slots[position], index..index + 1)),
+            Some((last, range)) if *last == slot => range.end = index + 1,
+            _ => runs.push((slot, index..index + 1)),
         }
     }
     Grouped { order, runs }
@@ -337,7 +347,7 @@ impl Aggregator {
         }
         self.recompute()?;
         let all: Vec<usize> = (0..self.slots).collect();
-        self.write(&all, |_| true)?;
+        self.write(&all, None)?;
         self.forget_keys_of_absent_groups()?;
         self.end_cycle();
         Ok(RowSet::from_keys(
@@ -817,20 +827,23 @@ impl Aggregator {
 
     /// Writes the results of `slots`, and of the slots each operator marked modified that
     /// `also` selects, to the result columns. Returns, per operator, the marked slots
-    /// written that are not among `slots`.
+    /// written that are not among `slots`. Without `also`, only `slots` are written.
     fn write(
         &mut self,
         slots: &[usize],
-        also: impl Fn(usize) -> bool,
+        also: Option<&dyn Fn(usize) -> bool>,
     ) -> Result<Vec<Vec<usize>>, TableFailure> {
         let mut modified_by_op = Vec::with_capacity(self.ops.len());
         for column in &self.ops {
-            let modified: Vec<usize> = column
-                .marks
-                .marked(MODIFIED)
-                .into_iter()
-                .filter(|&slot| also(slot) && slots.binary_search(&slot).is_err())
-                .collect();
+            let modified: Vec<usize> = match also {
+                Some(also) => column
+                    .marks
+                    .marked(MODIFIED)
+                    .into_iter()
+                    .filter(|&slot| also(slot) && slots.binary_search(&slot).is_err())
+                    .collect(),
+                None => Vec::new(),
+            };
             let written: Vec<usize> = slots.iter().chain(&modified).copied().collect();
             let row_keys: Vec<RowKey> = written.iter().map(|&slot| slot as RowKey).collect();
             column
@@ -866,7 +879,7 @@ impl Aggregator {
         }
         added.sort_unstable();
         let present: Vec<bool> = (0..self.slots).map(|slot| self.present(slot)).collect();
-        let modified_by_op = self.write(&added, |slot| present[slot])?;
+        let modified_by_op = self.write(&added, Some(&|slot| present[slot]))?;
         let mut modified = Vec::new();
         let mut modified_columns = Vec::new();
         for slots in modified_by_op {
