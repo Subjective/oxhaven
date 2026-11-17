@@ -1161,3 +1161,7 @@ Seven green checks. Task 9.3 agent told that main moved. Follow-ups from 9.4: sc
 ## 2026-11-17 14:37 UTC: task 9.3 reported, pull request 147 opened
 
 All gates passed locally. The comparison sort, not the boxes, was three quarters of the cost. Stopped the orphaned bench.py (pid 7138) left by the first benchmark run. Follow-up: the redirection records one previous mapping per write, which keeps the incremental sort linear per cycle.
+
+## 2026-11-17 14:46 UTC: pull request 147 merged, task 9.6 started
+
+Seven green checks. Task 9.6 takes the two bottlenecks 9.3 and 9.4 named: previous-mapping bookkeeping in the redirection (incremental sort linear per cycle) and building a row set of scattered kept rows in filters.

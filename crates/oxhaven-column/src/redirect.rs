@@ -20,6 +20,14 @@ pub trait RowRedirection: Send + Sync {
     ///
     /// Behavior: io.deephaven.engine.table.impl.util.RowRedirection#get and #getPrev
     fn redirect(&self, keys: &[RowKey], use_prev: bool) -> Vec<RowKey>;
+
+    /// The inner key for each row of `rows`, in row-key order; otherwise as
+    /// [`redirect`](Self::redirect). A redirection that can read a range of outer keys at
+    /// once overrides it.
+    fn redirect_rows(&self, rows: &RowSet, use_prev: bool) -> Vec<RowKey> {
+        let keys: Vec<RowKey> = rows.iter().collect();
+        self.redirect(&keys, use_prev)
+    }
 }
 
 /// The least number of mappings a redirection is taken to have when it decides whether its
@@ -53,6 +61,24 @@ enum Current {
 }
 
 impl Current {
+    /// The inner keys of `rows`, a range of the array at a time while the mappings are in
+    /// one.
+    fn get_rows(&self, rows: &RowSet) -> Vec<RowKey> {
+        let Current::Dense(dense) = self else {
+            return rows.iter().map(|outer| self.get(outer)).collect();
+        };
+        let mut inner = Vec::with_capacity(rows.size() as usize);
+        for range in rows.ranges() {
+            // Outer keys are never negative; those beyond the array have no mapping.
+            let (start, end) = (range.first() as usize, range.last() as usize + 1);
+            let stored = start.min(dense.len())..end.min(dense.len());
+            let missing = (end - start) - stored.len();
+            inner.extend_from_slice(&dense[stored]);
+            inner.resize(inner.len() + missing, NULL_ROW_KEY);
+        }
+        inner
+    }
+
     fn get(&self, outer: RowKey) -> RowKey {
         match self {
             Current::Dense(inner) => {
@@ -305,6 +331,25 @@ impl RowRedirection for WritableRowRedirection {
             keys.iter().map(|&key| map.current.get(key)).collect()
         }
     }
+
+    fn redirect_rows(&self, rows: &RowSet, use_prev: bool) -> Vec<RowKey> {
+        let map = self.map.read().unwrap_or_else(PoisonError::into_inner);
+        let mut inner = map.current.get_rows(rows);
+        let overlay = use_prev
+            && !map.prev.is_empty()
+            && updating_step(map.clock.as_ref()) == Some(map.prev_step);
+        if let (true, Some(first), Some(last)) =
+            (overlay, rows.first_row_key(), rows.last_row_key())
+        {
+            // The mappings this cycle changed, where they are among `rows`.
+            for (&outer, &recorded) in map.prev.range(first..=last) {
+                if let Some(position) = rows.find(outer) {
+                    inner[position as usize] = recorded;
+                }
+            }
+        }
+        inner
+    }
 }
 
 /// A column whose value at an outer row key is the inner column's value at the redirected
@@ -330,13 +375,13 @@ impl ColumnSource for RedirectedSource {
     }
 
     fn chunk(&self, rows: &RowSet) -> Result<ArrayRef, TableFailure> {
-        let outer: Vec<RowKey> = rows.iter().collect();
-        self.chunk_by_keys(&outer, false)
+        let inner = self.redirection.redirect_rows(rows, false);
+        self.inner.chunk_by_keys(&inner, false)
     }
 
     fn prev_chunk(&self, rows: &RowSet) -> Result<ArrayRef, TableFailure> {
-        let outer: Vec<RowKey> = rows.iter().collect();
-        self.chunk_by_keys(&outer, true)
+        let inner = self.redirection.redirect_rows(rows, true);
+        self.inner.chunk_by_keys(&inner, true)
     }
 
     fn chunk_by_keys(&self, keys: &[RowKey], use_prev: bool) -> Result<ArrayRef, TableFailure> {
@@ -351,6 +396,7 @@ mod tests {
     use crate::tracked::testing::ManualClock;
     use crate::{FlatSource, WritableSource};
     use arrow::array::{Array, Int32Array};
+    use oxhaven_contracts::rowset::RowRange;
     use std::collections::BTreeMap;
 
     fn ints(chunk: Result<ArrayRef, TableFailure>) -> Vec<Option<i32>> {
@@ -648,5 +694,70 @@ mod tests {
         }
         // Both forms were in use.
         assert!(forms[0] > 20 && forms[1] > 20, "{forms:?}");
+    }
+
+    /// Reading the rows of a row set at once gives what reading their keys one by one
+    /// gives, now and before, in both forms, with ranges inside, across and beyond the
+    /// array, and through a source that reads its inner column by the redirected keys.
+    #[test]
+    fn reading_a_row_set_agrees_with_reading_its_keys() {
+        let clock = ManualClock::idle_at(1);
+        let redirection = Arc::new(WritableRowRedirection::from_rows(
+            &RowSet::flat(3000),
+            (0..3000).map(|k| (k * 7) % 1000).collect(),
+        ));
+        redirection.start_tracking_prev(clock.clone());
+        let inner = FlatSource::new(ColumnType::Int, int_array(0..1000)).unwrap();
+        let source = RedirectedSource::new(redirection.clone(), Arc::new(inner));
+        let mut state: u64 = 0x2545_f491_4f6c_dd1d;
+        let mut random = move |below: u64| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state % below
+        };
+        let mut forms = [0, 0];
+        for cycle in 0..60 {
+            clock.start_cycle();
+            let spread = if cycle % 20 < 10 { 4000 } else { 1 << 30 };
+            for _ in 0..50 {
+                let outer = random(spread) as RowKey;
+                if random(4) == 0 {
+                    redirection.remove(outer);
+                } else {
+                    redirection.put(outer, random(1000) as RowKey);
+                }
+            }
+            if cycle % 20 == 19 {
+                let far: Vec<RowKey> = (0..60).map(|_| random(1 << 30) as RowKey).collect();
+                for outer in far.into_iter().filter(|outer| *outer >= 4000) {
+                    redirection.remove(outer);
+                }
+            }
+            for _ in 0..5 {
+                let ranges = (0..1 + random(6)).map(|_| {
+                    let first = random(5000) as RowKey;
+                    RowRange::new(first, first + random(300) as RowKey)
+                });
+                let rows = RowSet::from_ranges(ranges);
+                let keys: Vec<RowKey> = rows.iter().collect();
+                for use_prev in [false, true] {
+                    let one_by_one = redirection.redirect(&keys, use_prev);
+                    assert_eq!(redirection.redirect_rows(&rows, use_prev), one_by_one);
+                    let read = |use_prev| match use_prev {
+                        false => ints(source.chunk(&rows)),
+                        true => ints(source.prev_chunk(&rows)),
+                    };
+                    let expected: Vec<Option<i32>> = one_by_one
+                        .iter()
+                        .map(|&inner| (inner != NULL_ROW_KEY).then_some(inner as i32))
+                        .collect();
+                    assert_eq!(read(use_prev), expected, "{cycle}");
+                }
+            }
+            clock.finish_cycle();
+            forms[usize::from(redirection.is_flat_array())] += 1;
+        }
+        assert!(forms[0] > 5 && forms[1] > 5, "{forms:?}");
     }
 }
