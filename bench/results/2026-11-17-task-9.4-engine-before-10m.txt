@@ -1,0 +1,21 @@
+10000000 rows, 3 repetitions, load average 3.02 2.44 2.76
+where_range                            420.3 ms  (min 416.1, max 458.0)    42.0 ns/row
+where_range (two filters)              679.6 ms  (min 666.8, max 713.0)    68.0 ns/row
+where_string                            64.4 ms  (min 63.7, max 64.7)     6.4 ns/row
+where_conj                             258.1 ms  (min 256.8, max 262.5)    25.8 ns/row
+update_arith                           960.2 ms  (min 949.9, max 1036.2)    96.0 ns/row
+update_cond                            442.2 ms  (min 434.3, max 448.6)    44.2 ns/row
+update_string                         1986.6 ms  (min 1747.3, max 2029.8)   198.7 ns/row
+build                                 4943.0 ms  (min 4936.7, max 5374.7)   494.3 ns/row
+build (numbers only)                  2880.6 ms  (min 2778.0, max 2911.8)   288.1 ns/row
+-- parts, one thread, load average 3.01 2.53 2.77
+scan A (count in range)                  9.0 ms  (min 8.7, max 9.4)     0.9 ns/row
+read A as a chunk                        0.0 ms  (min 0.0, max 0.0)     0.0 ns/row
+evaluate A >= 20000 && A < 60000       321.1 ms  (min 318.9, max 337.0)    32.1 ns/row
+evaluate A * 2 + 1                     251.0 ms  (min 249.0, max 280.2)    25.1 ns/row
+evaluate B * 1.5 - A                   423.9 ms  (min 388.3, max 432.9)    42.4 ns/row
+evaluate Id % 7                        218.9 ms  (min 213.4, max 222.3)    21.9 ns/row
+evaluate A > 50000 ? B : -B            460.7 ms  (min 455.6, max 480.3)    46.1 ns/row
+row set of the kept 40%                107.9 ms  (min 107.3, max 120.4)    10.8 ns/row
+read A at the kept 40%                  48.6 ms  (min 47.8, max 49.1)     4.9 ns/row
+load average 3.01 2.53 2.77
