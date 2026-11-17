@@ -7,6 +7,7 @@
 //! - [`sentinel`]: Java's sentinel null values and conversion to and from validity bits.
 //! - [`tables`]: the tables that the cells of a column of tables name.
 
+pub mod bits;
 mod flat;
 pub mod java_values;
 pub mod parallel;
