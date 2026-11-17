@@ -416,6 +416,7 @@ impl Union {
                      parts: &mut Vec<Part>,
                      added: &mut RowSetBuilderRandom|
          -> Result<(), TableFailure> {
+            check_listenable(&part.table)?;
             let first = firsts[firsts.len() - 1];
             let rows = part.table.row_set();
             firsts.push(next_slot(first, key_space_for(rows.last_row_key())?)?);
@@ -579,6 +580,21 @@ pub(super) fn empty(definition: TableDefinition) -> Result<Arc<QueryTable>, Tabl
     )))
 }
 
+/// A constituent that has failed cannot be listened to: the merge fails, when it is made
+/// or in the cycle that shows the constituent.
+///
+/// Behavior: io.deephaven.engine.table.impl.BaseTable#addUpdateListener, as
+/// UnionSourceManager calls it for each constituent
+fn check_listenable(constituent: &Arc<dyn Table>) -> Result<(), TableFailure> {
+    if constituent.is_failed() {
+        return Err(failure(
+            "io.deephaven.engine.exceptions.TableAlreadyFailedException: Can not listen to \
+             failed table QueryTable",
+        ));
+    }
+    Ok(())
+}
+
 /// Behavior: io.deephaven.engine.table.impl.partitioned.PartitionedTableImpl#merge
 pub(super) fn merge(partitioned: &PartitionedTable) -> Result<Arc<dyn Table>, PartitionedError> {
     let underlying = partitioned.table().clone();
@@ -636,6 +652,7 @@ pub(super) fn merge(partitioned: &PartitionedTable) -> Result<Arc<dyn Table>, Pa
         let mut firsts = vec![0];
         let mut rows = RowSetBuilderRandom::new();
         for part in &mut parts {
+            check_listenable(&part.table)?;
             let first = firsts[firsts.len() - 1];
             let own = part.table.row_set();
             firsts.push(next_slot(first, key_space_for(own.last_row_key())?)?);

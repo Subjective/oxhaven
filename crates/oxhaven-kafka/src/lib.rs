@@ -5,6 +5,8 @@
 //! | [`consume`] | The table of a topic: `KafkaTools#consumeToTable` |
 //! | [`Plan`] | The columns of that table and how a record becomes a row |
 //! | [`consume_from`] | The same table over any [`RecordSource`]; tests script one |
+//! | [`consume_to_partitioned_table`] | A constituent per partition: `KafkaTools#consumeToPartitionedTable` |
+//! | [`consume_partitioned_from`] | The same over any [`RecordSource`] |
 //! | [`client::ClientSource`] | The record source that talks to brokers, over librdkafka |
 //! | [`check_avro_schema`] | Reads an Avro schema as `KafkaTools#getAvroSchema` does |
 //! | [`topics`] | The topics of a broker: `KafkaTools#listTopics` |
@@ -22,6 +24,7 @@ mod avro_text;
 pub mod client;
 mod config;
 pub mod json;
+mod partitioned;
 mod plan;
 mod produce;
 pub mod producer;
@@ -42,6 +45,9 @@ use oxhaven_contracts::table::Table;
 pub use avro_produce::AvroProduceSpec;
 pub use avro_spec::{AvroMapping, AvroSchema};
 pub use client::topics;
+pub use partitioned::{
+    consume_partitioned_from, consume_to_partitioned_table, CONSTITUENT_COLUMN, PARTITION_COLUMN,
+};
 pub use plan::Plan;
 pub use produce::{
     produce, produce_to, JsonProduceSpec, OutRecord, ProduceOptions, ProduceSpec, Publication,

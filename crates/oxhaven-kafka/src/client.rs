@@ -40,7 +40,11 @@ fn broker_error(what: &str, error: impl std::fmt::Display) -> KafkaError {
 
 /// The partitions of `topic`, in order. A topic the broker does not have has none, also
 /// when this very question makes the broker create it: the table then never has rows, as
-/// in Java (seen in the probes of `docs/KAFKA.md`).
+/// in Java (seen in the probes of `docs/KAFKA.md`), and a partitioned table cannot be made.
+///
+/// Java asks once, and the answer for a topic the broker creates on that request has no
+/// partitions. librdkafka asks again until the new topic has them, so the topics that
+/// exist are listed first, with a request that creates none.
 ///
 /// Behavior: org.apache.kafka.clients.consumer.KafkaConsumer#partitionsFor
 fn partitions_of(
@@ -49,14 +53,23 @@ fn partitions_of(
     topic: &str,
     timeout: Duration,
 ) -> Result<Vec<i32>, KafkaError> {
+    let unanswered = |error| {
+        broker_error(
+            &format!("no broker of bootstrap.servers={servers:?} answers"),
+            error,
+        )
+    };
+    let existing = consumer.fetch_metadata(None, timeout).map_err(unanswered)?;
+    let existed = existing
+        .topics()
+        .iter()
+        .any(|found| found.name() == topic && found.error().is_none());
     let metadata = consumer
         .fetch_metadata(Some(topic), timeout)
-        .map_err(|error| {
-            broker_error(
-                &format!("no broker of bootstrap.servers={servers:?} answers"),
-                error,
-            )
-        })?;
+        .map_err(unanswered)?;
+    if !existed {
+        return Ok(Vec::new());
+    }
     let found = metadata.topics().iter().find(|found| found.name() == topic);
     let mut partitions: Vec<i32> = found
         .map(|found| found.partitions().iter().map(|p| p.id()).collect())

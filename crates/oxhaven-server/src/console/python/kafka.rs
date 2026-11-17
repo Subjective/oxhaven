@@ -18,6 +18,7 @@ use pyo3::exceptions::{PyNotImplementedError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use serde_json::Value;
 
+use super::partitioned::PartitionedHandle;
 use super::TableHandle;
 use crate::schema::column_type_for_java_names;
 
@@ -128,13 +129,12 @@ pub(super) fn kafka_avro_schema(text: &str) -> PyResult<()> {
     oxhaven_kafka::check_avro_schema(text).map_err(exception)
 }
 
-/// Consumes `topic` into a table. `all_offsets` is where to start in every partition, as
-/// Java's `SEEK_TO_BEGINNING`, `DONT_SEEK` or `SEEK_TO_END`; without it `offsets` says so
-/// per partition. `table_type` is `blink`, `append` or `ring`, the last with `capacity`.
-#[pyfunction]
+/// The arguments of `consume` and `consume_to_partitioned_table`. `all_offsets` is where
+/// to start in every partition, as Java's `SEEK_TO_BEGINNING`, `DONT_SEEK` or
+/// `SEEK_TO_END`; without it `offsets` says so per partition. `table_type` is `blink`,
+/// `append` or `ring`, the last with `capacity`.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn kafka_consume(
-    py: Python<'_>,
+fn consume_options(
     config: Vec<(String, String)>,
     topic: &str,
     partitions: Option<Vec<i32>>,
@@ -144,8 +144,8 @@ pub(super) fn kafka_consume(
     value_spec: &str,
     table_type: &str,
     capacity: i32,
-) -> PyResult<TableHandle> {
-    let options = ConsumeOptions {
+) -> PyResult<ConsumeOptions> {
+    Ok(ConsumeOptions {
         config,
         topic: topic.to_owned(),
         partitions,
@@ -161,12 +161,76 @@ pub(super) fn kafka_consume(
             "ring" => TableType::Ring(capacity),
             other => return Err(PyValueError::new_err(format!("no table type {other}"))),
         },
-    };
+    })
+}
+
+/// Consumes `topic` into a table, with the arguments of [`consume_options`].
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+pub(super) fn kafka_consume(
+    py: Python<'_>,
+    config: Vec<(String, String)>,
+    topic: &str,
+    partitions: Option<Vec<i32>>,
+    all_offsets: Option<i64>,
+    offsets: Vec<(i32, i64)>,
+    key_spec: &str,
+    value_spec: &str,
+    table_type: &str,
+    capacity: i32,
+) -> PyResult<TableHandle> {
+    let options = consume_options(
+        config,
+        topic,
+        partitions,
+        all_offsets,
+        offsets,
+        key_spec,
+        value_spec,
+        table_type,
+        capacity,
+    )?;
     let graph: Arc<dyn UpdateGraph> = super::runtime()?.context.graph.clone();
     let table = py
         .detach(|| oxhaven_kafka::consume(graph, &options))
         .map_err(exception)?;
     Ok(TableHandle { table })
+}
+
+/// Consumes `topic` into a partitioned table with a constituent per partition, with the
+/// arguments of [`consume_options`].
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+pub(super) fn kafka_consume_partitioned(
+    py: Python<'_>,
+    config: Vec<(String, String)>,
+    topic: &str,
+    partitions: Option<Vec<i32>>,
+    all_offsets: Option<i64>,
+    offsets: Vec<(i32, i64)>,
+    key_spec: &str,
+    value_spec: &str,
+    table_type: &str,
+    capacity: i32,
+) -> PyResult<PartitionedHandle> {
+    let options = consume_options(
+        config,
+        topic,
+        partitions,
+        all_offsets,
+        offsets,
+        key_spec,
+        value_spec,
+        table_type,
+        capacity,
+    )?;
+    let graph: Arc<dyn UpdateGraph> = super::runtime()?.context.graph.clone();
+    let partitioned = py
+        .detach(|| oxhaven_kafka::consume_to_partitioned_table(graph, &options))
+        .map_err(exception)?;
+    Ok(PartitionedHandle {
+        partitioned: Arc::new(partitioned),
+    })
 }
 
 /// A key or value spec of `deephaven.stream.kafka.producer.KeyValueSpec`:
@@ -440,9 +504,28 @@ mod tests {
             let code = format!("kc.consume({{**CFG, 'max.poll.records': {value}}}, 't')");
             assert_eq!(failure(&code, CONSUME), refusal);
         }
+        // The partitioned form makes the same checks, then reaches for the broker.
+        let unreachable = failure(
+            &format!("kc.consume_to_partitioned_table(CFG, 't', {IGNORED_KEY})"),
+            CONSUME,
+        );
+        assert!(unreachable.starts_with("no broker of"), "{unreachable}");
         assert_eq!(
-            failure("kc.consume_to_partitioned_table(CFG, 't')", CONSUME),
-            "not ported: io.deephaven.kafka.KafkaTools#consumeToPartitionedTable"
+            failure(
+                "kc.consume_to_partitioned_table(CFG, 't', key_spec=kc.KeyValueSpec.IGNORE, \
+                 value_spec=kc.KeyValueSpec.IGNORE)",
+                CONSUME
+            ),
+            "at least one argument for 'key' or 'value' must be different from \
+             KeyValueSpec.IGNORE"
+        );
+        assert_eq!(
+            failure(
+                &format!("kc.consume_to_partitioned_table({{}}, 't', {IGNORED_KEY})"),
+                CONSUME
+            ),
+            "org.apache.kafka.common.config.ConfigException: Missing required configuration \
+             \"bootstrap.servers\" which has no default value."
         );
         // A schema given as text is read when the spec is made; a subject is not looked up
         // until `consume`.
