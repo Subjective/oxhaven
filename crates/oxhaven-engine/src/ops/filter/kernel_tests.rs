@@ -134,12 +134,45 @@ fn filters(column_type: &ColumnType) -> Vec<Resolved> {
             .map(Key::Float)
             .into_iter()
             .chain([Key::Null])
+            // The other zero, the infinity below everything, the values reserved for null
+            // in `double` and in `float`, the largest value, and values between cells.
+            .chain(
+                [
+                    -0.0,
+                    f64::NEG_INFINITY,
+                    -f64::MAX,
+                    f64::from(-f32::MAX),
+                    f64::MAX,
+                    0.5,
+                    -2.0,
+                    1.25,
+                    f64::MIN_POSITIVE,
+                ]
+                .map(Key::Float),
+            )
             .collect()
     } else {
         [-3, 0, 2, 127, i64::MAX]
             .map(Key::Int)
             .into_iter()
             .chain([Key::Null])
+            // The value reserved for null and the largest value of every type, and the
+            // ends of the small values.
+            .chain(
+                [
+                    i64::MIN,
+                    i64::from(i32::MIN),
+                    i64::from(i32::MAX),
+                    -32768,
+                    32767,
+                    65535,
+                    65534,
+                    -128,
+                    -4,
+                    4,
+                ]
+                .map(Key::Int),
+            )
             .collect()
     };
     let mut filters = Vec::new();
@@ -175,7 +208,17 @@ fn filters(column_type: &ColumnType) -> Vec<Resolved> {
             });
         }
     }
-    for chosen in [&keys[..1], &keys[1..3], &keys[3..], &keys[..]] {
+    // Up to eight values are a typed pass each; more are judged cell by cell.
+    for chosen in [
+        &keys[..1],
+        &keys[1..3],
+        &keys[3..6],
+        &keys[..6],
+        &keys[5..6],
+        &keys[5..12],
+        &keys[6..],
+        &keys[..],
+    ] {
         for (inverted, nan_match) in [(false, false), (true, false), (false, true), (true, true)] {
             filters.push(Resolved::Match {
                 column: 0,
@@ -406,6 +449,248 @@ fn the_row_set_of_a_piece_is_the_kept_keys_of_its_positions() {
             let kept = kept_of_piece(&selection, offset, &BooleanBuffer::from(mask));
             kept.check_layout();
             assert!(kept == expected, "seed {seed}, piece {offset}+{length}");
+        }
+    }
+}
+
+/// Whole pieces of 65536 rows, as a filter cuts them: rows that are one range (the mask is
+/// the bitmap of the kept keys), rows close together in runs shorter and longer than a word
+/// (each run's bits are put at its keys) and rows far apart (joined range by range); from a
+/// first key on a block and inside one; masks of every density, read from the start of a
+/// buffer and from a bit inside it. Against the kept keys picked one at a time.
+#[test]
+fn whole_pieces_keep_the_keys_of_their_set_bits() {
+    use super::filters::kept_of_piece;
+    use arrow::buffer::BooleanBuffer;
+    let mut compared = 0_u64;
+    for seed in test_seeds(0..30) {
+        let mut stream = Stream(seed ^ 0x51ED);
+        // The longest run of rows and the longest gap between runs, in keys.
+        let (run, gap) =
+            [(1, 0), (1, 12), (3, 2), (200, 90), (5000, 1), (2, 400)][seed as usize % 6];
+        let start = [0, 65_536, 77, 65_535, 1 << 33][seed as usize % 5];
+        let mut keys: Vec<i64> = Vec::new();
+        let mut key = start;
+        while keys.len() < 2 * PIECE + 1000 {
+            for _ in 0..1 + stream.next() % run {
+                keys.push(key);
+                key += 1;
+            }
+            if gap > 0 {
+                key += 1 + (stream.next() % gap) as i64;
+            }
+        }
+        let selection = RowSet::from_keys(keys.iter().copied());
+        assert_eq!(selection.as_single_range().is_some(), gap == 0);
+        let density = stream.next() % 6;
+        // Three bits more than the rows, so that a piece's mask can start at bit 3.
+        let bits: Vec<bool> = (0..keys.len() + 3)
+            .map(|_| match density {
+                0 => true,
+                1 => false,
+                2 => stream.next().is_multiple_of(2),
+                3 => stream.next().is_multiple_of(40),
+                4 => !stream.next().is_multiple_of(40),
+                _ => stream.next() % 1000 < 995,
+            })
+            .collect();
+        let buffer = BooleanBuffer::from(bits.clone());
+        for shift in [0, 3] {
+            for (offset, length) in [
+                (0, PIECE),
+                (PIECE, PIECE),
+                (2 * PIECE, keys.len() - 2 * PIECE),
+                (100, 64),
+                (PIECE - 1, 130),
+            ] {
+                let mask = buffer.slice(offset + shift, length);
+                let expected = RowSet::from_keys(
+                    (0..length)
+                        .filter(|&row| bits[offset + shift + row])
+                        .map(|row| keys[offset + row]),
+                );
+                let kept = kept_of_piece(&selection, offset, &mask);
+                kept.check_layout();
+                assert!(
+                    kept == expected,
+                    "seed {seed}, piece {offset}+{length}, mask from bit {shift}"
+                );
+                compared += 1;
+            }
+        }
+    }
+    assert!(compared >= oxhaven_testkit::at_least_for(300, 0..30));
+}
+
+/// Scattered rows of a column that is an array in memory are judged with the rows between
+/// them when they lie close together. Against the same cells in a source that is not known
+/// to be such an array, whose selected rows are read and judged alone: every primitive
+/// type with nulls, reserved values, NaN and bounds; every kind of filter; rows that are
+/// close together and far apart, from a block's start and from inside one, ending inside a
+/// piece; on 1, 2 and 4 threads; and with previous values.
+#[test]
+fn close_scattered_rows_of_a_stored_column_keep_what_reading_them_keeps() {
+    use crate::table::{QueryTable, TableSpec};
+    use oxhaven_column::{FlatSource, WritableSource};
+    use oxhaven_contracts::table::ColumnSource;
+    let rows = 2 * PIECE + 4321;
+    let mut compared = 0_u64;
+    for seed in test_seeds(0..10) {
+        for (column_type, chunk) in columns(rows, seed) {
+            let definition = definition(&[("X", column_type.clone())]);
+            let source = |stored: bool| -> Arc<dyn ColumnSource> {
+                if stored {
+                    Arc::new(FlatSource::new(column_type.clone(), chunk.clone()).expect("a source"))
+                } else {
+                    let source = WritableSource::new(column_type.clone());
+                    source
+                        .fill(&RowSet::flat(rows as u64), &chunk)
+                        .expect("filled");
+                    Arc::new(source)
+                }
+            };
+            let table = |stored: bool| -> Arc<dyn Table> {
+                let columns = vec![source(stored)];
+                assert_eq!(columns[0].stored_values().is_some(), stored);
+                QueryTable::new_static(TableSpec::new(
+                    definition.clone(),
+                    RowSet::flat(rows as u64),
+                    columns,
+                ))
+            };
+            let (stored, plain) = (table(true), table(false));
+            let all = filters(&column_type);
+            // A few filters of each kind for each seed: all of them over the seeds.
+            let chosen = all.iter().skip(seed as usize % 7).step_by(7);
+            let selections = [
+                RowSet::from_keys((0..rows as i64).filter(|key| key % 3 != 1)),
+                RowSet::from_keys((70_001..rows as i64 - 5).filter(|key| key % 11 == 4)),
+                RowSet::from_keys((5..rows as i64).filter(|key| key % 40 == 0)),
+                RowSet::from_keys([7, 9]),
+                RowSet::from_keys([0, rows as i64 - 1]),
+            ];
+            for filter in chosen {
+                for selection in &selections {
+                    let expected = filter
+                        .filter(&*plain, selection, false)
+                        .expect("the selected rows, read");
+                    for (threads, use_prev) in [(1, false), (2, false), (4, false), (1, true)] {
+                        let kept =
+                            with_threads(threads, || filter.filter(&*stored, selection, use_prev))
+                                .expect("the rows between, judged");
+                        assert!(
+                            kept == expected,
+                            "{column_type:?}, seed {seed}, {threads} threads, {} rows selected",
+                            selection.size()
+                        );
+                        kept.check_layout();
+                        compared += 1;
+                    }
+                }
+            }
+        }
+    }
+    assert!(compared >= oxhaven_testkit::at_least_for(10_000, 0..10));
+}
+
+/// Only an array in memory is known as stored: a flat source is, a writable one and a
+/// view column are not.
+#[test]
+fn only_an_array_in_memory_is_known_as_stored() {
+    use oxhaven_column::{FlatSource, WritableSource};
+    use oxhaven_contracts::table::ColumnSource;
+    let values: ArrayRef = Arc::new(arrow::array::Int32Array::from(vec![1, 2, 3]));
+    let flat = FlatSource::new(ColumnType::Int, values.clone()).expect("a source");
+    assert_eq!(flat.stored_values().expect("stored").len(), 3);
+    let writable = WritableSource::new(ColumnType::Int);
+    writable.fill(&RowSet::flat(3), &values).expect("filled");
+    assert!(writable.stored_values().is_none());
+    // A view column computes its rows when they are read.
+    let table = table(10);
+    let viewed =
+        crate::ops::select::update_view(&table, &["V = A + 1"], &Compiler).expect("a view");
+    let view_column = viewed.column(viewed.definition().index_of("V").expect("V"));
+    assert!(view_column.stored_values().is_none());
+    assert!(table.column(0).stored_values().is_some());
+    // So a row an earlier filter dropped is not computed: here it would fail.
+    let divided =
+        crate::ops::select::update_view(&table, &["Q = 100 % K"], &Compiler).expect("a view");
+    let all = divided.row_set();
+    let resolved =
+        |text: &str| resolve(&spec(text), divided.definition(), &Compiler).expect("resolved");
+    assert!(resolved("Q > 3").filter(&*divided, &all, false).is_err());
+    let nonzero = resolved("K != 0")
+        .filter(&*divided, &all, false)
+        .expect("filtered");
+    let kept = resolved("Q > 3")
+        .filter(&*divided, &nonzero, false)
+        .expect("no remainder by zero");
+    assert_eq!(kept, RowSet::from_keys([6, 8]));
+}
+
+/// A source that wraps a flat source, redirecting its rows or computing from them, does
+/// not hand out the flat source's array, and a filter through it keeps the rows whose own
+/// values pass: close scattered rows, on 1 and 4 threads, current and previous values.
+#[test]
+fn a_redirected_or_viewed_flat_column_is_not_stored() {
+    use crate::table::{QueryTable, TableSpec};
+    use oxhaven_column::{FlatSource, RedirectedSource, WritableRowRedirection};
+    use oxhaven_contracts::table::ColumnSource;
+    let rows = 2 * PIECE + 777;
+    let cell = |k: i64| (k % 13 != 0).then_some(((k * 7919) % 1003) as i32);
+    let values: ArrayRef = Arc::new(Int32Array::from_iter((0..rows as i64).map(cell)));
+    let flat: Arc<dyn ColumnSource> =
+        Arc::new(FlatSource::new(ColumnType::Int, values).expect("a source"));
+    assert!(flat.stored_values().is_some());
+    let one_column = |name: &str, column: Arc<dyn ColumnSource>| -> Arc<dyn Table> {
+        QueryTable::new_static(TableSpec::new(
+            definition(&[(name, ColumnType::Int)]),
+            RowSet::flat(rows as u64),
+            vec![column],
+        ))
+    };
+    // Row key `k` shows the flat source's row `rows - 1 - k`.
+    let last = rows as i64 - 1;
+    let redirection = WritableRowRedirection::from_rows(
+        &RowSet::flat(rows as u64),
+        (0..rows as i64).map(|k| last - k).collect(),
+    );
+    let redirected: Arc<dyn ColumnSource> =
+        Arc::new(RedirectedSource::new(Arc::new(redirection), flat.clone()));
+    assert!(redirected.stored_values().is_none());
+    let reversed = one_column("X", redirected);
+    let viewed =
+        crate::ops::select::update_view(&one_column("X", flat), &["V = 1002 - X"], &Compiler)
+            .expect("a view");
+    let view_column = viewed.column(viewed.definition().index_of("V").expect("V"));
+    assert!(view_column.stored_values().is_none());
+
+    let selection = RowSet::from_keys((0..rows as i64).filter(|k| k % 3 != 1));
+    // A null is less than every value, as in Java's range filters.
+    type Keeps<'a> = &'a dyn Fn(i64) -> bool;
+    let cases: [(&Arc<dyn Table>, &str, Keeps); 5] = [
+        (&reversed, "X > 500", &|k| {
+            cell(last - k).is_some_and(|v| v > 500)
+        }),
+        (&reversed, "X < 100", &|k| {
+            cell(last - k).is_none_or(|v| v < 100)
+        }),
+        (&reversed, "X in 3, 7, 900", &|k| {
+            cell(last - k).is_some_and(|v| [3, 7, 900].contains(&v))
+        }),
+        (&viewed, "V < 400", &|k| {
+            cell(k).is_none_or(|v| 1002 - v < 400)
+        }),
+        (&viewed, "V = 2", &|k| cell(k) == Some(1000)),
+    ];
+    for (table, text, keeps) in cases {
+        let expected = RowSet::from_keys(selection.iter().filter(|&k| keeps(k)));
+        assert!(!expected.is_empty(), "{text} keeps some rows");
+        let filter = resolve(&spec(text), table.definition(), &Compiler).expect("resolved");
+        for (threads, use_prev) in [(1, false), (4, false), (1, true)] {
+            let kept = with_threads(threads, || filter.filter(&**table, &selection, use_prev))
+                .expect("filtered");
+            assert!(kept == expected, "{text} on {threads} threads");
         }
     }
 }
