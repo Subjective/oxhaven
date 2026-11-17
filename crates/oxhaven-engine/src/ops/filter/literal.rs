@@ -199,28 +199,40 @@ pub(super) fn parse_java_integer(text: &str, min: i64, max: i64) -> Result<i64, 
     Ok(value as i64)
 }
 
-/// Checks `text` against the grammar of `java.lang.Double#valueOf(String)` and returns the
-/// part Rust's float parser reads to the same value, or `Ok(None)` for `NaN`.
+/// What `java.lang.Double#valueOf(String)` reads in a text.
+enum JavaFloat {
+    NaN,
+    /// Decimal text that Rust's float parsers read to the value Java reads.
+    Decimal(String),
+    /// The value of a hexadecimal text, already rounded to the type.
+    Exact(f64),
+}
+
+/// Checks `text` against the grammar of `java.lang.Double#valueOf(String)`; a hexadecimal
+/// number is rounded to `precision` significant bits, with the smallest normal exponent
+/// `min_exponent` (53 and -1022 for a `double`, 24 and -126 for a `float`).
 ///
-/// Behavior: jdk.internal.math.FloatingDecimal#readJavaFormatString
-fn java_float_text(text: &str) -> Result<Option<String>, String> {
-    let bad = || format!("For input string: \"{text}\"");
+/// Behavior: jdk.internal.math.FloatingDecimal#readJavaFormatString, which reports the text
+/// trimmed of the characters up to a space
+fn java_float_text(text: &str, precision: u32, min_exponent: i64) -> Result<JavaFloat, String> {
     let trimmed = java_trim(text);
+    let bad = || format!("For input string: \"{trimmed}\"");
+    if trimmed.is_empty() {
+        return Err("empty String".to_string());
+    }
     let (sign, body) = match trimmed.strip_prefix(['+', '-']) {
         Some(body) => (&trimmed[..1], body),
         None => ("", trimmed),
     };
     if body == "NaN" {
-        return Ok(None);
+        return Ok(JavaFloat::NaN);
     }
     if body == "Infinity" {
-        return Ok(Some(format!("{sign}inf")));
+        return Ok(JavaFloat::Decimal(format!("{sign}inf")));
     }
-    if body.starts_with("0x") || body.starts_with("0X") {
-        unported!(
-            "jdk.internal.math.FloatingDecimal#parseHexString",
-            "the hexadecimal floating point literal {text}"
-        );
+    if let Some(hex) = body.strip_prefix("0x").or_else(|| body.strip_prefix("0X")) {
+        let value = java_hex_float(hex, precision, min_exponent).ok_or_else(bad)?;
+        return Ok(JavaFloat::Exact(if sign == "-" { -value } else { value }));
     }
     let bytes = body.as_bytes();
     let digits = |from: usize| {
@@ -257,26 +269,109 @@ fn java_float_text(text: &str) -> Result<Option<String>, String> {
     if at != bytes.len() {
         return Err(bad());
     }
-    Ok(Some(format!("{sign}{number}")))
+    Ok(JavaFloat::Decimal(format!("{sign}{number}")))
+}
+
+/// The magnitude of a hexadecimal floating point number, the text after its `0x`, rounded to
+/// the nearest number of `precision` significant bits, ties to even, where numbers below
+/// `2^min_exponent` keep fewer bits; `None` if the text is not one.
+///
+/// Behavior: jdk.internal.math.FloatingDecimal#parseHexString: ASCII hexadecimal digits
+/// with at most one point and at least one digit, `p` or `P`, a signed decimal exponent of
+/// two, and one of the suffixes `f`, `F`, `d` and `D` at most. An exponent that is no `int`
+/// gives an infinity or a zero.
+fn java_hex_float(text: &str, precision: u32, min_exponent: i64) -> Option<f64> {
+    let marker = text.find(['p', 'P'])?;
+    let (mantissa, exponent) = (&text[..marker], &text[marker + 1..]);
+    let exponent = exponent
+        .strip_suffix(['f', 'F', 'd', 'D'])
+        .unwrap_or(exponent);
+    let (whole, fraction) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+    let unsigned = exponent.strip_prefix(['+', '-']).unwrap_or(exponent);
+    let hex = |part: &str| part.bytes().all(|b| b.is_ascii_hexdigit());
+    if !hex(whole)
+        || !hex(fraction)
+        || whole.len() + fraction.len() == 0
+        || unsigned.is_empty()
+        || !unsigned.bytes().all(|b| b.is_ascii_digit())
+    {
+        return None;
+    }
+    let negative_exponent = exponent.starts_with('-');
+    let digits = format!("{whole}{fraction}");
+    let digits = digits.trim_start_matches('0');
+    if digits.is_empty() {
+        return Some(0.0);
+    }
+    let Ok(written) = unsigned.parse::<i32>() else {
+        return Some(if negative_exponent {
+            0.0
+        } else {
+            f64::INFINITY
+        });
+    };
+    let written = i64::from(written) * if negative_exponent { -1 } else { 1 };
+    // The leading thirty digits, more bits than either type keeps, and whether a digit
+    // after them is not zero: the value is a little more than significand * 2^scale then.
+    let leading = &digits[..digits.len().min(30)];
+    let significand = u128::from_str_radix(leading, 16).ok()?;
+    let sticky = digits[leading.len()..].bytes().any(|b| b != b'0');
+    let scale = written - 4 * fraction.len() as i64 + 4 * (digits.len() - leading.len()) as i64;
+    let bits = i64::from(128 - significand.leading_zeros());
+    let precision = i64::from(precision);
+    // The weight of the last bit kept, and how many bits of the significand are below it.
+    let unit = (scale + bits - precision).max(min_exponent - precision + 1);
+    let dropped = unit - scale;
+    if dropped <= 0 {
+        return Some(times_power_of_two(significand as f64, scale));
+    }
+    if dropped > bits {
+        // below half of the unit
+        return Some(0.0);
+    }
+    let mantissa = significand.checked_shr(dropped as u32).unwrap_or(0);
+    let rest = if dropped >= 128 {
+        significand
+    } else {
+        significand & ((1 << dropped) - 1)
+    };
+    let half = 1u128 << (dropped - 1);
+    let up = rest > half || (rest == half && (sticky || mantissa & 1 == 1));
+    Some(times_power_of_two((mantissa + u128::from(up)) as f64, unit))
+}
+
+/// `value * 2^exponent`: exact where the result is a double, for a whole `value` that a
+/// double holds exactly.
+fn times_power_of_two(mut value: f64, exponent: i64) -> f64 {
+    let mut exponent = exponent.clamp(-4000, 4000);
+    while exponent != 0 && value != 0.0 && value.is_finite() {
+        let step = exponent.clamp(-1000, 1000);
+        value *= 2f64.powi(step as i32);
+        exponent -= step;
+    }
+    value
 }
 
 /// Behavior: java.lang.Double#parseDouble
 pub(super) fn parse_java_double(text: &str) -> Result<f64, String> {
-    match java_float_text(text)? {
-        None => Ok(f64::NAN),
-        Some(number) => number
+    match java_float_text(text, 53, -1022)? {
+        JavaFloat::NaN => Ok(f64::NAN),
+        JavaFloat::Exact(value) => Ok(value),
+        JavaFloat::Decimal(number) => number
             .parse()
-            .map_err(|_| format!("For input string: \"{text}\"")),
+            .map_err(|_| format!("For input string: \"{}\"", java_trim(text))),
     }
 }
 
 /// Behavior: java.lang.Float#parseFloat
 pub(super) fn parse_java_float(text: &str) -> Result<f32, String> {
-    match java_float_text(text)? {
-        None => Ok(f32::NAN),
-        Some(number) => number
+    match java_float_text(text, 24, -126)? {
+        JavaFloat::NaN => Ok(f32::NAN),
+        // exact: the value has a float's bits, or is infinite
+        JavaFloat::Exact(value) => Ok(value as f32),
+        JavaFloat::Decimal(number) => number
             .parse()
-            .map_err(|_| format!("For input string: \"{text}\"")),
+            .map_err(|_| format!("For input string: \"{}\"", java_trim(text))),
     }
 }
 
@@ -1060,6 +1155,36 @@ mod tests {
             assert!(parse_java_double(bad).is_err(), "{bad}");
         }
         assert_eq!(parse_java_float("0.1f"), Ok(0.1f32));
+    }
+
+    /// `java_hex.txt` holds, for each text, what JDK 21's `Double.parseDouble` and
+    /// `Float.parseFloat` return (the bits) or the message they throw.
+    #[test]
+    fn hexadecimal_floats_follow_the_jdk() {
+        let mut lines = 0;
+        for line in include_str!("java_hex.txt").lines() {
+            let fields: Vec<&str> = line.split('\t').collect();
+            let [text, double, float] = fields[..] else {
+                panic!("{line:?}");
+            };
+            let expect = |field: &str| match field.strip_prefix("ERR:") {
+                Some(message) => Err(message.to_string()),
+                None => Ok(u64::from_str_radix(field, 16).unwrap()),
+            };
+            assert_eq!(
+                parse_java_double(text).map(f64::to_bits),
+                expect(double),
+                "{text:?}"
+            );
+            assert_eq!(
+                parse_java_float(text).map(|v| u64::from(v.to_bits())),
+                expect(float),
+                "{text:?}"
+            );
+            lines += 1;
+        }
+        assert!(lines > 250);
+        assert_eq!(parse_java_double(" "), Err("empty String".to_string()));
     }
 
     #[test]
