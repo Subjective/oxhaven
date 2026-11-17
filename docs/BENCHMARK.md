@@ -1,0 +1,390 @@
+# End-to-end benchmark against Deephaven
+
+How fast Oxhaven runs table operations compared with the Java reference, Deephaven 42.9, both
+driven the same way by a client over gRPC. Task 8.1 (`tasks/8.1-benchmark.md`) built the
+runner, `bench/bench.py`, and made the first measurement below. The only earlier measurement is
+the row set micro-benchmark in [ROWSET.md](ROWSET.md).
+
+The short reading: every case gave the same answer on both servers. At 1M rows Oxhaven is
+within about 2x of Java in the less loaded run (up to 4x in the other) on formulas, filters, low- and medium-cardinality aggregations,
+`join`, `head`/`tail` and `ungroup`, and faster on the Arrow Flight read path and on a string
+match filter. It is 18x to 40x slower on `natural_join` and `exact_join`, 8x to 31x on
+`select_distinct`, 4x to 10x on `sort` of an int column and on `last_by`, and 3x to 7x on
+high-cardinality aggregations and `group_by`. At 10M rows the formulas and filters fall to 3x
+to 8x, mostly because Java runs them on 2 threads. The slow paths share one cause: they keep
+per-row state in ordered trees of heap-allocated keys (`BTreeMap`, `BTreeSet`, boxed byte
+strings) where Java uses flat arrays and open-addressed hash tables. Oxhaven was written
+correct-first (PORTING.md, rule 5) and has never been tuned; Java has. The machine was shared
+with other jobs during both runs, so ratios under about 2x are within the noise.
+
+## What is measured
+
+One **case** is an operation on a table that lives on the server. A case runs in three parts:
+
+1. **Setup**, not timed: the case's input is made on the server. For every static case it is a
+   fresh `head(n)` of the source table, so that no repetition reuses another's result: Java
+   memoizes `where`, `sort`, aggregations and `select` of plain columns per parent table
+   (`QueryTable#memoizeResult`), and `head` (`SliceLikeOperation`) is not memoized.
+2. **The operation**, timed at the client with a monotonic clock from the request to its
+   completion, as below.
+3. **The check**, not timed, after the last repetition: the result's row count, the sum of each
+   numeric column, a sum of the first numeric column weighted by row position modulo 1009 (so
+   that row order counts), and the first and last three rows. The case is reported as the same
+   result only when every part agrees on both servers (floating point sums within a relative
+   1e-9).
+
+Each case runs `warm-up` untimed repetitions and then the timed ones; the table reports the
+median, minimum and maximum of the timed ones. The cases run interleaved: case 1 on Java, case
+1 on Oxhaven, case 2 on Java, and so on, so that a change of the machine's load affects both.
+
+**When an operation is complete.** For every case that returns a table, the client call
+returns when the server has answered the export with `ExportedTableCreationResponse`, which
+carries the result's size. Both servers send it only after the operation has made its result
+table. What "made" means is the same on both: `update` stores its formula columns (Java
+`QueryTable#update`, Oxhaven `ops::select`), and filters, sorts, aggregations and joins compute
+their row sets, permutations, groups and redirections before they answer; the values of a
+sorted or joined column are read through a redirection when someone reads them, on both. The
+other two kinds of case say what they wait for in the table below.
+
+| case | input (setup) | timed operation | complete when |
+| --- | --- | --- | --- |
+| `build` | none | `empty_table(n).update(` the 7 source formulas `)` | export answered |
+| `update_arith` | source | `update(["C = A * 2 + 1", "D = B * 1.5 - A", "E = Id % 7"])` | export answered |
+| `update_string` | source | `update(['S2 = S + "_x"'])` | export answered |
+| `update_cond` | source | `update(["F = A > 50000 ? B : -B"])` | export answered |
+| `where_range` | source | `where("A >= 20000 && A < 60000")` (40% of rows) | export answered |
+| `where_string` | source | `` where("S in `s1`, `s42`, `s999`") `` (0.3%) | export answered |
+| `where_conj` | source | `where(["K10 = 3", "B > 50000.0", "A < 50000"])` | export answered |
+| `sort_int`, `sort_two`, `sort_string` | source | `sort("A")`, `sort(["K10", "B"])`, `sort("S")` | export answered |
+| `sum_by_*`, `avg_by_*`, `count_by_*` | `view(["K = <key>", "A", "B"])` of the source | `sum_by("K")`, `avg_by("K")`, `count_by("N", "K")` | export answered |
+| `agg_by_multi` | source | `agg_by([sum, avg, min, max, count], by="K10k")` | export answered |
+| `last_by` | source | `last_by("K10k")` (all 7 columns) | export answered |
+| `natural_join_small`, `exact_join_small` | source | join on `K10k` to a right table of 10,000 unique keys | export answered |
+| `natural_join_large`, `exact_join_large` | source | join on `K1M` to a right table of 1,000,000 unique keys | export answered |
+| `join_on_key` | source | `join(right, on="K10k", joins="R1")`, right table of 10,000 unique keys | export answered |
+| `aj` | source | `aj(right, on=["K10", "Id >= Stamp"])`, right table of n/10 rows | export answered |
+| `select_distinct_one`, `select_distinct_two` | source | `select_distinct("K10k")`, `select_distinct(["K10", "S"])` (10,000 groups each) | export answered |
+| `head_half`, `tail_half` | source | `head(n/2)`, `tail(n/2)` | export answered |
+| `group_by` | `view(["K10k", "A"])` of the source | `group_by("K10k")` | export answered |
+| `ungroup` | `view(["K10k", "A"]).group_by("K10k")`, made once | `ungroup("A")` (n rows back) | export answered |
+| `doget_1m` | the first 1M rows of `Id`, `A`, `B` | `to_arrow()`: Arrow Flight DoGet | the client has every record batch |
+| `ticking_append_where_sum_by` | an append-only input table `(K int, V long)` with `where("V % 2 == 0").sum_by("K")` downstream; a batch of 100,000 rows imported | add the batch, wait for the barrier, fetch the 100-row result | see "Ticking" |
+
+The source table has n rows:
+
+```
+Id   = ii                                    long, 0..n-1
+K10  = (int)(ii % 10)                        10 keys
+K10k = (int)((ii * 7919) % 10000)            10,000 keys, spread
+K1M  = (int)((ii * 104729) % 1000000)        1,000,000 keys, spread (all unique at n = 1M)
+A    = (int)((ii * 31337) % 100003)          int
+B    = ((ii * 15485863) % 1000003) / 7.0     double
+S    = "s" + (ii % 1000)                     string, 1,000 values
+```
+
+"low", "med" and "high" in the aggregation case names are `K10`, `K10k` and `K1M`.
+
+### Ticking
+
+One ticking case only, because it is the one that both servers can be driven through
+identically and whose end can be observed from the client without timing the update graph's
+clock. An input table without keys gets a fixed batch of 100,000 rows per repetition (imported
+before the timer starts), and a `where` + `sum_by` over 100 keys is kept up to date downstream.
+The timer covers the `AddTableToInputTable` call, then two changes to a second, private input
+table (the oracle's barrier, `_Barrier` in `oracle/harness/runner.py`: when the second returns,
+the cycle that applied the batch has finished on both servers), then a DoGet of the 100-row
+result. The check compares the fetched sums with the sums the client computes for every row
+added so far. Both servers start a cycle as soon as an input table is changed
+(`PeriodicUpdateGraph#requestRefresh` and its Oxhaven counterpart), so the time is not the
+1-second cycle period. It is dominated by round trips and cycle overhead, not by the 100,000-row
+`where` and `sum_by`, so it says little about incremental throughput; a `time_table` was left
+out because nothing can make the two servers tick in step.
+
+## How to run it
+
+```bash
+# Python environment: the oracle's pins (oracle/requirements.txt), in a venv anywhere.
+python3 -m venv /tmp/bench-venv && /tmp/bench-venv/bin/pip install -r oracle/requirements.txt
+
+# Java: the oracle's own way (oracle/bin/start-java.sh), here with a larger heap for 10M rows.
+ORACLE_HEAP=5g oracle/bin/start-java.sh 10868          # needs oracle/.venv; or run
+# oracle/bin/java_server.py --port 10868 --psk oxhaven --heap 5g with the venv's python
+
+# Oxhaven: a release build, without the Python console (the cases need no console).
+cargo build --release -p oxhaven-server
+target/release/oxhaven-server --host 127.0.0.1 --port 10869 --psk oxhaven &
+
+/tmp/bench-venv/bin/python bench/bench.py run \
+    --server java=dh+psk://oxhaven@127.0.0.1:10868 \
+    --server oxhaven=dh+psk://oxhaven@127.0.0.1:10869 \
+    --out run1.json                       # --sizes, --warmup, --reps, --cases 'sort_*,aj'
+/tmp/bench-venv/bin/python bench/bench.py report run1.json run2.json            # min-max, load
+/tmp/bench-venv/bin/python bench/bench.py report --compact run1.json run2.json  # medians only
+```
+
+The first `--server` is the base of the ratio. The defaults are 1M and 10M rows, 2 warm-up
+and 5 timed repetitions at 1M rows, 1 and 3 at 10M rows; one run took 14 to 15 minutes on the
+machine below. A failed case is recorded, not dropped: `refused` for `UNIMPLEMENTED` or
+`INVALID_ARGUMENT`, `error` otherwise, with the code and message in the JSON.
+
+## The machine and the servers
+
+Measured on 2026-11-17, two complete runs one after the other (run 1 10:36 to 10:51, run 2
+10:52 to 11:06), on the same two server processes, started once before run 1.
+
+- **Machine:** 4 vCPUs (Intel Xeon @ 2.10 GHz), 15 GB RAM, Linux 6.18. Client and both
+  servers on the same host, over loopback.
+- **Load: not clean.** Other agents shared the machine throughout: an engine test build and its
+  test binary (up to 3 cores), and for part of the time a fuzzer against another Java server.
+  The one-minute load average, recorded before each case, was 2.9 to 3.9 during the 1M-row cases
+  of run 1, 4.2 to 8.2 during those of run 2, and 3.4 to 9.2 during the 10M-row cases of both
+  runs; the benchmark itself, one busy server and the client, accounts for one to two of that. With 4 cores, a single-threaded operation got
+  between half a core and a whole one. Read differences under about 1.5x between the runs, and
+  ratios under about 2x, as noise. The full table (`bench/results/2026-11-17.md`) has the
+  min-max of every case and the load for each case and run.
+- **Java:** Deephaven 42.9, the `deephaven-server` wheel of `oracle/requirements.txt`, started
+  as the oracle starts it (`oracle/bin/java_server.py`: `-XX:ActiveProcessorCount=2`, PSK
+  authentication) but with a 5 GB heap (`--heap 5g`) instead of the oracle's 2 GB, chosen for the 10M-row
+  tables; the resident size of the Java process reached 4.6 GB during them. 2 GB was not tried. OpenJDK 21.0.12.1 with its default collector, Deephaven's default
+  configuration otherwise, so its operation thread pool and update graph have 2 threads.
+- **Oxhaven:** commit `c24fd2a2` (main at `6f744d8f` plus the runner), built with
+  `cargo build --release --locked -p oxhaven-server` and the default release profile (no LTO,
+  debug assertions off), without the `python` feature, run with default options
+  (`--cycle-ms 1000`). The gRPC runtime is Tokio's default multi-threaded one (7 threads in the
+  process on 4 cores); the engine has no parallel code, so a table operation computes on one thread.
+- **Client:** pydeephaven 42.9 and pyarrow 26.0.1 on Python 3.13, sessions opened with
+  `oracle/harness/connect.py`.
+- **Repetitions:** 2 warm-up and 5 timed at 1M rows; 1 warm-up and 3 timed at 10M rows.
+
+## Results
+
+Every case gave the same result on both servers in both runs; no case was refused and none
+failed.
+
+Median milliseconds of each run, run 1 / run 2. Ratio = oxhaven / java; above 1 means oxhaven is slower.
+
+### 1,000,000 rows
+
+| case | java | oxhaven | ratio | same result |
+| --- | ---: | ---: | ---: | --- |
+| `build` | 173 / 139 | 328 / 397 | 1.90 / 2.87 | yes / yes |
+| `update_arith` | 43.7 / 31.8 | 54.9 / 73.5 | 1.26 / 2.31 | yes / yes |
+| `update_string` | 100 / 52.8 | 172 / 209 | 1.72 / 3.96 | yes / yes |
+| `update_cond` | 17.7 / 26.5 | 24.6 / 25.1 | 1.39 / 0.95 | yes / yes |
+| `where_range` | 32.0 / 15.0 | 28.9 / 42.3 | 0.90 / 2.81 | yes / yes |
+| `where_string` | 16.6 / 18.3 | 8.9 / 9.5 | 0.54 / 0.52 | yes / yes |
+| `where_conj` | 17.9 / 14.3 | 21.9 / 24.3 | 1.22 / 1.70 | yes / yes |
+| `sort_int` | 116 / 153 | 607 / 619 | 5.25 / 4.04 | yes / yes |
+| `sort_two` | 232 / 251 | 529 / 623 | 2.28 / 2.48 | yes / yes |
+| `sort_string` | 280 / 317 | 416 / 451 | 1.48 / 1.42 | yes / yes |
+| `sum_by_low` | 20.1 / 18.9 | 38.2 / 37.2 | 1.89 / 1.97 | yes / yes |
+| `avg_by_low` | 21.2 / 20.1 | 33.5 / 36.8 | 1.58 / 1.83 | yes / yes |
+| `count_by_low` | 13.6 / 17.7 | 27.6 / 38.2 | 2.03 / 2.16 | yes / yes |
+| `sum_by_med` | 47.9 / 50.5 | 60.6 / 88.5 | 1.26 / 1.75 | yes / yes |
+| `avg_by_med` | 53.6 / 60.7 | 81.2 / 91.5 | 1.52 / 1.51 | yes / yes |
+| `count_by_med` | 20.6 / 18.3 | 45.8 / 67.3 | 2.22 / 3.68 | yes / yes |
+| `sum_by_high` | 183 / 194 | 1126 / 1080 | 6.17 / 5.58 | yes / yes |
+| `avg_by_high` | 194 / 199 | 1018 / 1161 | 5.25 / 5.83 | yes / yes |
+| `count_by_high` | 106 / 133 | 807 / 927 | 7.62 / 6.98 | yes / yes |
+| `agg_by_multi` | 76.2 / 103 | 124 / 130 | 1.62 / 1.27 | yes / yes |
+| `last_by` | 20.8 / 23.0 | 207 / 193 | 9.95 / 8.36 | yes / yes |
+| `natural_join_small` | 28.7 / 25.4 | 655 / 699 | 22.82 / 27.58 | yes / yes |
+| `natural_join_large` | 125 / 125 | 2325 / 2578 | 18.57 / 20.59 | yes / yes |
+| `exact_join_small` | 25.9 / 24.7 | 680 / 687 | 26.30 / 27.86 | yes / yes |
+| `exact_join_large` | 140 / 123 | 2575 / 2455 | 18.45 / 19.92 | yes / yes |
+| `join_on_key` | 365 / 314 | 594 / 586 | 1.63 / 1.87 | yes / yes |
+| `aj` | 213 / 185 | 603 / 535 | 2.82 / 2.89 | yes / yes |
+| `select_distinct_one` | 16.6 / 13.8 | 323 / 276 | 19.50 / 19.96 | yes / yes |
+| `select_distinct_two` | 30.4 / 29.5 | 285 / 249 | 9.36 / 8.44 | yes / yes |
+| `head_half` | 2.0 / 1.8 | 0.87 / 0.91 | 0.43 / 0.51 | yes / yes |
+| `tail_half` | 2.3 / 1.9 | 1.1 / 1.0 | 0.47 / 0.54 | yes / yes |
+| `group_by` | 109 / 79.6 | 366 / 314 | 3.35 / 3.94 | yes / yes |
+| `ungroup` | 5.7 / 2.5 | 2.0 / 3.9 | 0.34 / 1.54 | yes / yes |
+| `doget_1m` | 73.9 / 64.7 | 29.6 / 29.6 | 0.40 / 0.46 | yes / yes |
+| `ticking_append_where_sum_by` | 46.9 / 54.9 | 79.6 / 96.7 | 1.70 / 1.76 | yes / yes |
+
+### 10,000,000 rows
+
+| case | java | oxhaven | ratio | same result |
+| --- | ---: | ---: | ---: | --- |
+| `build` | 1738 / 2577 | 5398 / 5397 | 3.11 / 2.09 | yes / yes |
+| `update_arith` | 179 / 355 | 1050 / 993 | 5.87 / 2.80 | yes / yes |
+| `update_string` | 1094 / 1460 | 2145 / 2145 | 1.96 / 1.47 | yes / yes |
+| `update_cond` | 71.9 / 89.7 | 392 / 401 | 5.46 / 4.47 | yes / yes |
+| `where_range` | 52.1 / 48.5 | 428 / 402 | 8.22 / 8.29 | yes / yes |
+| `where_string` | 121 / 161 | 82.0 / 96.2 | 0.68 / 0.60 | yes / yes |
+| `where_conj` | 92.9 / 80.3 | 274 / 267 | 2.95 / 3.33 | yes / yes |
+| `sort_int` | 1175 / 1255 | 11775 / 11292 | 10.02 / 9.00 | yes / yes |
+| `sort_two` | 2779 / 2810 | 11711 / 11201 | 4.21 / 3.99 | yes / yes |
+| `sort_string` | 2546 / 2372 | 6837 / 6652 | 2.69 / 2.80 | yes / yes |
+| `sum_by_low` | 166 / 166 | 332 / 288 | 2.00 / 1.73 | yes / yes |
+| `avg_by_low` | 205 / 158 | 325 / 332 | 1.59 / 2.11 | yes / yes |
+| `count_by_low` | 144 / 103 | 329 / 226 | 2.29 / 2.18 | yes / yes |
+| `sum_by_med` | 589 / 379 | 817 / 550 | 1.39 / 1.45 | yes / yes |
+| `avg_by_med` | 574 / 480 | 892 / 692 | 1.55 / 1.44 | yes / yes |
+| `count_by_med` | 265 / 150 | 469 / 351 | 1.77 / 2.35 | yes / yes |
+| `sum_by_high` | 912 / 871 | 3496 / 2813 | 3.84 / 3.23 | yes / yes |
+| `avg_by_high` | 1392 / 1021 | 3360 / 2761 | 2.41 / 2.70 | yes / yes |
+| `count_by_high` | 498 / 437 | 2691 / 2448 | 5.40 / 5.60 | yes / yes |
+| `agg_by_multi` | 882 / 743 | 1353 / 1409 | 1.53 / 1.89 | yes / yes |
+| `last_by` | 258 / 221 | 2120 / 1928 | 8.20 / 8.73 | yes / yes |
+| `natural_join_small` | 344 / 297 | 9510 / 8522 | 27.62 / 28.70 | yes / yes |
+| `natural_join_large` | 584 / 514 | 20378 / 17393 | 34.90 / 33.84 | yes / yes |
+| `exact_join_small` | 243 / 212 | 9804 / 7920 | 40.39 / 37.30 | yes / yes |
+| `exact_join_large` | 674 / 500 | 19910 / 16681 | 29.56 / 33.39 | yes / yes |
+| `join_on_key` | 3982 / 2355 | 7532 / 6350 | 1.89 / 2.70 | yes / yes |
+| `aj` | 2677 / 1822 | 6570 / 5729 | 2.45 / 3.14 | yes / yes |
+| `select_distinct_one` | 103 / 100 | 3201 / 2767 | 31.15 / 27.58 | yes / yes |
+| `select_distinct_two` | 321 / 249 | 2680 / 2385 | 8.34 / 9.56 | yes / yes |
+| `head_half` | 2.7 / 3.6 | 0.85 / 4.0 | 0.32 / 1.10 | yes / yes |
+| `tail_half` | 1.7 / 1.5 | 4.0 / 4.2 | 2.40 / 2.88 | yes / yes |
+| `group_by` | 1209 / 934 | 8797 / 6709 | 7.28 / 7.19 | yes / yes |
+| `ungroup` | 2.9 / 2.3 | 17.8 / 9.2 | 6.15 / 4.06 | yes / yes |
+| `doget_1m` | 88.7 / 70.5 | 39.1 / 44.2 | 0.44 / 0.63 | yes / yes |
+| `ticking_append_where_sum_by` | 51.4 / 39.6 | 113 / 96.4 | 2.21 / 2.44 | yes / yes |
+
+## Reading the results
+
+No profiler was available on the machine (`perf` is not installed), so the causes below come
+from reading the code path of each slow case, not from a profile. They are the likely
+reasons, not measured ones.
+
+**Close to Java, or faster (ratio below about 2 in run 1, the less loaded run at 1M rows,
+and below 4 in run 2):** the formulas of `update` at 1M rows, `where_string` (a match filter
+on the string column, faster on Oxhaven at both sizes), low and medium cardinality `sum_by`/`avg_by`/`count_by`, `agg_by_multi`,
+`sort_string` at 1M rows, `join_on_key`, `head`/`tail`, and `doget_1m`: Oxhaven sends 1M rows
+over Arrow Flight in about 30-45 ms against Java's 65-90 ms, because its columns already are
+Arrow arrays and Java converts its chunks to Arrow buffers. The ticking case is 1.7x to 2.4x,
+40-55 ms against 80-115 ms, most of which is round trips and cycle overhead on both.
+
+**Slower, and why.** The worst cases, slowest first:
+
+1. **`natural_join` and `exact_join`: 18x to 40x.** `ops/join/natural.rs` (`NaturalJoin::start`)
+   reads every row's key into a `Vec<Cell>` (`ops/join/keys.rs`: one heap allocation per row,
+   with an enum per cell), keeps the keys in a `BTreeMap<Vec<Cell>, Slot>` in which every slot
+   has a `BTreeSet` of its left rows and one of its right rows, clones the key once more per
+   left row, and puts each left row's match into a `WritableRowRedirection`
+   (`oxhaven-column/src/redirect.rs`), which is a `BTreeMap<RowKey, RowKey>` with a second
+   map for previous values (`Tracked`). So a 10M-row static join is about 10M allocations, 20M
+   ordered-tree insertions of variable-length keys and 10M more into the redirection. Java hashes
+   the typed key chunk into an open-addressed table generated per key type and writes the
+   redirection into a flat array, and does not keep the left rows per key for a static join.
+   The per-left-row state is needed for a refreshing join only.
+2. **`select_distinct`: 8x to 31x.** `ops/distinct/mod.rs` turns each row's key into an owned
+   `Vec<u8>` (Arrow's row format) and looks it up in a `BTreeMap<Vec<u8>, usize>`, and records
+   the group in a `BTreeMap` of touched groups, for every row, also when the table is static.
+   Two ordered-tree operations and one allocation per row against Java's hash probe on a typed
+   chunk.
+3. **`sort`: 4x to 10x, and growing faster than the row count** (`sort_int` 0.6 s at 1M rows,
+   11.5 s at 10M). `ops/sort/sorted.rs` (`sorted_entries`) encodes each row's key into its own
+   `Box<[u8]>` (`ops/sort/keys.rs`), sorts a vector of (row key, box) entries with a stable
+   comparison sort over the boxed bytes, so each comparison follows two pointers to memory that
+   is not in cache, and then writes the permutation into a `WritableRowRedirection`, a
+   `BTreeMap`, one insertion per row. Java sorts a typed chunk of values with the row keys
+   alongside (a timsort per primitive type) and keeps the permutation in a flat array. The
+   superlinear growth is what pointer chasing through 10M boxes and a 10M-entry tree do once
+   they no longer fit in cache.
+4. **`last_by`, `group_by`, and aggregations with 1M keys: 3x to 10x.** The aggregation
+   engine (`ops/agg/aggregator.rs`) is chunked like Java's, but each chunk's keys are encoded with
+   Arrow's `RowConverter` and looked up in a `HashMap<Box<[u8]>, usize>` with the standard
+   library's SipHash (`ops/agg/keys.rs`), a new key costs an allocation, and the operators are
+   called once per run of equal slots through a trait object, which costs most when runs are a
+   row or two long, as with 1M keys. Every result column is a `WritableSource`
+   (`oxhaven-column/src/writable.rs`), whose cells are again entries of a `BTreeMap` keyed by
+   row key, so 1M groups is 1M tree insertions per result column. `last_by` keeps the last value
+   of each of its 6 value columns per group as a `Scalar` (`ops/agg/first_last.rs`), which for
+   a string is a new `Arc<str>` per run. `group_by` does more than Java at creation: it gathers
+   every value of every group into one Arrow list array (`ops/agg/group.rs`, `recompute` and
+   `results`), where Java's grouped columns are vectors read through each group's row set when
+   someone reads them. That is a difference of what "complete" means for this one case, in
+   Java's favour; it is also what Oxhaven's later reads of the column do not pay.
+
+**Larger at 10M rows than at 1M.** `update_arith`, `update_cond` and `where_range` are within
+about 1.5x of Java at 1M rows but 3x to 8x at 10M. Two reasons, both expected: Java parallelises
+`where` over 2^16-row segments and `update` above 2^22 rows on its 2 threads, which pays only at
+10M; and Oxhaven evaluates a formula or condition over the whole selection in one call
+(`ops/filter/filters.rs`, the `Resolved::Condition` arm), so each intermediate array is 10M
+values long and is written to and read back from memory, where Java's kernels work in chunks of
+4,096 that stay in cache. The 10M-row `build` (3x) is the same formulas plus the string column.
+
+**`ungroup` and `tail_half` at 10M rows** are 4x to 6x but a few milliseconds on either server;
+at that size round-trip noise is a large part of the number.
+
+## Where the comparison is unfair
+
+In Java's favour:
+
+- **Parallelism.** Java uses more than one core for some static operations: a `where` over more
+  than 2^16 rows is split into segments filtered in parallel
+  (`QueryTable.parallelWhereRowsPerSegment`), and `select`/`update` over more than 2^22 rows
+  are split across threads (`QueryTable.minimumParallelSelectRows`). The oracle starts Java with
+  `-XX:ActiveProcessorCount=2`, so it has 2 threads for this. Every Oxhaven operation runs on
+  one thread. This is part of why `update_*` and `where_range` grow less than linearly from 1M to
+  10M rows on Java and linearly on Oxhaven.
+- **Tuning.** Java's operators have years of performance work: type-specialised kernels,
+  open-addressed hash tables generated per key type, typed sort kernels, flat
+  redirections. Oxhaven's are first ports written for correctness and have never been
+  profiled.
+
+In Oxhaven's favour:
+
+- **JIT warm-up is excluded.** Two untimed repetitions per case at 1M rows (one at 10M), on a
+  JVM that by the second run has executed every case several times, so Java's numbers are its
+  steady state. Java's first, cold run of an operation is slower than what the table shows.
+- **Memory.** Java keeps strings as objects and pays for garbage collection (5 GB heap here);
+  the timing of a collection falls into whichever case triggers it, which is part of Java's
+  wider min-max spread. Oxhaven's Arrow arrays are smaller. Memory was not measured.
+- **Release build.** Oxhaven was built with `--release`, so `debug_assert!`s are off. The
+  self-consistency checker of the engine tests is not in the server either way.
+
+Neutral: both servers run on one machine with the client, over loopback, with the same client
+library; the round trip (a few hundred microseconds) is in every number, which matters only for
+the cases under about 10 ms (`head_half`, `tail_half`, `ungroup`).
+
+## What was not measured
+
+- Memory: neither the servers' peak nor their resident size per row.
+- Ticking throughput under load: many cycles per second, large or wide updates, many
+  downstream tables, modifies and shifts (the one ticking case only appends), and Barrage
+  subscriptions to ticking tables.
+- Tables read from storage (Parquet, CSV) and Kafka ingestion.
+- `update_by`, range joins, rollups and trees, partitioned tables, formulas calling Python, and
+  the Python console in general.
+- Concurrency: several clients or several operations at once.
+- Cold JVM start, and sizes above 10M rows.
+
+## Follow-ups
+
+Ordered by value for the effort; estimates are for one agent and include tests against the
+oracle corpus and the self-consistency checker, which every change to these paths needs.
+
+1. **Flat storage for dense row keys in `oxhaven-column`** (3 to 5 days). Give
+   `WritableRowRedirection` and `WritableSource` a representation backed by a `Vec` for keys
+   `0..n`, with previous values tracked only once the table refreshes, instead of a
+   `BTreeMap<RowKey, _>` per cell. Sort results, join results over a flat left table, and
+   aggregation and `select_distinct` results all have such keys. This one change is under every
+   slow case above except `select_distinct`'s own lookup, and it also speeds up every later read
+   through a redirection (snapshots, chained operations), which this benchmark does not time.
+   Expected: the redirection part of joins and sorts falls from about a tree insertion to an
+   array store per row.
+2. **Hash the join keys, and keep per-row join state only when refreshing** (3 to 4 days).
+   Encode the keys of a chunk with `RowConverter` into one buffer, as aggregation already does,
+   look them up in a hash table with a fixed-seed fast hasher (PORTING.md rule 7 allows fixed
+   seeds), and build the left rows per slot only for a refreshing left table. With item 1, the
+   static `natural_join` and `exact_join` should come within a small factor of Java; today they
+   are the worst cases at 18x to 40x.
+3. **Sort without a box per row** (2 days). Encode the keys once into Arrow `Rows` (one buffer),
+   sort row positions with a stable sort comparing borrowed rows, and add a typed path for one
+   primitive column (sort `(value, position)` pairs; stability then comes free). With item 1
+   this removes both the per-row allocation and the per-row tree insertion. Expected to bring
+   `sort_int` from 9x to 10x down to within 2x to 3x of Java.
+4. **Grouping: one hash lookup per row, no ordered trees** (2 to 3 days). `select_distinct` should
+   use the aggregation engine's `KeyTable` (or the same encoded-row hash table) instead of a
+   `BTreeMap<Vec<u8>, _>` and a touched-group map per row; `KeyTable` itself should hash
+   borrowed bytes with a fixed-seed fast hasher instead of SipHash and allocate keys in one
+   arena. Covers `select_distinct` (8x to 31x) and the high-cardinality aggregations and
+   `last_by` (3x to 10x).
+
+After these, the next step is parallelism: Java's 2-thread `where` and `update` are what make the
+10M-row filters and formulas 3x to 8x. Splitting a static `where` or `update` into segments over
+a thread pool is a separate task, and needs a decision on how the engine schedules work.
