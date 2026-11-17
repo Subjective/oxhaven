@@ -1233,3 +1233,7 @@ The disk reached 269 MB free while two agents built (8.5 GB each) on top of 5.2 
 Task 10.1 closed 3 of 44 refusals and wrote up the rest; pull request 155 opened. Most of the remaining ones need an owner decision or files another task held.
 
 Task 9.10 second part met both goals in the engine but recognised in-memory columns through a process-wide record keyed by address. Decision: not merged in that form. A third run replaces the record with a provided method on the ColumnSource trait (a contract addition, like RowSet::from_bitmap), checks every FlatSource user against the promise, and runs the replay gate, which had not been run.
+
+## 2026-11-17 20:23 UTC: pull request 155 merged
+
+Seven green checks. The rework agent of task 9.10 told that main moved.
