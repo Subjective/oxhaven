@@ -1,9 +1,9 @@
 //! An immutable column: one Arrow array, with row key `k` at position `k`.
 
 use crate::tables::kept_by;
-use crate::{arrow_failure, failure};
+use crate::{arrow_failure, failure, parallel};
 use arrow::array::{Array, ArrayRef, UInt64Array};
-use arrow::compute::{take, TakeOptions};
+use arrow::compute::{concat, take, TakeOptions};
 use oxhaven_contracts::rowset::{RowKey, RowSet, NULL_ROW_KEY};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{ColumnSource, Table, TableFailure};
@@ -15,6 +15,10 @@ use std::sync::Arc;
 /// Behavior: io.deephaven.engine.table.impl.sources.ArrayBackedColumnSource#getMemoryColumnSource
 /// and the immutable array sources it creates
 /// (io.deephaven.engine.table.impl.ImmutableColumnSource#getPrev).
+/// Scattered rows are gathered in pieces of this many rows, on the threads
+/// [`parallel`] allows, when there are at least two pieces of them.
+const GATHER_PIECE_ROWS: u64 = 1 << 16;
+
 pub struct FlatSource {
     column_type: ColumnType,
     values: ArrayRef,
@@ -71,9 +75,27 @@ impl ColumnSource for FlatSource {
             }
             return Ok(self.values.slice(range.first() as usize, size));
         }
-        self.take(&UInt64Array::from_iter_values(
-            rows.iter().map(|k| k as u64),
-        ))
+        let gather = |rows: &RowSet| {
+            let mut positions = Vec::with_capacity(rows.size() as usize);
+            for range in rows.ranges() {
+                positions.extend(range.first() as u64..=range.last() as u64);
+            }
+            self.take(&UInt64Array::from(positions))
+        };
+        let size = rows.size();
+        if size < 2 * GATHER_PIECE_ROWS || parallel::threads() == 1 {
+            return gather(rows);
+        }
+        // The array never changes, so a piece reads it without a lock. The pieces come
+        // back in row order, and the first that fails holds the first key that fails.
+        let pieces = size.div_ceil(GATHER_PIECE_ROWS) as usize;
+        let gathered = parallel::map_pieces(pieces, |piece| {
+            let start = piece as u64 * GATHER_PIECE_ROWS;
+            gather(&rows.sub_set_by_position_range(start, start + GATHER_PIECE_ROWS))
+        });
+        let gathered = gathered.into_iter().collect::<Result<Vec<_>, _>>()?;
+        let pieces: Vec<&dyn Array> = gathered.iter().map(|piece| piece.as_ref()).collect();
+        concat(&pieces).map_err(arrow_failure)
     }
 
     fn prev_chunk(&self, rows: &RowSet) -> Result<ArrayRef, TableFailure> {
@@ -110,6 +132,43 @@ mod tests {
     fn source() -> FlatSource {
         let values = Int32Array::from(vec![Some(10), None, Some(12), Some(13), Some(14)]);
         FlatSource::new(ColumnType::Int, Arc::new(values)).unwrap()
+    }
+
+    /// More scattered rows than two pieces, read on one thread and on several: the same
+    /// cells in row order, strings among them, and the failure of a key past the end.
+    #[test]
+    fn many_scattered_rows_are_read_the_same_on_any_number_of_threads() {
+        let len = 5 * GATHER_PIECE_ROWS as i64 + 77;
+        let cell = |k: i64| (k % 11 != 0).then_some((k * 7919 % 100_003) as i32);
+        let ints = Int32Array::from_iter((0..len).map(cell));
+        let ints = FlatSource::new(ColumnType::Int, Arc::new(ints)).unwrap();
+        let text = StringArray::from_iter((0..len).map(|k| cell(k).map(|v| format!("s{v}"))));
+        let text = FlatSource::new(ColumnType::String, Arc::new(text)).unwrap();
+        // Runs of one to three keys with gaps, and one long run across a piece's edge.
+        let mut keys: Vec<RowKey> = (0..len).filter(|k| k % 5 < 1 + k % 3).collect();
+        keys.extend(200_000..200_000 + GATHER_PIECE_ROWS as i64);
+        let rows = RowSet::from_keys(keys);
+        assert!(rows.size() > 2 * GATHER_PIECE_ROWS);
+        let expected: Vec<Option<i32>> = rows.iter().map(cell).collect();
+        for threads in [1, 2, 4] {
+            parallel::with_threads(threads, || {
+                let chunk = ints.chunk(&rows).unwrap();
+                let read: Vec<Option<i32>> = chunk.as_primitive::<Int32Type>().iter().collect();
+                assert!(read == expected, "ints on {threads} threads");
+                let chunk = text.chunk(&rows).unwrap();
+                let read = chunk.as_string::<i32>().iter();
+                let expected = expected.iter().map(|v| v.map(|v| format!("s{v}")));
+                assert!(
+                    read.map(|v| v.map(str::to_string)).eq(expected),
+                    "strings on {threads} threads"
+                );
+                let mut beyond = rows.clone();
+                beyond.insert(&RowSet::from_range(len + 3, len + 3));
+                let failure = ints.chunk(&beyond).expect_err("a key past the end");
+                let alone = ints.chunk(&RowSet::from_keys([0, len + 3])).err();
+                assert_eq!(Some(failure.message), alone.map(|f| f.message));
+            });
+        }
     }
 
     #[test]
