@@ -3,7 +3,10 @@
 
 use super::tests::static_table;
 use super::{unstructured_filter, FilterError};
-use arrow::array::{Date32Array, DurationNanosecondArray, Int8Array, Time64NanosecondArray};
+use arrow::array::{
+    Date32Array, DurationNanosecondArray, Int8Array, Time64NanosecondArray,
+    TimestampNanosecondArray,
+};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
 use oxhaven_expr::Compiler;
@@ -27,7 +30,8 @@ fn refused(table: &Arc<dyn Table>, filter: &str) {
 }
 
 /// The table of the 4.22 probes: an instant of 2024-03-10T00:00:00Z plus `(5 - i) * 7`
-/// hours, null in row 2, and from it `D` (its UTC date), `LT` (its UTC time of day), `W`
+/// hours, null in row 2, and from it `D` (its UTC date), `LT` (its UTC time of day), `M`
+/// (its UTC date and time), `W`
 /// (its UTC day of the week) and `Z` (it in New York in the even rows, in UTC in the odd
 /// ones); `Dur` is an hour in rows 0 and 3, two minutes back elsewhere and null in row 4.
 fn time_table() -> Arc<dyn Table> {
@@ -67,9 +71,12 @@ fn time_table() -> Arc<dyn Table> {
             })
         })
         .collect();
+    let local = TimestampNanosecondArray::from(instants.clone())
+        .with_data_type(ColumnType::LocalDateTime.arrow_type());
     static_table(vec![
         ("D", ColumnType::LocalDate, Arc::new(days)),
         ("LT", ColumnType::LocalTime, Arc::new(times)),
+        ("M", ColumnType::LocalDateTime, Arc::new(local)),
         ("Dur", ColumnType::Duration, Arc::new(durations)),
         ("W", ColumnType::DayOfWeek, Arc::new(weekdays)),
         (
@@ -103,6 +110,33 @@ fn dates_and_times_of_day_match_and_range_like_java() {
     assert_eq!(kept(&table, "LT > '07:00:00.000000001'"), [0, 3]);
     assert_eq!(kept(&table, "LT in '04:00', '14:00:00'"), [1, 3]);
     refused(&table, "D == '2024-03-10T00:00'");
+}
+
+/// Behavior: the `LocalDateTime` convertor of
+/// MatchFilter.ColumnTypeConvertorFactory#getConvertor (DateTimeUtils#parseLocalDateTime)
+/// and SingleSidedComparableRangeFilter, null lowest.
+#[test]
+fn local_date_times_match_and_range_like_java() {
+    let table = time_table();
+    assert_eq!(kept(&table, "M == '2024-03-10T07:00'"), [4]);
+    assert_eq!(kept(&table, "M == '2024-03-10'"), [5]);
+    assert_eq!(kept(&table, "M == '2024-03-10T'"), [5]);
+    assert_eq!(kept(&table, "M == '2024-3-10T7:00'"), [4]);
+    assert_eq!(kept(&table, "M == null"), [2]);
+    assert_eq!(kept(&table, "M in null"), [2]);
+    assert_eq!(kept(&table, "M != null"), [0, 1, 3, 4, 5]);
+    assert_eq!(
+        kept(&table, "M in '2024-03-10T07:00', '2024-03-11T04:00:00.000'"),
+        [1, 4]
+    );
+    assert_eq!(
+        kept(&table, "M not in '2024-03-10T07:00', null"),
+        [0, 1, 3, 5]
+    );
+    assert_eq!(kept(&table, "M > '2024-03-10T07:00'"), [0, 1, 3]);
+    assert_eq!(kept(&table, "M < '2024-03-10T24:00'"), [2, 3, 4, 5]);
+    assert_eq!(kept(&table, "M <= null"), [2]);
+    assert_eq!(kept(&table, "M >= null"), [0, 1, 2, 3, 4, 5]);
 }
 
 /// Behavior: the `Enum` convertor (`Enum.valueOf`, the exact name, no `null`) and the

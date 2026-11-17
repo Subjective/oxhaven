@@ -332,6 +332,67 @@ pub(crate) fn local_time_nanos(text: &str) -> Option<Result<i64, FormulaError>> 
         + nanos))
 }
 
+/// The nanoseconds from 1970-01-01T00:00 to a local date and time (a cell of a
+/// `LocalDateTime` column); `None` when the text is none, and an error for one Java reads
+/// that this server does not, or that is outside the range of a cell.
+///
+/// Behavior: `io.deephaven.time.DateTimeUtils#parseLocalDateTime`. It tries
+/// `LocalDateTime#parse` (ISO, strict), then a date of four, two and two digits alone or
+/// followed by `T` (midnight), then the permissive date of `parseLocalDate`, a `T`, and the
+/// permissive time of `parseLocalTime`, resolved `SMART`. The permissive form reads every
+/// text the ISO form reads, and agrees on each value it reads; so a text is read when it
+/// is the date alone or the permissive date and time. The `T` may be lower case (both
+/// formatters parse case-insensitively). `SMART` reads `24:00` as midnight of the next
+/// day, and a day past the end of its month as the month's last day. Seen on Java 42.9:
+/// `2023-11-14t`, `2023-3-5T1:2:3.5`, `2021-02-29T24:00` (2021-03-01T00:00) and
+/// `2023-02-30` are read; `2023-3-5`, `2023-11-14 22:13` and `2023-11-14T22` are not.
+pub(crate) fn local_date_time_nanos(text: &str) -> Option<Result<i64, FormulaError>> {
+    const NANOS_PER_DAY: i64 = 86_400_000_000_000;
+    let (date, time) = match text.find(['T', 't']) {
+        Some(at) => (&text[..at], Some(&text[at + 1..])),
+        None => (text, None),
+    };
+    let short_date = || {
+        let bytes = date.as_bytes();
+        bytes.len() == 10
+            && bytes.iter().enumerate().all(|(at, b)| match at {
+                4 | 7 => *b == b'-',
+                _ => b.is_ascii_digit(),
+            })
+    };
+    let (days, nanos, next_day) = match time {
+        None | Some("") => {
+            if !short_date() {
+                return None;
+            }
+            match local_date_days(date)? {
+                Ok(days) => (days, 0, false),
+                Err(e) => return Some(Err(e)),
+            }
+        }
+        Some(time) => {
+            let days = match local_date_days(date)? {
+                Ok(days) => days,
+                Err(e) => return Some(Err(e)),
+            };
+            // The one error of `local_time_nanos` is an hour of 24 that is not midnight,
+            // which `SMART` refuses (seen on Java 42.9: `2023-11-14T24:30` is not read).
+            let nanos = local_time_nanos(time)?.ok()?;
+            (days, nanos, time.split(':').next() == Some("24"))
+        }
+    };
+    let days = days + i64::from(next_day);
+    Some(
+        days.checked_mul(NANOS_PER_DAY)
+            .and_then(|day| day.checked_add(nanos))
+            .ok_or_else(|| {
+                FormulaError::Unsupported(format!(
+                    "the date and time \"{text}\", outside the range of a LocalDateTime column"
+                ))
+            }),
+    )
+}
+
 /// The years, months and days of a period; `Some(None)` for one whose numbers no Java
 /// `int` holds, which Java refuses; `None` when the text is not a period.
 ///

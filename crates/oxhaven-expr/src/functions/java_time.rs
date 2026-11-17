@@ -6,8 +6,8 @@
 //! The cells are those `oxhaven_contracts::schema::ColumnType` describes for each type.
 
 use crate::parse::instant::{
-    days_from_civil, duration_nanos, local_date_days, local_time_nanos, period_parts, zone,
-    zone_id, zone_of_id, zoned_of_text, zoned_seconds, Zone,
+    days_from_civil, duration_nanos, local_date_days, local_date_time_nanos, local_time_nanos,
+    period_parts, zone, zone_id, zone_of_id, zoned_of_text, zoned_seconds, Zone,
 };
 use arrow::array::{
     Array, ArrayRef, AsArray, Date32Array, DurationNanosecondArray, Int32Array, StringArray,
@@ -42,6 +42,9 @@ pub(crate) enum TimeFn {
         quiet: bool,
     },
     ParseLocalTime {
+        quiet: bool,
+    },
+    ParseLocalDateTime {
         quiet: bool,
     },
     ParseDuration {
@@ -136,6 +139,9 @@ impl TimeFn {
             "parseLocalTime" | "parseLocalTimeQuiet" => {
                 (TimeFn::ParseLocalTime { quiet }, T::LocalTime)
             }
+            "parseLocalDateTime" | "parseLocalDateTimeQuiet" => {
+                (TimeFn::ParseLocalDateTime { quiet }, T::LocalDateTime)
+            }
             "parseDuration" | "parseDurationQuiet" => {
                 (TimeFn::ParseDuration { quiet }, T::Duration)
             }
@@ -182,6 +188,7 @@ impl TimeFn {
             (
                 TimeFn::ParseLocalDate { .. }
                 | TimeFn::ParseLocalTime { .. }
+                | TimeFn::ParseLocalDateTime { .. }
                 | TimeFn::ParseDuration { .. }
                 | TimeFn::ParsePeriod { .. }
                 | TimeFn::ParseTimeZone { .. }
@@ -458,7 +465,7 @@ fn read_with(
 /// Evaluates `function` of `arguments`, which have its parameter types.
 ///
 /// Behavior: `io.deephaven.time.DateTimeUtils#parseLocalDate`, `#parseLocalTime`,
-/// `#parseDuration`, `#parsePeriod`, `#parseTimeZone`, `#timeZone(String)`,
+/// `#parseLocalDateTime`, `#parseDuration`, `#parsePeriod`, `#parseTimeZone`, `#timeZone(String)`,
 /// `#parseZonedDateTime` and their `...Quiet` forms (null for null and for text of one
 /// character or none, and where the others throw), `#epochDaysToLocalDate`,
 /// `#epochDaysAsIntToLocalDate`, `#toLocalDate(Instant, ZoneId)`,
@@ -480,6 +487,15 @@ pub(crate) fn evaluate(function: TimeFn, arguments: &[ArrayRef]) -> Result<Array
                 read_with(local_time_nanos(text), text, "parseLocalTime")
             })?;
             Ok(local_times(nanos))
+        }
+        TimeFn::ParseLocalDateTime { quiet } => {
+            let nanos = parse_each(first, quiet, false, "local date time", |text| {
+                read_with(local_date_time_nanos(text), text, "parseLocalDateTime")
+            })?;
+            Ok(Arc::new(
+                TimestampNanosecondArray::from(nanos)
+                    .with_data_type(ColumnType::LocalDateTime.arrow_type()),
+            ))
         }
         TimeFn::ParseDuration { quiet } => {
             let nanos = parse_each(
