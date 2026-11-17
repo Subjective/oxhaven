@@ -160,6 +160,23 @@ fn days_and_durations_convert_as_java_does() {
     refused(&table, "Dur not in 'PT1H'");
 }
 
+/// Behavior: RangeFilter#init refuses a `DayOfWeek` and a `Duration`, and the filter falls
+/// back to its formula, `QueryLanguageFunctionUtils#greaterEquals(Comparable, Comparable)`
+/// and its relatives, which order null first. Seen on Java 42.9.
+#[test]
+fn days_and_durations_range_with_null_as_formulas() {
+    let table = time_table();
+    assert_eq!(kept(&table, "W >= null"), [0, 1, 2, 3, 4, 5]);
+    assert_eq!(kept(&table, "W > null"), [0, 1, 3, 4, 5]);
+    assert!(kept(&table, "W < null").is_empty());
+    assert_eq!(kept(&table, "W <= null"), [2]);
+    assert_eq!(kept(&table, "null < W"), [0, 1, 3, 4, 5]);
+    assert_eq!(kept(&table, "Dur >= null"), [0, 1, 2, 3, 4, 5]);
+    assert_eq!(kept(&table, "Dur > null"), [0, 1, 2, 3, 5]);
+    assert!(kept(&table, "Dur < null").is_empty());
+    assert_eq!(kept(&table, "Dur <= null"), [4]);
+}
+
 /// Behavior: java.time.ZonedDateTime#equals (the instant in the same zone) for a match,
 /// java.time.chrono.ChronoZonedDateTime#compareTo for a range.
 #[test]

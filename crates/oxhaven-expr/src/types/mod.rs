@@ -1592,9 +1592,13 @@ impl Checker<'_> {
                 // `less(Comparable, Comparable)` and its relatives, which order null
                 // first; a `Period` or a `ZoneId` is no `Comparable` (seen on Java 42.9:
                 // `Dur < null` and `ZD < null` are false, `P < null` and `Z < null` do not
-                // compile).
-                Some(column_type) if java_time::is_time_object(column_type) => {
-                    if !comparable(column_type) {
+                // compile). A `DayOfWeek` is an enum, a `Comparable` (seen on Java 42.9:
+                // `W >= null` is true and `W > null` true where `W` is not null).
+                Some(column_type)
+                    if java_time::is_time_object(column_type)
+                        || *column_type == ColumnType::DayOfWeek =>
+                {
+                    if !comparable(column_type) && *column_type != ColumnType::DayOfWeek {
                         return Err(refused());
                     }
                     let (left, right) = null_as(column_type.clone(), other);
