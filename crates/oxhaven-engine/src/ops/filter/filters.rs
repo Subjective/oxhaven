@@ -9,6 +9,7 @@ use super::literal::{convert_value, java_equals_ignore_case, Key};
 use super::pattern::{full_match, Matcher};
 use super::search;
 use crate::ops::zoned;
+use arrow::array::BooleanBufferBuilder;
 use arrow::array::{
     Array, ArrayRef, ArrowPrimitiveType, AsArray, BooleanArray, PrimitiveArray, StringArray,
 };
@@ -146,13 +147,15 @@ pub(super) enum Resolved {
     },
     /// The rows of a vector or array column in which at least one element passes
     /// `element`, a filter of one column made for a column of `element_type`. A null
-    /// cell fails the filter, as it does in Java.
+    /// cell fails the filter, as it does in Java, and with `null_element_fails` so does a
+    /// null element read before one that passes.
     ///
     /// Behavior: io.deephaven.engine.table.impl.select.vectorchunkfilter.VectorComponentFilterWrapper
     AnyElement {
         column: usize,
         element_type: ColumnType,
         element: Box<Resolved>,
+        null_element_fails: bool,
     },
     /// No row.
     ///
@@ -896,14 +899,21 @@ fn has_typed_kernel(column_type: &ColumnType) -> bool {
 ///
 /// Java reads each cell without a check for null, so a null cell fails the filter with a
 /// `NullPointerException`. A `boolean[]` cell is read as an `Object[]`, which fails with a
-/// `ClassCastException`.
+/// `ClassCastException`. With `null_element_fails`, the column is a vector of a primitive
+/// type, whose elements Java reads one by one, boxed, into a primitive: a null element
+/// fails the filter with a `NullPointerException` when it is read, which is when no element
+/// before it in its cell has passed.
 ///
 /// Behavior: io.deephaven.engine.table.impl.select.vectorchunkfilter.VectorChunkFilter
-/// and its subclasses (`IntVectorChunkFilter#doFilter`, `ObjectArrayChunkFilter#doFilter`
-/// and the others): a row matches when any element passes the element's chunk filter
+/// and its subclasses (`IntVectorChunkFilter#applySingleElements`,
+/// `IntArrayChunkFilter#applySingleElements`, `ObjectArrayChunkFilter#doFilter` and the
+/// others): a row matches when any element passes the element's chunk filter, and the
+/// elements of a vector are read through `ValueIteratorOfInt#next` and the like, which box
+/// a null element as `null` (io.deephaven.util.type.TypeUtils#box)
 fn any_element_mask(
     element_type: &ColumnType,
     element: &Resolved,
+    null_element_fails: bool,
     chunk: &ArrayRef,
 ) -> Result<BooleanBuffer, TableFailure> {
     let list = chunk
@@ -922,14 +932,31 @@ fn any_element_mask(
     let offsets = list.value_offsets();
     let (start, end) = (offsets[0] as usize, offsets[list.len()] as usize);
     let elements = list.values().slice(start, end - start);
+    let nulls = if null_element_fails {
+        sentinels_to_nulls(&elements)?.logical_nulls()
+    } else {
+        None
+    };
     let passed = element.mask(element_type, elements)?;
-    Ok(BooleanBuffer::collect_bool(list.len(), |row| {
+    let mut kept = BooleanBufferBuilder::new(list.len());
+    for row in 0..list.len() {
         let (from, to) = (
             offsets[row] as usize - start,
             offsets[row + 1] as usize - start,
         );
-        (from..to).any(|at| passed.value(at))
-    }))
+        let first_passed = (from..to).find(|at| passed.value(*at));
+        if let Some(nulls) = &nulls {
+            let read = first_passed.map_or(to, |at| at + 1);
+            if (from..read).any(|at| nulls.is_null(at)) {
+                return Err(failure(
+                    "java.lang.NullPointerException: a null element of a vector in a filter \
+                     of its elements",
+                ));
+            }
+        }
+        kept.append(first_passed.is_some());
+    }
+    Ok(kept.finish())
 }
 
 /// Scattered rows of an array in memory are judged with all the rows between them when the
@@ -1013,10 +1040,11 @@ impl Resolved {
         if let Resolved::AnyElement {
             element_type,
             element,
+            null_element_fails,
             ..
         } = self
         {
-            return any_element_mask(element_type, element, &chunk);
+            return any_element_mask(element_type, element, *null_element_fails, &chunk);
         }
         self.generic_mask(column_type, chunk)
     }

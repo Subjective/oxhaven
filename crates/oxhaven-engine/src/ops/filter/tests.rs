@@ -1636,23 +1636,36 @@ fn search(text: &str) -> Condition {
     }
 }
 
-/// A vector of ints, an array of strings and a vector of doubles.
+/// An array of ints, a vector and an array of strings, an array of doubles and a vector of
+/// instants. A vector of a primitive type is left out: the search fails on its null
+/// elements, which the random values have.
 fn lists_definition() -> TableDefinition {
     definition(&[
-        ("V", ColumnType::vector(ColumnType::Int)),
-        ("S", ColumnType::array(ColumnType::String)),
-        ("D", ColumnType::vector(ColumnType::Double)),
+        ("V", ColumnType::array(ColumnType::Int)),
+        ("S", ColumnType::vector(ColumnType::String)),
+        ("A", ColumnType::array(ColumnType::String)),
+        ("D", ColumnType::array(ColumnType::Double)),
+        ("T", ColumnType::vector(ColumnType::Instant)),
     ])
 }
 
 #[test]
 fn random_updates_through_searches_of_vectors_and_arrays() {
     let all = |_: &mut RandomUpdates| {};
-    for text in ["2", "a", "1.25", "-2147483648"] {
+    for text in ["2", "a", "1.25", "-2147483648", "2023-11-14T22:13:25 UTC"] {
         // A search that reads a null cell fails, so the null cells are dropped first.
         let operation = move |table: &Arc<dyn Table>| {
-            let present =
-                unstructured_filter(table, &["V != null", "S != null", "D != null"], &Compiler)?;
+            let present = unstructured_filter(
+                table,
+                &[
+                    "V != null",
+                    "S != null",
+                    "A != null",
+                    "D != null",
+                    "T != null",
+                ],
+                &Compiler,
+            )?;
             filter(&present, &[search(text)], &Compiler)
         };
         assert!(

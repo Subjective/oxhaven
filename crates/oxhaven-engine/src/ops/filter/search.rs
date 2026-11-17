@@ -53,10 +53,24 @@ pub(super) fn expand(
             // filter, which every quick filter exposes as a chunk filter, applied to the
             // elements; a row is kept when one passes.
             Some(element) => {
+                // A vector of a primitive type, which Java reads element by element,
+                // boxed.
+                let primitive = matches!(column.column_type, ColumnType::Vector(_))
+                    && matches!(
+                        element,
+                        ColumnType::Byte
+                            | ColumnType::Char
+                            | ColumnType::Short
+                            | ColumnType::Int
+                            | ColumnType::Long
+                            | ColumnType::Float
+                            | ColumnType::Double
+                    );
                 quick_filter(index, element, text)?.map(|filter| Resolved::AnyElement {
                     column: index,
                     element_type: element.clone(),
                     element: Box::new(filter),
+                    null_element_fails: primitive,
                 })
             }
         };
@@ -811,20 +825,9 @@ mod tests {
 
     #[test]
     fn a_vector_or_array_keeps_the_rows_with_an_element_the_text_is() {
-        // [1, 2], [], [null, 3], [2], [5, 2, 2]
+        // [1, 2], [], [4, 3], [2], [5, 2, 2]
         let lengths = [Some(2), Some(0), Some(2), Some(1), Some(3)];
-        let ints = || -> ArrayRef {
-            Arc::new(Int32Array::from(vec![
-                Some(1),
-                Some(2),
-                None,
-                Some(3),
-                Some(2),
-                Some(5),
-                Some(2),
-                Some(2),
-            ]))
-        };
+        let ints = || -> ArrayRef { Arc::new(Int32Array::from(vec![1, 2, 4, 3, 2, 5, 2, 2])) };
         for column_type in [
             ColumnType::vector(ColumnType::Int),
             ColumnType::array(ColumnType::Int),
@@ -833,12 +836,141 @@ mod tests {
             let found = |text: &str| found_in(&table, text, &["V"]);
             assert_eq!(found("2"), [1, 4, 5], "{column_type:?}");
             assert_eq!(found("5"), [5]);
-            assert_eq!(found("4"), [0i64; 0]);
+            assert_eq!(found("6"), [0i64; 0]);
             assert_eq!(found("x"), [0i64; 0]);
-            // the lowest int is its null, and finds the null element
-            assert_eq!(found("-2147483648"), [3]);
+            assert_eq!(found("-2147483648"), [0i64; 0]);
             // the key column too, with every column searched
             assert_eq!(found_in(&table, "3", &[]), [3]);
+        }
+    }
+
+    #[test]
+    fn a_null_element_of_an_array_or_an_object_vector_is_an_element_like_any() {
+        // [1, 2], [null, 3], [2]
+        let lengths = [Some(2), Some(2), Some(1)];
+        let ints: ArrayRef = Arc::new(Int32Array::from(vec![
+            Some(1),
+            Some(2),
+            None,
+            Some(3),
+            Some(2),
+        ]));
+        let table = listed(ColumnType::array(ColumnType::Int), &lengths, ints);
+        assert_eq!(found_in(&table, "2", &["V"]), [1, 3]);
+        assert_eq!(found_in(&table, "3", &["V"]), [2]);
+        // the lowest int is its null, and finds the null element
+        assert_eq!(found_in(&table, "-2147483648", &["V"]), [2]);
+        let strings: ArrayRef = Arc::new(StringArray::from(vec![
+            Some("a"),
+            Some("b"),
+            None,
+            Some("c"),
+            Some("b"),
+        ]));
+        let table = listed(ColumnType::vector(ColumnType::String), &lengths, strings);
+        assert_eq!(found_in(&table, "c", &["V"]), [2]);
+    }
+
+    /// The `K` of the rows the search keeps, or `None` if it fails with a
+    /// `NullPointerException`.
+    fn found_or_failed(table: &Arc<dyn Table>, text: &str, columns: &[&str]) -> Option<Vec<i64>> {
+        match filter(table, &[search(text, columns)], &Compiler) {
+            Ok(result) => Some(result.row_set().iter().map(|key| key / 10 + 1).collect()),
+            Err(FilterError::Failed(failure)) => {
+                assert!(
+                    failure.message.contains("NullPointerException"),
+                    "{failure}"
+                );
+                None
+            }
+            Err(other) => panic!("{text:?}: {other}"),
+        }
+    }
+
+    /// Behavior: recorded from Java 42.9 (`search_vectors`): `Cannot invoke
+    /// "java.lang.Integer.intValue()" because the return value of
+    /// "ValueIteratorOfInt.next()" is null`.
+    #[test]
+    fn a_null_element_of_a_primitive_vector_fails_the_search_unless_one_before_it_passes() {
+        // [1, 2, null], [null, 3], [], [3]
+        let lengths = [Some(3), Some(2), Some(0), Some(1)];
+        let ints = || -> ArrayRef {
+            Arc::new(Int32Array::from(vec![
+                Some(1),
+                Some(2),
+                None,
+                None,
+                Some(3),
+                Some(3),
+            ]))
+        };
+        let table = listed(ColumnType::vector(ColumnType::Int), &lengths, ints());
+        let found = |text: &str| found_or_failed(&table, text, &["V"]);
+        // 2 passes before the null of the first row; the second row starts with a null
+        assert_eq!(found("2"), None);
+        assert_eq!(found("1"), None);
+        assert_eq!(found("3"), None);
+        assert_eq!(found("-2147483648"), None);
+        // a text the elements cannot be makes no filter, and reads nothing
+        assert_eq!(found("x"), Some(vec![]));
+        // a row the key column keeps is not read, and 2 passes before the first row's null
+        assert_eq!(found_or_failed(&table, "2", &["K", "V"]), Some(vec![1, 2]));
+        let only_first = filter(&table, &[search("1", &["K"])], &Compiler).unwrap();
+        assert_eq!(found_or_failed(&only_first, "2", &["V"]), Some(vec![1]));
+        assert_eq!(found_or_failed(&only_first, "1", &["V"]), Some(vec![1]));
+        assert_eq!(found_or_failed(&only_first, "4", &["V"]), None);
+        // an array of the same cells reads the null element as one
+        let table = listed(ColumnType::array(ColumnType::Int), &lengths, ints());
+        assert_eq!(found_or_failed(&table, "3", &["V"]), Some(vec![2, 4]));
+
+        // every primitive type, the value Java reserves for null included
+        let lengths = [Some(2)];
+        let cases: Vec<(ColumnType, &str, ArrayRef)> = vec![
+            (
+                ColumnType::Double,
+                "0",
+                Arc::new(Float64Array::from(vec![Some(0.5), Some(-f64::MAX)])),
+            ),
+            (
+                ColumnType::Float,
+                "0",
+                Arc::new(Float32Array::from(vec![Some(0.5), None])),
+            ),
+            (
+                ColumnType::Long,
+                "7",
+                Arc::new(Int64Array::from(vec![Some(7), Some(i64::MIN)])),
+            ),
+            (
+                ColumnType::Short,
+                "7",
+                Arc::new(Int16Array::from(vec![Some(7), None])),
+            ),
+            (
+                ColumnType::Byte,
+                "7",
+                Arc::new(Int8Array::from(vec![Some(7), Some(i8::MIN)])),
+            ),
+            (
+                ColumnType::Char,
+                "7",
+                Arc::new(UInt16Array::from(vec![Some(55), Some(0xFFFF)])),
+            ),
+        ];
+        for (element, first, cells) in cases {
+            let table = listed(ColumnType::vector(element.clone()), &lengths, cells.clone());
+            assert_eq!(found_or_failed(&table, "8", &["V"]), None, "{element:?}");
+            assert_eq!(
+                found_or_failed(&table, first, &["V"]),
+                Some(vec![1]),
+                "{element:?}"
+            );
+            let table = listed(ColumnType::array(element.clone()), &lengths, cells);
+            assert_eq!(
+                found_or_failed(&table, "8", &["V"]),
+                Some(vec![]),
+                "{element:?}"
+            );
         }
     }
 
@@ -854,7 +986,7 @@ mod tests {
             Some(-1.5),
             Some(1.6),
         ]));
-        let table = listed(ColumnType::vector(ColumnType::Double), &lengths, doubles);
+        let table = listed(ColumnType::array(ColumnType::Double), &lengths, doubles);
         // [1.5, 1.6)
         assert_eq!(found_in(&table, "1.5", &["V"]), [1, 2]);
         assert_eq!(found_in(&table, "-1.5", &["V"]), [3]);
