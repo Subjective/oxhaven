@@ -1011,6 +1011,8 @@ fn a_rolling_formula_reads_a_window_by_position_as_java_does() {
         ),
         ("sum(x.subVector(-1, 5))", Ok("1 3 5 7 9")),
         ("x.subVector(-1, 5).size()", Ok("6 6 6 6 6")),
+        ("len(x.subVector(-1, 5))", Ok("6 6 6 6 6")),
+        ("len(len(x) > 1 ? x : x.subVector(0, 3))", Ok("3 2 2 2 2")),
         ("first(x.subVector(-1, 2))", fails()),
         ("first(x.subVector(0, 2))", Ok("1 1 2 3 4")),
         ("last(x.subVector(0, 2))", fails()),

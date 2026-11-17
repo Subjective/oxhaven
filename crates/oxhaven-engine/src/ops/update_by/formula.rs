@@ -71,8 +71,8 @@ const ARRAY_CAST: &str = "class [Ljava.lang.Object; cannot be cast to class [Lja
 /// row by row. `objects` tells whether a name is a window of a type that is not
 /// primitive. Gives what Java throws for every row, if the formula has such a call.
 ///
-/// With `unported!` for `len` of anything that is not a column or the result of a
-/// function.
+/// With `unported!` for `len` of an expression that reads a window of objects and is
+/// neither that column nor the result of a function.
 fn window_calls(expression: &Expr, objects: &dyn Fn(&str) -> bool) -> Option<&'static str> {
     let all = |parts: &[&Expr]| parts.iter().find_map(|part| window_calls(part, objects));
     match expression {
@@ -99,6 +99,10 @@ fn window_calls(expression: &Expr, objects: &dyn Fn(&str) -> bool) -> Option<&'s
             match (function.as_str(), arguments.as_slice()) {
                 ("len", [Expr::Column(name)]) if objects(name) => Some(ARRAY_CAST),
                 ("len", [Expr::Column(_) | Expr::Call { .. }]) => inner,
+                // Any vector of a primitive window, a slice of it included, has the
+                // number of elements a vector column's would have, whatever form the
+                // function takes it in.
+                ("len", [argument]) if !reads_objects(argument, objects) => inner,
                 ("len", [_]) => unported!(
                     "io.deephaven.engine.table.impl.updateby.rollingformula.ringbuffervectorwrapper.ObjectRingBufferVectorWrapper#toArray",
                     "len of an expression in a rolling formula, which Java fails for a window of objects"
@@ -115,6 +119,34 @@ fn window_calls(expression: &Expr, objects: &dyn Fn(&str) -> bool) -> Option<&'s
                 .iter()
                 .find_map(|part| window_calls(part, objects))
         }),
+    }
+}
+
+/// Whether `expression` names a window of objects anywhere.
+fn reads_objects(expression: &Expr, objects: &dyn Fn(&str) -> bool) -> bool {
+    let any = |parts: &[&Expr]| parts.iter().any(|part| reads_objects(part, objects));
+    match expression {
+        Expr::Column(name) => objects(name),
+        Expr::ColumnArrayAccess { column, position } => {
+            objects(&format!("{column}_")) || any(&[position])
+        }
+        Expr::Literal(_) | Expr::RowVariable(_) | Expr::ColumnVector(_) => false,
+        Expr::Unary { operand, .. } | Expr::Cast { operand, .. } => any(&[operand]),
+        Expr::Binary { left, right, .. } => any(&[left, right]),
+        Expr::Ternary {
+            condition,
+            if_true,
+            if_false,
+        } => any(&[condition, if_true, if_false]),
+        Expr::Call { arguments, .. } => arguments.iter().any(|part| reads_objects(part, objects)),
+        Expr::MethodCall {
+            receiver,
+            arguments,
+            ..
+        } => {
+            reads_objects(receiver, objects)
+                || arguments.iter().any(|part| reads_objects(part, objects))
+        }
     }
 }
 
