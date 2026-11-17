@@ -86,7 +86,7 @@ use crate::table::{memoized, CopyType, QueryTable, TableSpec, UnaryOperator};
 use aggregator::{Aggregator, Layout, Planned};
 use oxhaven_contracts::expr::{FormulaCompiler, FormulaError};
 use oxhaven_contracts::rowset::RowSet;
-use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
+use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableClass, TableDefinition};
 use oxhaven_contracts::table::{Table, TableAttributes, TableFailure};
 use oxhaven_contracts::unported;
 use oxhaven_contracts::update::TableUpdate;
@@ -876,18 +876,6 @@ fn make_operator(
             if columns.is_empty() {
                 return Err(AggregateError::NoSortColumns);
             }
-            if columns.len() > 3 {
-                unported!(
-                    "io.deephaven.engine.table.impl.by.AggregationProcessor.Converter#addSortedFirstOrLastOperator",
-                    "more than three sort columns, which Java compares as an ArrayTuple"
-                );
-            }
-            if kind == ParentKind::Blink {
-                unported!(
-                    "io.deephaven.engine.table.impl.by.DoubleBlinkSortedFirstOrLastChunkedOperator",
-                    "sorted first or last of a blink table"
-                );
-            }
             let mut sort = Vec::with_capacity(columns.len());
             let mut reads = Vec::with_capacity(columns.len() + 1);
             for name in columns {
@@ -917,6 +905,7 @@ fn make_operator(
             reads.push(input);
             let op = Box::new(SortedFirstLast::new(
                 matches!(spec, AggSpec::SortedFirst { .. }),
+                kind == ParentKind::Blink,
                 sort,
                 parent.column(input),
                 input_type.clone(),
@@ -1012,25 +1001,100 @@ pub fn aggregate_seeded(
     )
 }
 
-/// The text of Java's `Class#toString` for the type of a group-by column.
+/// Java's description of a group-by column: its name, the text of `Class#toString` for
+/// its data type and, for a vector or an array, for its component type.
 ///
 /// Behavior: io.deephaven.engine.table.ColumnDefinition#describeForCompatibility
-fn java_class(column_type: &ColumnType) -> &'static str {
-    match column_type {
-        ColumnType::Boolean => "class java.lang.Boolean",
-        ColumnType::Byte => "byte",
-        ColumnType::Char => "char",
-        ColumnType::Short => "short",
-        ColumnType::Int => "int",
-        ColumnType::Long => "long",
-        ColumnType::Float => "float",
-        ColumnType::Double => "double",
-        ColumnType::String => "class java.lang.String",
-        ColumnType::Instant => "class java.time.Instant",
-        other => unported!(
-            "io.deephaven.engine.table.ColumnDefinition#describeForCompatibility",
-            "a group-by column of type {other:?} that initial groups have with another type"
+fn describe_for_compatibility(name: &str, column_type: &ColumnType) -> String {
+    match column_type.list_element() {
+        None => format!("[{name}, {}]", java_class(column_type)),
+        Some(element) => format!(
+            "[{name}, {}, {}]",
+            java_class(column_type),
+            java_class(element)
         ),
+    }
+}
+
+/// The text of Java's `Class#toString` for the class of a column's values: the
+/// primitive's name, or `class` or `interface` and the binary name of the class.
+fn java_class(column_type: &ColumnType) -> String {
+    let primitive = match column_type {
+        ColumnType::Byte => Some("byte"),
+        ColumnType::Char => Some("char"),
+        ColumnType::Short => Some("short"),
+        ColumnType::Int => Some("int"),
+        ColumnType::Long => Some("long"),
+        ColumnType::Float => Some("float"),
+        ColumnType::Double => Some("double"),
+        _ => None,
+    };
+    if let Some(name) = primitive {
+        return name.to_string();
+    }
+    let binary = |column_type: &ColumnType| -> String {
+        match column_type {
+            ColumnType::Boolean => "java.lang.Boolean".into(),
+            ColumnType::String => "java.lang.String".into(),
+            ColumnType::Instant => "java.time.Instant".into(),
+            ColumnType::BigDecimal => "java.math.BigDecimal".into(),
+            ColumnType::BigInteger => "java.math.BigInteger".into(),
+            ColumnType::LocalDate => "java.time.LocalDate".into(),
+            ColumnType::LocalTime => "java.time.LocalTime".into(),
+            ColumnType::LocalDateTime => "java.time.LocalDateTime".into(),
+            ColumnType::Duration => "java.time.Duration".into(),
+            ColumnType::Period => "java.time.Period".into(),
+            ColumnType::ZoneId => "java.time.ZoneId".into(),
+            ColumnType::ZonedDateTime => "java.time.ZonedDateTime".into(),
+            ColumnType::DayOfWeek => "java.time.DayOfWeek".into(),
+            ColumnType::Table(TableClass::Table) => "io.deephaven.engine.table.Table".into(),
+            ColumnType::Table(TableClass::QueryTable) => {
+                "io.deephaven.engine.table.impl.QueryTable".into()
+            }
+            other => format!("{other:?}"),
+        }
+    };
+    match column_type {
+        ColumnType::Table(TableClass::Table) => format!("interface {}", binary(column_type)),
+        ColumnType::Vector(element) => {
+            let vector = match **element {
+                ColumnType::Byte => "Byte",
+                ColumnType::Char => "Char",
+                ColumnType::Short => "Short",
+                ColumnType::Int => "Int",
+                ColumnType::Long => "Long",
+                ColumnType::Float => "Float",
+                ColumnType::Double => "Double",
+                _ => "Object",
+            };
+            format!("interface io.deephaven.vector.{vector}Vector")
+        }
+        ColumnType::Array(_) => {
+            // `Class#getName` of an array: a `[` per dimension, then the element's code.
+            let mut name = String::new();
+            let mut element = column_type;
+            while let ColumnType::Array(inner) = element {
+                name.push('[');
+                element = inner;
+            }
+            match element {
+                ColumnType::Byte => name.push('B'),
+                ColumnType::Char => name.push('C'),
+                ColumnType::Short => name.push('S'),
+                ColumnType::Int => name.push('I'),
+                ColumnType::Long => name.push('J'),
+                ColumnType::Float => name.push('F'),
+                ColumnType::Double => name.push('D'),
+                ColumnType::Vector(_) => {
+                    let interface = java_class(element);
+                    let interface = interface.trim_start_matches("interface ");
+                    name.push_str(&format!("L{interface};"));
+                }
+                other => name.push_str(&format!("L{};", binary(other))),
+            }
+            format!("class {name}")
+        }
+        other => format!("class {}", binary(other)),
     }
 }
 
@@ -1081,10 +1145,9 @@ fn initial_group_columns(
         if *theirs != key.column_type {
             return Err(AggregateError::InvalidInitialGroups(format!(
                 "aggregation: column definition mismatch between input table and initial \
-                 groups table for {name}; input has [{name}, {}], initial groups has \
-                 [{name}, {}]",
-                java_class(&key.column_type),
-                java_class(theirs),
+                 groups table for {name}; input has {}, initial groups has {}",
+                describe_for_compatibility(&key.name, &key.column_type),
+                describe_for_compatibility(&key.name, theirs),
                 name = key.name,
             )));
         }

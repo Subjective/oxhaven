@@ -411,6 +411,103 @@ fn floating_point_keys_group_nans_and_zeros_and_show_the_first_seen() {
     assert_eq!(rows(&*by_f), ["-0.0|4", "NaN|2", "1.0|2"]);
 }
 
+/// Behavior: AggregationProcessor.Converter#addSortedFirstOrLastOperator. Up to three sort
+/// columns compare as Java's typed tuples, where `-0.0` equals `0.0`; more compare as an
+/// `ArrayTuple` of boxed values, where `Double#compareTo` puts `-0.0` first. Nulls are
+/// first and NaN last either way.
+#[test]
+fn more_than_three_sort_columns_order_negative_zero_first() {
+    let one = || int_opts(&[Some(1); 6]);
+    let parent = static_table(&[
+        (
+            "D",
+            ColumnType::Double,
+            double_opts(&[
+                Some(f64::NAN),
+                Some(0.0),
+                Some(-0.0),
+                Some(0.0),
+                None,
+                Some(f64::NAN),
+            ]),
+        ),
+        ("A", ColumnType::Int, one()),
+        ("B", ColumnType::Int, one()),
+        ("C", ColumnType::Int, one()),
+        (
+            "V",
+            ColumnType::Int,
+            int_opts(&[Some(0), Some(1), Some(2), Some(3), Some(4), Some(5)]),
+        ),
+    ]);
+    let sorted = |first: bool, columns: &[&str]| {
+        let columns = columns.iter().map(|c| c.to_string()).collect();
+        let spec = if first {
+            AggSpec::SortedFirst { columns }
+        } else {
+            AggSpec::SortedLast { columns }
+        };
+        let result = agg_by(&parent, &[agg(spec, &["V"])], &[]);
+        rows(&*result)
+    };
+    // Null first, NaN last; the zeros are one value of which first takes the earliest
+    // row and last the latest.
+    let without = sorted(false, &["D", "A", "B"]);
+    assert_eq!(sorted(true, &["D", "A", "B"]), ["4"]);
+    assert_eq!(without, ["5"]);
+    let zeros = static_table(&[
+        (
+            "D",
+            ColumnType::Double,
+            double_opts(&[Some(0.0), Some(-0.0), Some(0.0), Some(1.0)]),
+        ),
+        ("A", ColumnType::Int, int_opts(&[Some(1); 4])),
+        ("B", ColumnType::Int, int_opts(&[Some(1); 4])),
+        ("C", ColumnType::Int, int_opts(&[Some(1); 4])),
+        (
+            "V",
+            ColumnType::Int,
+            int_opts(&[Some(0), Some(1), Some(2), Some(3)]),
+        ),
+    ]);
+    let sorted_zeros = |first: bool, columns: &[&str]| {
+        let columns = columns.iter().map(|c| c.to_string()).collect();
+        let spec = if first {
+            AggSpec::SortedFirst { columns }
+        } else {
+            AggSpec::SortedLast { columns }
+        };
+        rows(&*agg_by(&zeros, &[agg(spec, &["V"])], &[]))
+    };
+    assert_eq!(sorted_zeros(true, &["D", "A", "B"]), ["0"]);
+    assert_eq!(sorted_zeros(true, &["D", "A", "B", "C"]), ["1"]);
+    // Last among the zeros: the positive zero of the latest row, after `-0.0`.
+    let zeros_last = static_table(&[
+        (
+            "D",
+            ColumnType::Double,
+            double_opts(&[Some(0.0), Some(-0.0), Some(-0.0)]),
+        ),
+        ("A", ColumnType::Int, int_opts(&[Some(1); 3])),
+        ("B", ColumnType::Int, int_opts(&[Some(1); 3])),
+        ("C", ColumnType::Int, int_opts(&[Some(1); 3])),
+        ("V", ColumnType::Int, int_opts(&[Some(0), Some(1), Some(2)])),
+    ]);
+    let last = |columns: Vec<String>| {
+        rows(&*agg_by(
+            &zeros_last,
+            &[agg(AggSpec::SortedLast { columns }, &["V"])],
+            &[],
+        ))
+    };
+    let names = |names: &[&str]| names.iter().map(|c| c.to_string()).collect::<Vec<_>>();
+    assert_eq!(last(names(&["D", "A", "B"])), ["2"]);
+    assert_eq!(last(names(&["D", "A", "B", "C"])), ["0"]);
+    // Four columns still put null first and NaN last.
+    assert_eq!(sorted(true, &["D", "A", "B", "C"]), ["4"]);
+    assert_eq!(sorted(false, &["D", "A", "B", "C"]), ["5"]);
+}
+
 #[test]
 fn several_key_columns_group_by_their_combination() {
     let parent = static_table(&[
