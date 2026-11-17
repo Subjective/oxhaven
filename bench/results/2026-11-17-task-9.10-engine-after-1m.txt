@@ -1,0 +1,49 @@
+1000000 rows, 5 repetitions, load average 2.19 2.23 1.92
+-- 1 thread(s), load average 2.19 2.23 1.92
+where_range                              3.6 ms  (min 3.5, max 3.7)     3.6 ns/row        0 new pages
+where_range (two filters)               15.7 ms  (min 15.4, max 24.1)    15.7 ns/row      425 new pages
+where_string                             5.9 ms  (min 5.7, max 6.0)     5.9 ns/row        0 new pages
+where_conj                               8.5 ms  (min 6.9, max 9.0)     8.5 ns/row        0 new pages
+update_arith                            12.3 ms  (min 11.7, max 13.4)    12.3 ns/row     4515 new pages
+update_cond                              2.8 ms  (min 2.7, max 3.0)     2.8 ns/row        0 new pages
+update_string                           17.9 ms  (min 17.7, max 18.5)    17.9 ns/row     4852 new pages
+build                                   57.3 ms  (min 45.6, max 59.0)    57.3 ns/row     4055 new pages
+build (numbers only)                    27.3 ms  (min 26.8, max 28.3)    27.3 ns/row        0 new pages
+-- 4 thread(s), load average 2.19 2.23 1.92
+where_range                              2.8 ms  (min 2.4, max 3.1)     2.8 ns/row      163 new pages
+where_range (two filters)                6.6 ms  (min 6.1, max 8.1)     6.6 ns/row       49 new pages
+where_string                             2.9 ms  (min 2.7, max 3.1)     2.9 ns/row        0 new pages
+where_conj                               7.1 ms  (min 6.6, max 7.1)     7.1 ns/row        4 new pages
+update_arith                            11.1 ms  (min 9.0, max 12.4)    11.1 ns/row     4978 new pages
+update_cond                              2.9 ms  (min 2.6, max 3.3)     2.9 ns/row        0 new pages
+update_string                            7.2 ms  (min 7.1, max 7.9)     7.2 ns/row      126 new pages
+build                                   31.7 ms  (min 28.3, max 40.7)    31.7 ns/row    11112 new pages
+build (numbers only)                    25.2 ms  (min 23.6, max 26.5)    25.2 ns/row    10117 new pages
+-- parts, one thread, load average 2.19 2.23 1.92
+scan A (count in range)                  1.1 ms  (min 1.0, max 1.5)     1.1 ns/row        0 new pages
+read A as a chunk                        0.0 ms  (min 0.0, max 0.0)     0.0 ns/row        0 new pages
+evaluate A >= 20000 && A < 60000         1.5 ms  (min 1.4, max 1.6)     1.5 ns/row        0 new pages
+evaluate A * 2 + 1                       1.9 ms  (min 1.8, max 2.1)     1.9 ns/row        0 new pages
+evaluate B * 1.5 - A                     4.4 ms  (min 3.6, max 5.4)     4.4 ns/row        0 new pages
+evaluate Id % 7                          2.5 ms  (min 2.4, max 2.7)     2.5 ns/row        0 new pages
+evaluate A > 50000 ? B : -B              3.6 ms  (min 3.5, max 4.0)     3.6 ns/row        0 new pages
+evaluate S + `_x`                       22.4 ms  (min 22.3, max 25.6)    22.4 ns/row     4852 new pages
+evaluate `s` + (Id % 1000)              26.4 ms  (min 25.8, max 28.6)    26.4 ns/row     3991 new pages
+row set of the kept 40%                  7.1 ms  (min 7.1, max 7.7)     7.1 ns/row      113 new pages
+read A at the kept 40%                   3.8 ms  (min 3.8, max 4.3)     3.8 ns/row        0 new pages
+read A at the kept 40%, 4 threads        1.6 ms  (min 1.5, max 2.0)     1.6 ns/row       12 new pages
+K10 = 3, of 1000000 rows                 3.5 ms  (min 3.1, max 4.2)     3.5 ns/row        0 new pages
+B > 50000.0, of 100000 rows              3.2 ms  (min 3.2, max 3.6)     3.2 ns/row        0 new pages
+A < 50000, of 65000 rows                 2.1 ms  (min 2.0, max 2.3)     2.1 ns/row        0 new pages
+ranges of the kept 40%                   1.3 ms  (min 1.3, max 1.5)     1.3 ns/row        0 new pages
+sequential builder over them             3.9 ms  (min 3.9, max 4.0)     3.9 ns/row        0 new pages
+a row set per piece, joined              3.4 ms  (min 3.4, max 4.1)     3.4 ns/row        0 new pages
+runs of the mask, by words               1.0 ms  (min 0.8, max 1.3)     1.0 ns/row        0 new pages
+a row set per piece, by words            2.6 ms  (min 2.6, max 2.7)     2.6 ns/row        0 new pages
+pack A >= 20000 && A < 60000             0.6 ms  (min 0.6, max 0.6)     0.6 ns/row        0 new pages
+join pieces of doubles: concat           0.7 ms  (min 0.6, max 0.8)     0.7 ns/row        0 new pages
+join pieces of doubles: one buffer       1.0 ms  (min 1.0, max 1.1)     1.0 ns/row        0 new pages
+evaluate B * 1.5 into one buffer         1.1 ms  (min 1.0, max 1.4)     1.1 ns/row        0 new pages
+S + `_x`: a String per row              43.6 ms  (min 42.0, max 44.3)    43.6 ns/row     4367 new pages
+S + `_x`: offsets and bytes              5.5 ms  (min 5.4, max 5.7)     5.5 ns/row        0 new pages
+load average 2.10 2.21 1.91

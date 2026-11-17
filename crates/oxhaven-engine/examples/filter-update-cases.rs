@@ -82,8 +82,22 @@ fn source(rows: i64) -> RecordBatch {
     RecordBatch::try_new(Arc::new(Schema::new(fields)), columns).expect("the source columns")
 }
 
+/// The pages of memory the process has been given so far without reading a disk: each is
+/// one page of new memory written for the first time (`minflt` of `/proc/self/stat`).
+fn page_faults() -> u64 {
+    std::fs::read_to_string("/proc/self/stat")
+        .ok()
+        .and_then(|text| {
+            // The fields after the command name, which may hold spaces and ends in `)`.
+            let after = text.rsplit_once(')')?.1;
+            after.split_whitespace().nth(7)?.parse().ok()
+        })
+        .unwrap_or(0)
+}
+
 fn time(what: &str, rows: i64, reps: usize, mut run: impl FnMut()) {
     run();
+    let faults = page_faults();
     let mut times: Vec<f64> = (0..reps)
         .map(|_| {
             let started = Instant::now();
@@ -91,10 +105,11 @@ fn time(what: &str, rows: i64, reps: usize, mut run: impl FnMut()) {
             started.elapsed().as_secs_f64() * 1e3
         })
         .collect();
+    let faults = (page_faults() - faults) / reps.max(1) as u64;
     times.sort_by(f64::total_cmp);
     let median = times[times.len() / 2];
     println!(
-        "{what:<34} {median:>9.1} ms  (min {:.1}, max {:.1})  {:>6.1} ns/row",
+        "{what:<34} {median:>9.1} ms  (min {:.1}, max {:.1})  {:>6.1} ns/row  {faults:>7} new pages",
         times[0],
         times[times.len() - 1],
         median * 1e6 / rows as f64
@@ -232,6 +247,32 @@ fn parts(table: &Arc<dyn Table>, rows: i64, reps: usize) {
             }))
         });
         black_box(concat_ordered(parts));
+    });
+    // The same with the runs read from the mask's words (task 9.10), and its two halves:
+    // the runs alone, kept in a vector that is made once, and the row sets from them.
+    let mut runs: Vec<RowRange> = Vec::with_capacity(kept.len());
+    time("runs of the mask, by words", rows, reps, || {
+        runs.clear();
+        oxhaven_column::bits::for_each_run(kept, 0, kept.len(), |start, end| {
+            runs.push(RowRange::new(start as i64, end as i64 - 1));
+        });
+        black_box(runs.len());
+    });
+    time("a row set per piece, by words", rows, reps, || {
+        let pieces = oxhaven_column::parallel::pieces_of(kept.len(), 1 << 16);
+        let parts = pieces.iter().map(|&(offset, length)| {
+            let mut runs = Vec::new();
+            oxhaven_column::bits::for_each_run(kept, offset, offset + length, |start, end| {
+                runs.push(RowRange::new(start as i64, end as i64 - 1));
+            });
+            RowSet::from_ranges(runs)
+        });
+        black_box(concat_ordered(parts));
+    });
+    time("pack A >= 20000 && A < 60000", rows, reps, || {
+        let low = oxhaven_column::bits::pack(ints.values(), |v| v >= 20_000);
+        let high = oxhaven_column::bits::pack(ints.values(), |v| v < 60_000);
+        black_box(&low & &high);
     });
     black_box(values.len());
     joins(table, rows, reps);

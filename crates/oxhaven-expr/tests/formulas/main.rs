@@ -18,6 +18,7 @@ mod logic;
 mod objects;
 mod pieces;
 mod recorded;
+mod scalars;
 mod statics;
 mod tagged;
 mod time;
