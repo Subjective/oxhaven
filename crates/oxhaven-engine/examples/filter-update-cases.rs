@@ -207,9 +207,9 @@ fn main() {
     }
     for count in threads {
         println!("-- {count} thread(s), load average {}", load());
-        cases(&table, rows, reps);
+        oxhaven_column::parallel::with_threads(count, || cases(&table, rows, reps));
     }
     println!("-- parts, one thread, load average {}", load());
-    parts(&table, rows, reps);
+    oxhaven_column::parallel::with_threads(1, || parts(&table, rows, reps));
     println!("load average {}", load());
 }
