@@ -13,7 +13,7 @@
 use super::sources::FormulaInput;
 use arrow::array::ArrayRef;
 use oxhaven_column::FlatSource;
-use oxhaven_contracts::expr::{Formula, FormulaCompiler, FormulaError};
+use oxhaven_contracts::expr::{Expr, Formula, FormulaCompiler, FormulaError};
 use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, TableFailure};
@@ -39,13 +39,22 @@ impl ArrayFormula {
         expression: &str,
         inputs: &[(&str, ColumnType)],
     ) -> Result<Self, FormulaError> {
+        Self::compile_parsed(compiler, &compiler.parse(expression)?, inputs)
+    }
+
+    /// [`compile`](Self::compile) of an expression already parsed.
+    pub fn compile_parsed(
+        compiler: &dyn FormulaCompiler,
+        expression: &Expr,
+        inputs: &[(&str, ColumnType)],
+    ) -> Result<Self, FormulaError> {
         let columns = inputs
             .iter()
             .map(|(name, column_type)| ColumnDefinition::new(*name, column_type.clone()))
             .collect();
         let definition =
             TableDefinition::new(columns).map_err(|error| FormulaError::Type(error.to_string()))?;
-        let formula = compiler.compile(&compiler.parse(expression)?, &definition)?;
+        let formula = compiler.compile(expression, &definition)?;
         if formula.uses_row_variables() || !formula.column_arrays().is_empty() {
             return Err(FormulaError::Unsupported(
                 "i, ii, k or a column array in a formula over the values of groups or windows"

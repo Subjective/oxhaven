@@ -1037,20 +1037,15 @@ async fn a_rolling_formula_is_evaluated_over_the_windows_of_its_columns() {
 async fn an_operator_that_is_not_ported_is_unimplemented_by_name() {
     let mut c = Connected::start().await;
     numbers(&mut c, 1).await;
-    let wrapper = "io.deephaven.engine.table.impl.updateby.rollingformula.ringbuffervectorwrapper";
+    let operator =
+        "io.deephaven.engine.table.impl.updateby.rollingformula.BaseRollingFormulaOperator";
     let cases = [
         (
-            rolling_formula("x.get(0)", "x", 2.0, 0.0),
+            rolling_formula("x.subVector(0, 1)", "x", 2.0, 0.0),
             format!(
-                "not ported: {wrapper}.IntRingBufferVectorWrapper#get: get in a rolling \
-                 formula: outside a window Java throws NoSuchElementException"
-            ),
-        ),
-        (
-            rolling_formula("X = N[1]", "", 2.0, 0.0),
-            format!(
-                "not ported: {wrapper}.IntRingBufferVectorWrapper#get: [] in a rolling \
-                 formula: outside a window Java throws NoSuchElementException"
+                "not ported: {operator}#getChunkSetter: a rolling formula whose result is a \
+                 slice of its window: Java stores the slice, which reads the window's buffer \
+                 as it is when the result is read"
             ),
         ),
         (
