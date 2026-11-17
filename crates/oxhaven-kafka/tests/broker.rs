@@ -471,9 +471,9 @@ fn a_group_commits_its_position_and_the_next_table_starts_there() {
 
 #[test]
 #[ignore = "needs a broker: crates/oxhaven-kafka/tests/broker.sh"]
-fn compressed_batches_are_read_except_gzip() {
+fn compressed_batches_are_read() {
     let graph = SteppedUpdateGraph::new();
-    for codec in ["snappy", "lz4", "zstd"] {
+    for codec in ["gzip", "snappy", "lz4", "zstd"] {
         let topic = fresh(codec);
         // Long and repetitive, so that the batch is in fact stored compressed.
         let long = format!("{codec} ").repeat(400);
@@ -484,11 +484,11 @@ fn compressed_batches_are_read_except_gzip() {
         assert_eq!(strings(table.as_ref(), "V"), expected, "{codec}");
     }
 
-    // `oxhaven_gzip` is filled by broker.sh: librdkafka without zlib cannot produce it.
+    // `oxhaven_gzip` is filled by broker.sh with Java's own producer and its gzip.
     let table = values_of(&graph, "oxhaven_gzip", InitialOffset::Beginning, &[]);
-    let failure = wait_for_failure(&graph, &table);
-    let java = "org.apache.kafka.common.record.DefaultRecordBatch#compressedIterator";
-    assert!(failure.contains(java), "{failure}");
+    wait_for(&graph, table.as_ref(), 1);
+    let expected = "a record in a batch compressed with gzip";
+    assert_eq!(strings(table.as_ref(), "V"), [Some(expected.to_owned())]);
 }
 
 #[test]
@@ -1087,6 +1087,48 @@ fn a_table_published_to_a_topic_is_consumed_back() {
         [some(r#"{"N":1,"S":"a"}"#), some(r#"{"N":2}"#), None]
     );
     publication.stop().unwrap();
+}
+
+/// `compression.type=gzip` publishes gzip batches, which come back as they were. broker.sh
+/// checks with the broker's own `kafka-dump-log.sh` that the topics this test writes,
+/// `oxhaven_produced_gzip_*`, hold gzip batches.
+#[test]
+#[ignore = "needs a broker: crates/oxhaven-kafka/tests/broker.sh"]
+fn a_table_is_published_in_gzip_batches() {
+    let topic = fresh("produced_gzip");
+    let keys = ["a", "b", "c"];
+    let mut published = produce_options(&topic, simple("K"), simple("V"));
+    published.partition = Some(0);
+    published.config.extend([
+        ("compression.type".to_owned(), "gzip".to_owned()),
+        ("linger.ms".to_owned(), "100".to_owned()),
+    ]);
+    // Long and repetitive, so that compressing pays and librdkafka keeps the gzip batch.
+    let values: Vec<String> = keys
+        .iter()
+        .map(|key| format!("v{key} ").repeat(300))
+        .collect();
+    let table = ReferenceTable::new_static(
+        definition(&[("K", ColumnType::String), ("V", ColumnType::String)]),
+        RowSet::flat(keys.len() as u64),
+        vec![
+            texts(&keys.map(Some)),
+            texts(
+                &values
+                    .iter()
+                    .map(|value| Some(value.as_str()))
+                    .collect::<Vec<_>>(),
+            ),
+        ],
+    );
+    let publication = oxhaven_kafka::produce(table, &published).unwrap();
+    assert_eq!(publication.failure(), None);
+    let expected: Vec<Record> = keys
+        .iter()
+        .zip(&values)
+        .map(|(key, value)| (0, Some((*key).to_owned()), Some(value.clone())))
+        .collect();
+    assert_eq!(records_of(&topic, 3), expected);
 }
 
 /// A key's partition is Java's: `murmur2` of its bytes (probe `p3`: of a topic of two

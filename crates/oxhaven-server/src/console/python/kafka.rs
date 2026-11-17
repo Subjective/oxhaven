@@ -664,6 +664,7 @@ mod tests {
              assert kp.json_spec().j_object['include'] is None\n\
              stop = kp.produce(EMPTY, CFG, 't', key_spec=kp.simple_spec('K'), value_spec=V)\n\
              stop()\n\
+             kp.produce(EMPTY, {{**CFG, 'compression.type': 'gzip'}}, 't', IGNORE, V)()\n\
              try:\n    stop()\n    raise AssertionError('stopped twice')\n\
              except Exception as e:\n    assert 'failed to stop publishing to Kafka' in str(e), e\n"
         ));
@@ -725,14 +726,6 @@ mod tests {
             PRODUCE,
         );
         assert!(missing.contains("because \"cd\" is null"), "{missing}");
-        let gzip = failure(
-            "kp.produce(EMPTY, {**CFG, 'compression.type': 'gzip'}, 't', IGNORE, V)",
-            PRODUCE,
-        );
-        assert!(
-            gzip.starts_with("not ported yet: org.apache.kafka.common.compress.GzipCompression"),
-            "{gzip}"
-        );
         let unreachable = failure(
             "kp.produce(empty_table(2).update('V = i'), CFG, 't', IGNORE, V)",
             PRODUCE,

@@ -23,6 +23,7 @@ docker run -d --name "$name" --network host \
   -e KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT \
   -e "KAFKA_CONTROLLER_QUORUM_VOTERS=1@127.0.0.1:$controller" \
   -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 -e KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS=0 \
+  -e KAFKA_LOG_DIRS=/tmp/kraft-combined-logs \
   -e KAFKA_HEAP_OPTS="-Xmx384m -Xms128m" "$image" >/dev/null
 trap 'docker rm -f "$name" >/dev/null' EXIT
 
@@ -63,7 +64,7 @@ d|v4
 e|v5
 f|v6
 RECORDS
-# The build of librdkafka in the tests has no zlib, so it cannot write this topic itself.
+# gzip as Java's producer writes it; the tests write their own with librdkafka's.
 kafka kafka-console-producer.sh --topic oxhaven_gzip --compression-codec gzip <<'RECORDS'
 a record in a batch compressed with gzip
 RECORDS
@@ -72,6 +73,16 @@ cd "$repo"
 export OXHAVEN_KAFKA_BROKER="127.0.0.1:$port"
 restarted=a_table_goes_on_after_its_broker_restarts
 cargo test -p oxhaven-kafka --test broker -- --ignored --skip "$restarted"
+# What `a_table_is_published_in_gzip_batches` wrote is stored in gzip batches.
+gzipped=$(docker exec "$name" sh -c 'ls -d /tmp/kraft-combined-logs/oxhaven_produced_gzip_*-0')
+for dir in $gzipped; do
+  dump=$(docker exec "$name" /opt/kafka/bin/kafka-dump-log.sh --files "$dir/00000000000000000000.log")
+  if ! grep -q 'compresscodec: gzip' <<<"$dump" || grep -q 'compresscodec: none' <<<"$dump"; then
+    echo "$dir holds batches that are not gzip:" >&2
+    echo "$dump" >&2
+    exit 1
+  fi
+done
 # Alone, because the other tests would lose their broker: the container is restarted
 # while a table reads from it.
 OXHAVEN_KAFKA_RESTART="docker restart $name" \

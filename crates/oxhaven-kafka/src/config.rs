@@ -399,14 +399,7 @@ impl ProducerSettings {
         };
         let compression = match property(config, "compression.type").map(str::trim) {
             None => "none",
-            Some(codec @ ("none" | "snappy" | "lz4" | "zstd")) => codec,
-            // librdkafka has no zlib here: docs/KAFKA.md, "The client library".
-            Some("gzip") => {
-                return Err(not_ported(
-                    "org.apache.kafka.common.compress.GzipCompression",
-                    "compression.type=gzip",
-                ))
-            }
+            Some(codec @ ("none" | "gzip" | "snappy" | "lz4" | "zstd")) => codec,
             Some(codec) => {
                 let why = "String must be one of: none, gzip, snappy, lz4, zstd";
                 return Err(config_exception("compression.type", codec, why));
@@ -607,6 +600,8 @@ mod tests {
         assert_eq!(client.get("message.max.bytes"), Some("1048576"));
         assert_eq!(client.get("batch.size"), Some("16384"));
         assert_eq!(client.get("compression.type"), Some("none"));
+        let gzip = producer(&[BROKER, ("compression.type", "gzip")]).unwrap();
+        assert_eq!(gzip.client.get("compression.type"), Some("gzip"));
     }
 
     /// Behavior: ProducerConfig#postProcessAndValidateIdempotenceConfigs
@@ -652,7 +647,6 @@ mod tests {
                 .contains("Must set acks to all in order to use the idempotent producer")
         );
         for (name, value, java) in [
-            ("compression.type", "gzip", "GzipCompression"),
             ("transactional.id", "tx", "KafkaProducer#initTransactions"),
             ("partitioner.class", "p.P", "producer.Partitioner"),
             ("interceptor.classes", "p.I", "ProducerInterceptor"),

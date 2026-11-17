@@ -18,7 +18,7 @@ sized tasks at the end.
    `rdkafka-sys` carries, in its smallest form plus Zstandard. The owner allowed its
    licences on 2026-11-16 (`PORTING.md`, "Dependencies"). TLS, SASL and gzip are not
    built: each needs a library that ruling does not cover. "The client library" has the
-   table. The wire client of the first slice is removed.
+   table. Task 7.4.5 turned on gzip, TLS and SASL under the owner's ruling of 2026-11-17. The wire client of the first slice is removed.
 4. **A record source is a trait** (`RecordSource`: `poll` returns the records that
    arrived). The table, the specs and the decoding are written against it: tests script
    one, and `client::ClientSource` is the one over librdkafka.
@@ -79,8 +79,9 @@ and `ring(n)` is `RingTableTools.of` of it.
   `ProtobufProtocol`s (below);
 - `KeyValueSpec.IGNORE`, and the six common columns with their properties;
 - the consumer properties of "Consumer properties";
-- plaintext brokers; record batches that are uncompressed or compressed with snappy, lz4
-  or zstd; transactional topics at either `isolation.level`; a broker that restarts.
+- plaintext brokers; record batches that are uncompressed or compressed with gzip,
+  snappy, lz4 or zstd; transactional topics at either `isolation.level`; a broker that
+  restarts.
 
 Everything else is refused with the name of what Java does; "Refused, by Java method"
 has the list.
@@ -550,8 +551,8 @@ Java's defaults are set where librdkafka's differ: `message.timeout.ms` 120000,
 
 - `acks` takes `all`, `-1`, `0` and `1`. Anything else fails with Java's
   `ConfigException`.
-- `compression.type` takes `none`, `snappy`, `lz4` and `zstd`. `gzip` is refused, for
-  want of zlib (see "The client library").
+- `compression.type` takes `none`, `gzip`, `snappy`, `lz4` and `zstd` (gzip since task
+  7.4.5).
 - `enable.idempotence` follows `ProducerConfig`:
   - left unset, it is on unless `acks` is not `all`, `retries` is 0, or more than five
     requests may be in flight;
@@ -597,7 +598,8 @@ Java; each holds the blink table, which ends when they are dropped.
 
 ### What is built
 
-`rdkafka` 0.39.0 and `rdkafka-sys` 4.10.0 (MIT) with the features `zstd` and nothing else:
+`rdkafka` 0.39.0 and `rdkafka-sys` 4.10.0 (MIT) with the features `zstd` and
+`libz-static` (task 7.4.5) and nothing else:
 no default features (`libz`, `tokio`), and librdkafka's own `configure` build, not the
 `cmake-build` feature, which would add the `cmake` crate for nothing. `rdkafka-sys`
 compiles the librdkafka 2.12.1 sources it carries and links the result statically. Its
@@ -622,6 +624,8 @@ Crates added to `Cargo.lock`:
 | --- | --- | --- | --- |
 | `rdkafka` | 0.39.0 | MIT | the client's Rust interface |
 | `rdkafka-sys` | 4.10.0+2.12.1 | MIT | the librdkafka sources and their build |
+| `libz-sys` | 1.1.33 | MIT OR Apache-2.0 | since task 7.4.5: the zlib sources for gzip, compiled and linked statically (`libz-static`); zlib itself is under the zlib licence (ruling of 2026-11-17) |
+| `vcpkg` | 0.2.15 | MIT OR Apache-2.0 | of `libz-sys`, at build time; used on Windows only |
 | `num_enum`, `num_enum_derive` | 0.7.6 | BSD-3-Clause OR MIT OR Apache-2.0 | of `rdkafka-sys`: error codes as an enum |
 | `proc-macro-crate` | 3.5.0 | MIT OR Apache-2.0 | of `num_enum_derive`, at build time |
 | `toml_edit`, `toml_datetime`, `toml_parser` | 0.25.19, 1.1.3, 1.1.5 | MIT OR Apache-2.0 | of `proc-macro-crate`, at build time |
@@ -658,7 +662,6 @@ C files compiled into the library, by the licence librdkafka's `LICENSES.txt` gi
 | Feature of `rdkafka` | Gives | Adds | Licence of what it adds | Why it is off |
 | --- | --- | --- | --- | --- |
 | `libz` | gzip batches | the crate `libz-sys` (MIT OR Apache-2.0), which links the machine's `libz.so` | zlib licence | an external zlib, which the ruling excludes |
-| `libz-static` | gzip batches | `libz-sys` compiling the zlib sources it carries | zlib licence | allowed by the ruling of 2026-11-17; not turned on yet (task 7.4.5) |
 | `ssl` | TLS; SASL SCRAM and OAUTHBEARER | `openssl-sys` (MIT) with `openssl-macros`, `vcpkg` and others, and the machine's OpenSSL | Apache-2.0 (OpenSSL 3) | allowed by the ruling of 2026-11-17; not turned on yet (task 7.4.5) |
 | `ssl-vendored` | the same | `openssl-src` (MIT OR Apache-2.0), which compiles OpenSSL from source (minutes of build, needs `perl`) | Apache-2.0 | allowed by the ruling of 2026-11-17; not turned on yet (task 7.4.5) |
 | `gssapi` (alias `sasl`) | SASL GSSAPI (Kerberos) | `ssl`, and `sasl2-sys` (Apache-2.0) with Cyrus SASL | BSD-4-Clause-like (Cyrus SASL, with an advertising clause) | off until someone needs Kerberos (ruling of 2026-11-17) |
@@ -673,11 +676,11 @@ what is generally known of the C libraries; none of these crates was downloaded,
 their own dependency lists were not checked. Check them again before turning one on.
 
 **gzip, answered.** librdkafka has no zlib of its own: gzip needs the `libz` feature,
-which is an external zlib either way (the machine's, or `libz-sys`'s copy). So gzip is
-off, and a gzip batch fails the table by the name
-`org.apache.kafka.common.record.DefaultRecordBatch#compressedIterator`. Java reads it
-(probed). gzip is Kafka's oldest codec and common in old topics; the owner allowed
-`libz-static` on 2026-11-17, and turning it on is task 7.4.5.
+which is an external zlib either way (the machine's, or `libz-sys`'s copy). Until task
+7.4.5 gzip was off and a gzip batch failed the table by name. The owner allowed
+`libz-static` on 2026-11-17, and task 7.4.5 turned it on: `libz-sys` 1.1.33 compiles the
+zlib 1.4 sources it carries (`src/zlib`; its `zlib-ng` copy is not compiled) and links
+them statically, so the binaries link no `libz.so` (`ldd`).
 
 **SASL PLAIN** is in librdkafka's own BSD-2-Clause code and is compiled, so
 `SASL_PLAINTEXT` with `sasl.mechanism=PLAIN` needs no further licence. It is still
@@ -733,7 +736,7 @@ documented contents and off this machine, which has the same tools.
 | Publishing Avro and the record columns to a scripted `RecordSink`, with a registry the test serves: the wire format, the registered schemas and their requests, published schemas, the writer's failures, removed rows, a topic without metadata | `tests/produce_avro.rs`; Java's `Schema#toString` in `src/avro_text.rs` | nothing | every pull request |
 | Publishing to a broker: a round trip through `consume`, the partitions of keys on a topic of two, `partition`, the metadata timeouts, an Avro round trip through a registry the test serves, records whose topic, partition and timestamp come from columns | `tests/broker.rs`, ignored unless asked for | Docker | `tests/broker.sh` |
 | The Python modules: specs, checks, refusals, an unreachable broker | `console::python::kafka` | Python | the `python-console-on` job |
-| The client against a broker: offsets, groups and what is committed, snappy, lz4, zstd, the gzip refusal, the listing of topics, a broker that restarts, an Avro round trip (a registry served by the test, no registry image), a partitioned table of a topic of two partitions and of records that arrive later, and a topic made by the request that has no partitions | `tests/broker.rs`, ignored unless asked for | Docker | `tests/broker.sh`: the `kafka-broker` job |
+| The client against a broker: offsets, groups and what is committed, gzip (written by Java's producer and by librdkafka's), snappy, lz4, zstd, the listing of topics, a broker that restarts, an Avro round trip (a registry served by the test, no registry image), a partitioned table of a topic of two partitions and of records that arrive later, and a topic made by the request that has no partitions | `tests/broker.rs`, ignored unless asked for | Docker | `tests/broker.sh`: the `kafka-broker` job |
 | The same rows as Java | probes of both servers on one broker | Docker, the Java reference | by hand, in tasks 7.4.1, 7.4.4, 7.4.6, 7.4.7, 7.5.1 and 7.5.2; a recorded corpus is a task of its own, not yet sized (it changes `oracle/`) |
 
 **A broker on this machine.** Docker is installed but no daemon runs. One started by hand
@@ -741,8 +744,10 @@ documented contents and off this machine, which has the same tools.
 container on the host network) pulled `apache/kafka:3.9.1` (204 MB) from Docker Hub and
 ran it in KRaft mode on `127.0.0.1:19092`. `tests/broker.sh` does the same for the tests:
 it starts the container, creates and fills three topics with the image's own tools (one
-of them compressed with gzip, which the tests' own producer cannot write), runs the tests
-and removes the container. The other records the tests produce themselves, with
+of them compressed with gzip by Java's producer), runs the tests and removes the
+container. After the tests it reads the log of the topics that `produce` wrote with
+`compression.type=gzip` with the broker's `kafka-dump-log.sh`, and fails unless every batch
+there is gzip. The other records the tests produce themselves, with
 librdkafka's producer, into topics named after the time. The test of a restart runs
 alone, after the others, with `docker restart` as the command it is given. The tests
 refuse a broker address that is not `127.0.0.1` or `localhost`.
@@ -784,7 +789,8 @@ broker under the open tables of both.
   records arrived); every table after the broker restarted and more records arrived;
   the list of topics and its order; which of the 25 calls raise.
 - Different, by design for now: a gzip topic (Java reads
-  it, Oxhaven fails the table by name); `auto.offset.reset=by_duration:PT1H` (Java
+  it, Oxhaven failed the table by name until task 7.4.5, which reads it);
+  `auto.offset.reset=by_duration:PT1H` (Java
   accepts, Oxhaven refuses by name); `security.protocol` (Java fails for want of a TLS
   broker or a JAAS entry, Oxhaven refuses by name).
 - Different in text only (`PARITY.md` A5): the Python traceback around an error; an
@@ -1006,7 +1012,6 @@ broker under the open tables of both.
 | What | Named in the refusal |
 | --- | --- |
 | `security.protocol` other than `PLAINTEXT` | `org.apache.kafka.common.network.ChannelBuilders#clientChannelBuilder` |
-| A record batch compressed with gzip (fails the table) | `org.apache.kafka.common.record.DefaultRecordBatch#compressedIterator` |
 | `auto.offset.reset=by_duration:<duration>` | `org.apache.kafka.clients.consumer.internals.AutoOffsetResetStrategy#timestamp` |
 | A simple column of `UUID`, `ByteBuffer`, `Bytes` or any other type not listed above | `io.deephaven.kafka.SimpleImpl.SerDeserVisitor` |
 | Bytes that are not UTF-8 in a `String` column | `org.apache.kafka.common.serialization.StringDeserializer#deserialize` |
@@ -1030,7 +1035,6 @@ broker under the open tables of both.
 | Avro: a record with magic byte 1 (a schema GUID) | `io.confluent.kafka.serializers.schema.id.SchemaId` |
 | `deephaven.stream.add_only_to_blink` | `io.deephaven.engine.table.impl.AddOnlyToBlinkTableAdapter#toBlink` |
 | Producing: an update whose modified columns are `ModifiedColumnSet.ALL` (Java's listener throws a NullPointerException and stops; here the publication fails at the same point) | `io.deephaven.engine.table.ModifiedColumnSet#containsAny` |
-| Producing: `compression.type=gzip` | `org.apache.kafka.common.compress.GzipCompression` |
 | Producing: `transactional.id` | `org.apache.kafka.clients.producer.KafkaProducer#initTransactions` |
 | Producing: `partitioner.class`, `interceptor.classes` | `org.apache.kafka.clients.producer.Partitioner`, `ProducerInterceptor` |
 | Producing: a `nested_delim` with a regular-expression character other than an escaped one | `java.lang.String#split` |
@@ -1068,6 +1072,9 @@ No longer refused since task 7.4.8: `protobuf_spec` from a registry subject, and
 
 No longer refused since task 7.5.2: `producer.avro_spec` for the key and the value, and
 `produce` with `topic_col`, `partition_col` and `timestamp_col`.
+
+No longer refused since task 7.4.5: gzip batches, read and written
+(`compression.type=gzip`).
 
 No longer refused since task 7.4.4: `offsets` left at its default, compressed batches
 other than gzip, `isolation.level=read_committed`, record batches older than format 2

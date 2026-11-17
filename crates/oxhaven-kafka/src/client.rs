@@ -15,7 +15,7 @@ use rdkafka::message::Message;
 use rdkafka::{Offset, TopicPartitionList};
 
 use crate::config::{ClientSettings, Reset};
-use crate::{not_ported, property, InitialOffset, KafkaError, Record, RecordSource};
+use crate::{property, InitialOffset, KafkaError, Record, RecordSource};
 
 /// How long one poll waits for the first record, as the half second (at most)
 /// `KafkaIngester#consumerLoop` passes to `KafkaConsumer#poll`.
@@ -241,12 +241,6 @@ fn ends_consumption(error: &ClientError, grouped: bool) -> Option<KafkaError> {
     };
     use RDKafkaErrorCode as Code;
     match code {
-        // What librdkafka's reader of record batches says of a codec it was built
-        // without. That is gzip: `docs/KAFKA.md`, "What is left off".
-        Code::NotImplemented => Some(not_ported(
-            "org.apache.kafka.common.record.DefaultRecordBatch#compressedIterator",
-            "a record batch compressed with gzip",
-        )),
         Code::GroupAuthorizationFailed if !grouped => None,
         Code::AutoOffsetReset
         | Code::OffsetOutOfRange
@@ -255,6 +249,9 @@ fn ends_consumption(error: &ClientError, grouped: bool) -> Option<KafkaError> {
         | Code::ClusterAuthorizationFailed
         | Code::BadMessage
         | Code::BadCompression
+        // What librdkafka's reader of record batches says of a codec it was built
+        // without; every codec Kafka has is built (`docs/KAFKA.md`, "What is built").
+        | Code::NotImplemented
         | Code::InvalidMessage
         | Code::InvalidMessageSize => Some(broker_error("the Kafka consumer failed", code)),
         _ => None,
@@ -411,9 +408,8 @@ mod tests {
                 "{code}"
             );
         }
-        let refused = consumption(Code::NotImplemented);
-        assert!(matches!(refused, Some(KafkaError::NotPorted { java, .. })
-            if java == "org.apache.kafka.common.record.DefaultRecordBatch#compressedIterator"));
+        let unknown_codec = consumption(Code::NotImplemented);
+        assert!(matches!(unknown_codec, Some(KafkaError::Broker(_))));
         let fatal = ClientError::MessageConsumptionFatal(Code::Fatal);
         assert!(ends_consumption(&fatal, false).is_some());
     }
