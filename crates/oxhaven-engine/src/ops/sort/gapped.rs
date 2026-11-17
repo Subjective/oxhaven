@@ -422,8 +422,7 @@ impl SortOperator {
             let mut stays = Vec::new();
             let mut moved = Vec::new();
             let mut last_queued: Option<Option<usize>> = None;
-            for next in 0..placed.len() {
-                let parent = placed[next];
+            for (next, &parent) in placed.iter().enumerate() {
                 let after = layout
                     .rank_after(&incoming, key_of(next), parent)
                     .checked_sub(1)
