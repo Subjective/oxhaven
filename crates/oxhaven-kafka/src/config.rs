@@ -50,8 +50,8 @@ const fn renamed(java: &'static str, client: &'static str) -> Passed {
 
 /// The properties of `org.apache.kafka.clients.consumer.ConsumerConfig` (and of
 /// `AdminClientConfig`, for the listing of topics) that librdkafka has a setting for.
-/// `group.id`, `enable.auto.commit`, `auto.offset.reset` and `security.protocol` are not
-/// here: [`ClientSettings`] reads them.
+/// `group.id`, `enable.auto.commit` and `auto.offset.reset` are not here: [`ClientSettings`]
+/// reads them, and `crate::security` the properties of TLS and SASL.
 const PASSED: &[Passed] = &[
     passed("bootstrap.servers"),
     passed("client.id"),
@@ -160,7 +160,6 @@ impl ClientSettings {
     /// properties `io.deephaven.kafka.ingest.KafkaIngester` passes it
     pub fn new(config: &[(String, String)]) -> Result<Self, KafkaError> {
         require_bootstrap_servers(config)?;
-        refuse_security_protocol(config)?;
         let group = property(config, "group.id").map(str::to_owned);
         if group
             .as_deref()
@@ -240,6 +239,7 @@ impl ClientSettings {
                 client.set(passed.client, (passed.value)(value));
             }
         }
+        crate::security::translate(config, &mut client)?;
         client.set("group.id", group.as_deref().unwrap_or(NO_GROUP));
         client.set("enable.auto.commit", auto_commit.to_string());
         // The positions to commit are recorded by `client::ClientSource`, which also
@@ -274,16 +274,6 @@ fn require_bootstrap_servers(config: &[(String, String)]) -> Result<(), KafkaErr
         ));
     }
     Ok(())
-}
-
-fn refuse_security_protocol(config: &[(String, String)]) -> Result<(), KafkaError> {
-    match property(config, "security.protocol") {
-        Some(protocol) if !protocol.eq_ignore_ascii_case("PLAINTEXT") => Err(not_ported(
-            "org.apache.kafka.common.network.ChannelBuilders#clientChannelBuilder",
-            &format!("security.protocol={protocol}"),
-        )),
-        _ => Ok(()),
-    }
 }
 
 /// Java's batch size of 0 turns batching off; librdkafka's smallest is 1.
@@ -373,7 +363,6 @@ impl ProducerSettings {
     /// are the specs', so `key.serializer` and `value.serializer` have no effect.
     pub fn new(config: &[(String, String)]) -> Result<Self, KafkaError> {
         require_bootstrap_servers(config)?;
-        refuse_security_protocol(config)?;
         for (name, java) in PRODUCER_REFUSED {
             if let Some(value) = property(config, name) {
                 return Err(not_ported(java, &format!("{name}={value}")));
@@ -443,6 +432,7 @@ impl ProducerSettings {
                 client.set(passed.client, (passed.value)(value));
             }
         }
+        crate::security::translate(config, &mut client)?;
         client.set("acks", acks);
         client.set("compression.type", compression);
         client.set("enable.idempotence", idempotence.to_string());
@@ -491,6 +481,7 @@ mod tests {
             ("fetch.wait.max.ms", "100"),
             ("group.id", NO_GROUP),
             ("isolation.level", "read_uncommitted"),
+            ("security.protocol", "plaintext"),
             ("socket.receive.buffer.bytes", "0"),
             ("socket.timeout.ms", "30000"),
         ];
@@ -546,11 +537,10 @@ mod tests {
         assert!(text(&[BROKER, ("enable.auto.commit", "yes")])
             .contains("Expected value to be either true or false"));
         for (name, value) in [
-            ("security.protocol", "SSL"),
-            ("security.protocol", "SASL_PLAINTEXT"),
+            ("sasl.mechanism", "GSSAPI"),
             ("auto.offset.reset", "by_duration:PT1H"),
         ] {
-            let error = refused(&[BROKER, (name, value)]);
+            let error = refused(&[BROKER, ("security.protocol", "SASL_SSL"), (name, value)]);
             assert!(matches!(error, KafkaError::NotPorted { .. }), "{error}");
         }
     }
@@ -588,6 +578,7 @@ mod tests {
             ("message.max.bytes", "2000"),
             ("message.timeout.ms", "5000"),
             ("partitioner", "murmur2_random"),
+            ("security.protocol", "plaintext"),
             ("socket.send.buffer.bytes", "0"),
         ];
         assert_eq!(client.into_iter().collect::<Vec<_>>(), expected);
@@ -650,9 +641,10 @@ mod tests {
             ("transactional.id", "tx", "KafkaProducer#initTransactions"),
             ("partitioner.class", "p.P", "producer.Partitioner"),
             ("interceptor.classes", "p.I", "ProducerInterceptor"),
-            ("security.protocol", "SSL", "security.protocol"),
+            ("ssl.cipher.suites", "x", "ssl.cipher.suites"),
         ] {
-            let error = producer(&[BROKER, (name, value)]).err().expect("refused");
+            let config = [BROKER, ("security.protocol", "ssl"), (name, value)];
+            let error = producer(&config).err().expect("refused");
             assert!(matches!(error, KafkaError::NotPorted { .. }), "{error}");
             assert!(error.to_string().contains(java), "{error}");
         }

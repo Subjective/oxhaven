@@ -26,6 +26,8 @@ use crate::KafkaError;
 pub(crate) struct Deliveries {
     completed: AtomicU64,
     failure: Mutex<Option<String>>,
+    /// A refusal of TLS or SASL, which ends the wait for metadata.
+    refused: Mutex<Option<String>>,
 }
 
 impl Deliveries {
@@ -35,7 +37,14 @@ impl Deliveries {
     }
 }
 
-impl ClientContext for Deliveries {}
+impl ClientContext for Deliveries {
+    fn error(&self, error: ClientError, reason: &str) {
+        if let Some(failure) = crate::security::connection_failure(&error, reason) {
+            let mut first = self.refused.lock().unwrap_or_else(|p| p.into_inner());
+            first.get_or_insert(failure);
+        }
+    }
+}
 
 impl ProducerContext for Deliveries {
     type DeliveryOpaque = ();
@@ -109,10 +118,10 @@ impl ClientSink {
         let deadline = Instant::now() + self.max_block;
         loop {
             let left = deadline.saturating_duration_since(Instant::now());
-            let metadata = self
-                .producer
-                .client()
-                .fetch_metadata(Some(topic), left.max(Duration::from_millis(1)));
+            // In slices, so that a refusal of TLS or SASL ends the wait at once, as Java's
+            // `AuthenticationException` does.
+            let slice = left.clamp(Duration::from_millis(1), Duration::from_millis(250));
+            let metadata = self.producer.client().fetch_metadata(Some(topic), slice);
             if let Ok(metadata) = metadata {
                 let found = metadata.topics().iter().find(|t| t.name() == topic);
                 let found = found.filter(|t| t.error().is_none() && !t.partitions().is_empty());
@@ -123,6 +132,11 @@ impl ClientSink {
             }
             if known(self.partitions.get(topic).copied()) {
                 return Ok(());
+            }
+            self.producer.poll(Duration::ZERO);
+            let refused = self.producer.context().refused.lock();
+            if let Some(refused) = refused.unwrap_or_else(|p| p.into_inner()).clone() {
+                return Err(refused);
             }
             if Instant::now() >= deadline {
                 let millis = self.max_block.as_millis();

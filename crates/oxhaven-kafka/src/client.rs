@@ -12,9 +12,11 @@ use bytes::Bytes;
 use rdkafka::consumer::{BaseConsumer, Consumer};
 use rdkafka::error::{KafkaError as ClientError, RDKafkaErrorCode};
 use rdkafka::message::Message;
+use rdkafka::metadata::Metadata;
 use rdkafka::{Offset, TopicPartitionList};
 
 use crate::config::{ClientSettings, Reset};
+use crate::security::Watch;
 use crate::{property, InitialOffset, KafkaError, Record, RecordSource};
 
 /// How long one poll waits for the first record, as the half second (at most)
@@ -23,7 +25,7 @@ const POLL_WAIT: Duration = Duration::from_millis(500);
 
 /// The record source over librdkafka.
 pub struct ClientSource {
-    consumer: BaseConsumer,
+    consumer: BaseConsumer<Watch>,
     topic: String,
     partitions: Vec<i32>,
     /// Whether positions are recorded for the group to commit.
@@ -38,6 +40,40 @@ fn broker_error(what: &str, error: impl std::fmt::Display) -> KafkaError {
     KafkaError::Broker(format!("{what}: {error}"))
 }
 
+/// How long one request for metadata may take before the consumer's events are read for
+/// a failure of TLS or SASL, so that such a failure ends the wait at once, as in Java.
+const METADATA_SLICE: Duration = Duration::from_millis(250);
+
+/// The broker's metadata, of `topic` or of every topic, within `timeout`. A connection that
+/// TLS or SASL refuses fails it at once: Java does not retry an `AuthenticationException`.
+///
+/// Behavior: org.apache.kafka.clients.NetworkClient, which throws the
+/// `AuthenticationException` of a failed connection from the request's poll
+pub(crate) fn metadata(
+    consumer: &BaseConsumer<Watch>,
+    topic: Option<&str>,
+    timeout: Duration,
+    unanswered: impl Fn(ClientError) -> KafkaError,
+) -> Result<Metadata, KafkaError> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        let left = deadline.saturating_duration_since(Instant::now());
+        let error = match consumer.fetch_metadata(topic, left.min(METADATA_SLICE)) {
+            Ok(metadata) => return Ok(metadata),
+            Err(error) => error,
+        };
+        // Serves the consumer's events, which hands their errors to the context. Nothing
+        // is assigned yet, so no record can come.
+        let _ = consumer.poll(Duration::ZERO);
+        if let Some(failure) = consumer.context().failure() {
+            return Err(failure);
+        }
+        if Instant::now() >= deadline {
+            return Err(unanswered(error));
+        }
+    }
+}
+
 /// The partitions of `topic`, in order. A topic the broker does not have has none, also
 /// when this very question makes the broker create it: the table then never has rows, as
 /// in Java (seen in the probes of `docs/KAFKA.md`), and a partitioned table cannot be made.
@@ -48,7 +84,7 @@ fn broker_error(what: &str, error: impl std::fmt::Display) -> KafkaError {
 ///
 /// Behavior: org.apache.kafka.clients.consumer.KafkaConsumer#partitionsFor
 fn partitions_of(
-    consumer: &BaseConsumer,
+    consumer: &BaseConsumer<Watch>,
     servers: &str,
     topic: &str,
     timeout: Duration,
@@ -59,14 +95,12 @@ fn partitions_of(
             error,
         )
     };
-    let existing = consumer.fetch_metadata(None, timeout).map_err(unanswered)?;
+    let existing = metadata(consumer, None, timeout, unanswered)?;
     let existed = existing
         .topics()
         .iter()
         .any(|found| found.name() == topic && found.error().is_none());
-    let metadata = consumer
-        .fetch_metadata(Some(topic), timeout)
-        .map_err(unanswered)?;
+    let metadata = metadata(consumer, Some(topic), timeout, unanswered)?;
     if !existed {
         return Ok(Vec::new());
     }
@@ -86,7 +120,7 @@ fn partitions_of(
 /// Behavior: org.apache.kafka.clients.consumer.internals.ConsumerCoordinator
 /// #fetchCommittedOffsets, which retries what is a `RetriableException`
 fn committed_offsets(
-    consumer: &BaseConsumer,
+    consumer: &BaseConsumer<Watch>,
     topic: &str,
     partitions: &[i32],
     timeout: Duration,
@@ -135,10 +169,11 @@ impl ClientSource {
     ) -> Result<Self, KafkaError> {
         let settings = ClientSettings::new(config)?;
         let servers = property(config, "bootstrap.servers").unwrap_or_default();
-        let consumer: BaseConsumer = settings
-            .client
-            .create()
-            .map_err(|error| KafkaError::Invalid(format!("the Kafka consumer: {error}")))?;
+        let consumer: BaseConsumer<Watch> =
+            settings
+                .client
+                .create_with_context(Watch::default())
+                .map_err(|error| KafkaError::Invalid(format!("the Kafka consumer: {error}")))?;
         let timeout = settings.api_timeout;
         let mut partitions = partitions_of(&consumer, servers, topic, timeout)?;
         partitions.retain(|partition| wanted(*partition));
@@ -253,7 +288,10 @@ fn ends_consumption(error: &ClientError, grouped: bool) -> Option<KafkaError> {
         // without; every codec Kafka has is built (`docs/KAFKA.md`, "What is built").
         | Code::NotImplemented
         | Code::InvalidMessage
-        | Code::InvalidMessageSize => Some(broker_error("the Kafka consumer failed", code)),
+        | Code::InvalidMessageSize
+        // A connection that TLS or SASL refuses: Java's `AuthenticationException`.
+        | Code::Authentication
+        | Code::SSL => Some(broker_error("the Kafka consumer failed", code)),
         _ => None,
     }
 }
@@ -353,13 +391,12 @@ fn java_hash_map_order(mut names: Vec<String>) -> Vec<String> {
 /// org.apache.kafka.clients.admin.KafkaAdminClient#listTopics fills
 pub fn topics(config: &[(String, String)]) -> Result<Vec<String>, KafkaError> {
     let settings = ClientSettings::new(config)?;
-    let consumer: BaseConsumer = settings
+    let consumer: BaseConsumer<Watch> = settings
         .client
-        .create()
+        .create_with_context(Watch::default())
         .map_err(|error| KafkaError::Invalid(format!("the Kafka client: {error}")))?;
-    let metadata = consumer
-        .fetch_metadata(None, settings.api_timeout)
-        .map_err(|error| broker_error("Failed to list Kafka Topics", error))?;
+    let unanswered = |error| broker_error("Failed to list Kafka Topics", error);
+    let metadata = metadata(&consumer, None, settings.api_timeout, unanswered)?;
     let names = (metadata.topics().iter())
         .map(|topic| topic.name().to_owned())
         .filter(|name| !INTERNAL_TOPICS.contains(&name.as_str()))

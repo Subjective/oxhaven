@@ -22,7 +22,7 @@ protox.workspace = true
 # librdkafka, compiled from the sources `rdkafka-sys` carries, with its own snappy and lz4
 # and Zstandard from `zstd-sys`. No TLS, SASL, curl or zlib: docs/KAFKA.md, "The client
 # library", has the licences and why each feature is on or off.
-rdkafka = { version = "0.39", default-features = false, features = ["zstd", "libz-static"] }
+rdkafka = { version = "0.39", default-features = false, features = ["zstd", "libz-static", "ssl"] }
 
 [dev-dependencies]
 oxhaven-testkit = { path = "../oxhaven-testkit" }
