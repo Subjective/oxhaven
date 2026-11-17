@@ -452,8 +452,14 @@ mod tests {
     fn find_in_an_empty_table_finds_nothing() {
         let ints: ArrayRef = Arc::new(Int32Array::from(vec![Some(1), None]));
         let texts: ArrayRef = Arc::new(StringArray::from(vec![Some("a"), None]));
-        assert_eq!(KeyTable::new().find(&[ints.clone()], 2), [NO_SLOT; 2]);
-        assert_eq!(KeyTable::new().find(&[texts.clone()], 2), [NO_SLOT; 2]);
+        assert_eq!(
+            KeyTable::new().find(std::slice::from_ref(&ints), 2),
+            [NO_SLOT; 2]
+        );
+        assert_eq!(
+            KeyTable::new().find(std::slice::from_ref(&texts), 2),
+            [NO_SLOT; 2]
+        );
         assert_eq!(KeyTable::new().find(&[ints, texts], 2), [NO_SLOT; 2]);
         assert_eq!(KeyTable::new().find(&[], 2), [NO_SLOT; 2]);
         assert_eq!(KeyTable::new().len(), 0);

@@ -1518,6 +1518,7 @@ fn every_kind_of_key_follows_changes_of_both_tables() {
     // The values a key column takes, by number: 0 is null, 1 and 2 are equal, and 3 and 4
     // are equal for the floating point types.
     type Make = fn(&[usize]) -> ArrayRef;
+    type KeyColumn = (&'static str, ColumnType, Make);
     let text: Make = |picks| {
         let values = [None, Some("a"), Some("a"), Some(""), Some("b")];
         Arc::new(StringArray::from_iter(
@@ -1544,7 +1545,7 @@ fn every_kind_of_key_follows_changes_of_both_tables() {
         ))
     };
     // The key columns of each case, and whether its keys 3 and 4 are one key.
-    let cases: Vec<(Vec<(&'static str, ColumnType, Make)>, bool)> = vec![
+    let cases: Vec<(Vec<KeyColumn>, bool)> = vec![
         (vec![("K", ColumnType::String, text)], false),
         (vec![("K", ColumnType::Double, double)], true),
         (vec![("K", ColumnType::Float, float)], true),
