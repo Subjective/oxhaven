@@ -74,7 +74,7 @@ pub fn time_table(
         column.start.get_or_init(|| start);
         let now = clock.now_nanos();
         if now >= start {
-            last_row = (now - start) / period_nanos;
+            last_row = elapsed(now, start)? / period_nanos;
         }
     }
 
@@ -110,6 +110,19 @@ pub fn time_table(
         }),
         input: None,
     }))
+}
+
+/// Nanoseconds from `start` to `now`, which is not before it.
+///
+/// Behavior: `io.deephaven.time.DateTimeUtils#minus(Instant, Instant)`, which throws where
+/// the difference overflows a `long` (`DateTimeUtils#checkOverflowPlus`): a start before
+/// 1970 that is further from the clock than about 292 years.
+fn elapsed(now: i64, start: i64) -> Result<i64, TableFailure> {
+    now.checked_sub(start).ok_or_else(|| {
+        failure(format!(
+            "Subtracting {start} nanos from {now} would overflow"
+        ))
+    })
 }
 
 /// The rows `first..=last`, or none if `last < first`.
@@ -150,7 +163,14 @@ impl UpdateSource for Refresher {
                     .get_or_init(|| now.div_euclid(period) * period);
                 *last_row = 0;
             }
-            Some(&start) if now >= start => *last_row = (*last_row).max((now - start) / period),
+            Some(&start) if now >= start => match elapsed(now, start) {
+                Ok(elapsed) => *last_row = (*last_row).max(elapsed / period),
+                Err(failure) => {
+                    drop(last_row);
+                    table.fail(failure);
+                    return;
+                }
+            },
             Some(_) => {}
         }
         let added = range(first_new, *last_row);

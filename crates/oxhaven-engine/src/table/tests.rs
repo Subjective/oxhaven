@@ -1774,6 +1774,40 @@ fn blink_time_table_replaces_its_rows_every_cycle() {
     assert!(!table.is_failed());
 }
 
+/// Deephaven 42.9 answers a start of `-9223372036854775807` (nanoseconds, written as text)
+/// with an error at creation: `DateTimeUtils#minus` of the clock and the start overflows.
+#[test]
+fn time_table_fails_where_the_time_since_its_start_overflows() {
+    let (stepper, graph) = graph();
+    let outcome = time_table(
+        graph.clone(),
+        clock_at(1_000),
+        options(Some(-i64::MAX), 10, false),
+    );
+    assert_eq!(
+        outcome.err().unwrap().message,
+        format!("Subtracting {} nanos from 1000 would overflow", -i64::MAX)
+    );
+
+    // A start the clock passes later fails the table at that refresh.
+    let start = -i64::MAX + 10;
+    let clock = clock_at(start - 1);
+    let table = time_table(
+        graph.clone(),
+        clock.clone(),
+        options(Some(start), 10, false),
+    )
+    .unwrap();
+    assert!(table.row_set().is_empty());
+    clock.0.store(9, Ordering::SeqCst);
+    stepper.run_cycle();
+    assert_eq!(table.row_set().size(), (9 - start) as u64 / 10 + 1);
+    assert!(!table.is_failed());
+    clock.0.store(11, Ordering::SeqCst);
+    stepper.run_cycle();
+    assert!(table.is_failed());
+}
+
 #[test]
 fn time_table_rejects_a_period_that_is_not_positive() {
     let (_stepper, graph) = graph();
