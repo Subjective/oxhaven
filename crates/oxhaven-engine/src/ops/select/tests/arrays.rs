@@ -9,12 +9,12 @@ use super::ticking::{
 };
 use super::*;
 use crate::ops::agg::group_by;
-use crate::ops::filter::unstructured_filter;
+use crate::ops::filter::{unstructured_filter, FilterError};
 use crate::ops::select::arrays::{constant_array_accesses, Shift};
 use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::update::ModifiedColumnSet;
 use oxhaven_testkit::{
-    at_least_for, longs, strings, test_seeds, RandomUpdates, Recorder, TableChange,
+    at_least_for, definition, longs, strings, test_seeds, RandomUpdates, Recorder, TableChange,
 };
 
 fn shift(column: &str, amount: i64) -> Shift {
@@ -27,7 +27,9 @@ fn shift(column: &str, amount: i64) -> Shift {
 /// The shifted columns of `formula`, and the formula that reads them, parsed again.
 fn rewritten(formula: &str) -> Option<(Vec<Shift>, Expr)> {
     let expr = Compiler.parse(formula).unwrap();
-    constant_array_accesses(formula, &expr).map(|found| (found.shifts, found.expr))
+    constant_array_accesses(formula, &expr)
+        .unwrap()
+        .map(|found| (found.shifts, found.expr))
 }
 
 /// Behavior: `ShiftedColumnsFactory#getShiftedColumnDefinitions`: an index that is `i` or
@@ -73,7 +75,11 @@ fn an_index_at_a_fixed_distance_becomes_a_shifted_column() {
         "-X_[i - 1]",
         "!X_[i]",
         "X_[(i - 1)]",
+        "(X_)[i - 1]",
+        "((X_))[i]",
         "X_[i - 1L]",
+        "X_[i - 0x1L]",
+        "X_[i - 1f]",
         "X_[1 + i]",
         "X_[i + -1]",
         "X_[i - 1 + 0]",
@@ -88,20 +94,123 @@ fn an_index_at_a_fixed_distance_becomes_a_shifted_column() {
     }
 }
 
+/// Behavior: `ShiftedColumnsFactory#parseForConstantArrayAccessAttributes`, which reads the
+/// offset with `Long#parseLong` while the formula is parsed, before any column is looked
+/// at. Seen on Java 42.9: `update`, `update_view` and `where` of `X_[i + 0x1]` fail with
+/// `FormulaCompilationException` caused by `NumberFormatException: For input string:
+/// "0x1"`, as do `X_[i - 1_0]` (`"1_0"`), `X_[i + 0b1]`, `X_[i - 9223372036854775808]` and
+/// `Nope + X_[i + 0x1]`; `isNull(X_[i + 0x1])` and `(X_)[i + 0x1]` are served.
 #[test]
-#[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.ShiftedColumnsFactory#parseForConstantArrayAccessAttributes"
-)]
-fn an_offset_in_another_base_is_unported() {
-    let _ = rewritten("X_[i - 0x1]");
+fn an_offset_that_long_parsing_cannot_read_is_refused_as_java_refuses() {
+    let (_stepper, graph) = graph();
+    let refreshing: Arc<dyn Table> = scripted(&graph).table();
+    let input = |literal: &str| FormulaError::Syntax(format!("For input string: \"{literal}\""));
+    for parent in [keyed(&[3, 7, 9, 20]), flat(4), refreshing] {
+        for (column, literal) in [
+            ("P = A_[i + 0x1]", "0x1"),
+            ("P = A_[i - 1_0]", "1_0"),
+            ("P = A_[ii + 0b1]", "0b1"),
+            ("P = A_[i - 0xFFFFFFFF]", "0xFFFFFFFF"),
+            ("P = Nope + A_[i + 0x1]", "0x1"),
+            ("P = A_[i - 1] > 3 ? A_[i + 0X1F] : 0", "0X1F"),
+        ] {
+            let attempts: [(&str, Result<Arc<dyn Table>, SelectError>); 5] = [
+                ("update", update(&parent, &["B", column], &Compiler)),
+                ("update_view", update_view(&parent, &[column], &Compiler)),
+                ("lazy_update", lazy_update(&parent, &[column], &Compiler)),
+                ("view", view(&parent, &[column], &Compiler)),
+                ("select", select(&parent, &["Sym", column], &Compiler)),
+            ];
+            for (what, attempt) in attempts {
+                match attempt {
+                    Err(SelectError::Formula {
+                        column: text,
+                        error,
+                    }) => {
+                        assert_eq!(text, column, "{what}");
+                        assert_eq!(error, input(literal), "{what} {column}");
+                    }
+                    other => panic!("{what} {column}: {:?}", other.map(|_| ())),
+                }
+            }
+        }
+        let filtered = unstructured_filter(&parent, &["B > 1", "A_[i + 0x1] > 0"], &Compiler);
+        match filtered {
+            Err(FilterError::Invalid(message)) => assert_eq!(
+                message,
+                "A_[i + 0x1] > 0: syntax error: For input string: \"0x1\""
+            ),
+            other => panic!("where: {:?}", other.map(|_| ())),
+        }
+    }
+    // Beyond the long range the lexer refuses the literal first, with its own text (A5).
+    let parent = keyed(&[3, 7, 9, 20]);
+    let result = update(&parent, &["P = A_[i - 9223372036854775808]"], &Compiler);
+    assert!(
+        matches!(
+            result,
+            Err(SelectError::Formula {
+                error: FormulaError::Syntax(_),
+                ..
+            })
+        ),
+        "{:?}",
+        result.map(|_| ())
+    );
+    // Java does not read an offset inside a call or after a column array in parentheses.
+    let result = update(&parent, &["P = isNull(A_[i + 0x1])"], &Compiler).unwrap();
+    assert_eq!(values(&*result, "P"), ["false", "false", "false", "true"]);
+    let result = update(&parent, &["P = (A_)[i + 0x1]"], &Compiler).unwrap();
+    assert_eq!(values(&*result, "P"), ["20", "30", "40", "null"]);
 }
 
+/// Behavior: `ShiftedColumnsFactory#parseForConstantArrayAccessAttributes`, which takes a
+/// column array only when the array is a name ending in `_`. Seen on Java 42.9:
+/// `(X_)[i - 1]` and `((X_))[i - 1]` read the column array, which gives the same values on
+/// a static table, and on a refreshing table is refused as unsafe to refresh
+/// (`Formula '(X_).get(longCast(minus(i, 1)))' uses i, ii, k, or column array variables`);
+/// a column named outside ASCII is shifted (`Ä_[i - 1]` of a `new_table`).
+#[test]
+fn a_column_array_in_parentheses_is_no_shift() {
+    let parent = keyed(&[3, 7, 9, 20]);
+    for column in ["P = (A_)[i - 1]", "P = ((A_))[i - 1]", "P = A_[(i - 1)]"] {
+        let result = update(&parent, &[column], &Compiler).unwrap();
+        assert_eq!(
+            values(&*result, "P"),
+            ["null", "10", "20", "30"],
+            "{column}"
+        );
+    }
+    let (_stepper, graph) = graph();
+    let refreshing: Arc<dyn Table> = scripted(&graph).table();
+    for column in ["P = (A_)[i - 1]", "P = (A_)[i - 1] + A_[i - 1]"] {
+        match update(&refreshing, &[column], &Compiler) {
+            Err(SelectError::UnsafeForRefresh(_)) => {}
+            other => panic!("{column}: {:?}", other.map(|_| ())),
+        }
+    }
+    let result = update(&refreshing, &["P = A_[i - 1] + ((B_))[i] * 0"], &Compiler);
+    assert!(matches!(result, Err(SelectError::UnsafeForRefresh(_))));
+
+    let (named, rows) = (
+        definition(&[("Ä", ColumnType::Long)]),
+        RowSet::from_keys([0, 1, 2]),
+    );
+    let source = ReferenceTable::new_static(named.clone(), rows.clone(), vec![longs([1, 2, 3])]);
+    let named: Arc<dyn Table> =
+        QueryTable::new_static(TableSpec::new(named, rows, vec![source.column(0)]));
+    let result = update(&named, &["Y = Ä_[i - 1]"], &Compiler).unwrap();
+    assert_eq!(values(&*result, "Y"), ["null", "1", "2"]);
+}
+
+/// A text that is not the expression's is refused by name rather than read wrongly.
 #[test]
 #[should_panic(
     expected = "unported: io.deephaven.engine.table.impl.ShiftedColumnsFactory#getShiftedColumnDefinitions"
 )]
-fn a_column_array_indexed_through_parentheses_is_unported() {
-    let _ = rewritten("(X_)[i - 1]");
+fn a_text_that_does_not_match_its_expression_is_unported() {
+    let expr = Compiler.parse("X_[i - 1]").unwrap();
+    let _ = constant_array_accesses("Y_[i - 1]", &expr);
 }
 
 #[test]
