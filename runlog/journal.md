@@ -1213,3 +1213,15 @@ Partly done. Three different causes: evaluator overhead (fixed), row set constru
 ## 2026-11-17 19:03 UTC: pull request 153 merged, second run of task 9.10 started
 
 Seven green checks. Decision: the second run may add a row set constructor from a bitmap to the contracts crate (an addition, no change to existing signatures); its pull request gets the oracle-change label and Josh reviews it later, under his standing approval for contract changes.
+
+## 2026-11-17 19:24 UTC: task 9.9 reported, pull request 154 opened
+
+All gates including replay passed locally.
+
+## 2026-11-17 19:30 UTC: pull request 154 merged
+
+Seven green checks.
+
+## 2026-11-17 19:32 UTC: task 10.1 started
+
+Back to breadth alongside the last performance run: 95 unported calls remain in the workspace; task 10.1 takes those in aggregations, update_by and filters, with Deephaven recordings where a scenario can express the request.

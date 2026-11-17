@@ -1,6 +1,6 @@
 //! First and last.
 
-use super::operator::{AggOperator, Effect, GroupReader};
+use super::operator::{AggOperator, Effect, GroupReader, Marks};
 use super::slot_source::SlotSource;
 use super::values::{build, failure, Run, Runs, Scalar, Values};
 use arrow::array::{Array, ArrayRef};
@@ -335,6 +335,31 @@ impl AggOperator for FirstLastCell {
         effects.extend(ends.map(|(slot, p)| self.offer(slot, runs.row_key(p))));
     }
 
+    /// When rows are only added, the row a group shows is its least or greatest row key
+    /// so far, whichever rows came with it in a chunk; so the rows are offered one at a
+    /// time. A group's rows take its place exactly when its first or last row of them
+    /// does, so the effects together are those of [`AggOperator::add_runs`].
+    fn adds_rows(&self) -> bool {
+        self.mode == FirstLastMode::ByRowKey
+    }
+
+    fn add_rows(&mut self, slots: &[usize], row_keys: &[RowKey], marks: &mut Marks) {
+        debug_assert_eq!(self.mode, FirstLastMode::ByRowKey);
+        for (&slot, &row_key) in slots.iter().zip(row_keys) {
+            let current = self.row_key[slot];
+            let takes = current == NULL_ROW_KEY
+                || if self.first {
+                    row_key < current
+                } else {
+                    row_key > current
+                };
+            if takes {
+                self.row_key[slot] = row_key;
+                marks.note(slot, Effect::RECOMPUTE);
+            }
+        }
+    }
+
     fn remove_runs(&mut self, runs: &Runs<'_>, effects: &mut Vec<Effect>) {
         if self.mode == FirstLastMode::Tracked {
             effects.extend(runs.iter().map(|(slot, run)| self.leaves(slot, &run)));
@@ -509,6 +534,56 @@ mod tests {
                     assert_eq!(batched.row_key, single.row_key);
                 }
             }
+        }
+    }
+
+    /// Rows offered one at a time in row order leave the groups and the marks as the
+    /// groups of each chunk do.
+    #[test]
+    fn rows_one_at_a_time_are_their_groups_at_once() {
+        use super::super::operator::{MODIFIED, RECOMPUTE};
+        let values: ArrayRef = Arc::new(Int64Array::from_iter_values(100..106));
+        let source: Arc<dyn ColumnSource> =
+            Arc::new(FlatSource::new(ColumnType::Long, values).expect("a column"));
+        for first in [true, false] {
+            let new = || {
+                FirstLastCell::new(
+                    source.clone(),
+                    ColumnType::Long,
+                    first,
+                    FirstLastMode::ByRowKey,
+                )
+            };
+            let (mut grouped, mut by_row) = (new(), new());
+            assert!(by_row.adds_rows());
+            grouped.ensure_slots(3);
+            by_row.ensure_slots(3);
+            for (row_keys, order, runs) in chunks() {
+                let mut slots = vec![0; row_keys.len()];
+                for (slot, range) in &runs {
+                    for &position in &order[range.clone()] {
+                        slots[position] = *slot;
+                    }
+                }
+                let (mut effects, mut expected, mut found) =
+                    (Vec::new(), Marks::default(), Marks::default());
+                grouped.add_runs(
+                    &Runs::new(None, None, &row_keys, &order, &runs),
+                    &mut effects,
+                );
+                for ((slot, _), effect) in runs.iter().zip(effects) {
+                    expected.note(*slot, effect);
+                }
+                by_row.add_rows(&slots, &row_keys, &mut found);
+                assert_eq!(by_row.row_key, grouped.row_key, "first {first}");
+                for bit in [MODIFIED, RECOMPUTE] {
+                    assert_eq!(found.marked(bit), expected.marked(bit), "first {first}");
+                }
+            }
+        }
+        // FirstLastMode::Tracked and Arrival take groups only.
+        for mode in [FirstLastMode::Tracked, FirstLastMode::Arrival] {
+            assert!(!FirstLastCell::new(source.clone(), ColumnType::Long, true, mode).adds_rows());
         }
     }
 }

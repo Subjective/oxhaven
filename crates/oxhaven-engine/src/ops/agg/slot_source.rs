@@ -201,6 +201,16 @@ fn gather(batches: &[ArrayRef], places: &[Place]) -> Result<ArrayRef, TableFailu
     // The common case of a result written in one piece: one `take` from that batch.
     if let Some(&(batch, _)) = places.first() {
         if batch != 0 && places.iter().all(|&(b, _)| b == batch) {
+            // Consecutive values of the batch are a slice of it, which copies nothing: a
+            // column of vectors read whole is then not copied element by element.
+            let first = places[0].1;
+            let consecutive = places
+                .iter()
+                .enumerate()
+                .all(|(offset, &(_, index))| index as usize == first as usize + offset);
+            if consecutive {
+                return Ok(batches[batch as usize].slice(first as usize, places.len()));
+            }
             let indices: UInt32Array = places.iter().map(|&(_, index)| index).collect();
             return arrow::compute::take(&batches[batch as usize], &indices, None)
                 .map_err(to_failure);
