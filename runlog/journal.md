@@ -1118,3 +1118,9 @@ Task 7.5.1 (Kafka producing) reported after its resume: all gates passed on the 
 - 2026-11-16T17:09Z: pull request 134 failed the python-console jobs on a lint (a for loop over one element in a test that only compiles with the Python feature). The agent had run the linter without that feature. Fixed by me in one commit and checked with the same lint command CI uses. Briefs from now on name both lint commands.
 
 - 2026-11-16T17:18Z: merged pull request 134 (Kafka Protobuf) on seven green checks after the lint fix. Started the last two Kafka tasks, 7.4.6 and 7.5.3, as one agent with a firm hand-over point between them.
+
+## 2026-11-17
+
+- 2026-11-17T08:03Z: **Stall.** The usage limit of the default model was reached at about 17:50 UTC on 16 November. The fuzz agent for task 4.24 was cut off mid-run and this orchestrating session could not act until the limit reset at 08:00 UTC: about 14 hours with nothing running. Two finished things waited through it: the branch of task 7.4.6 and the owner's rulings (02:35 UTC). No work was lost: every agent had pushed. Told the owner in the thread.
+- 2026-11-17T08:03Z: **Owner rulings.** He approved the recommendations of review items 2.1 to 2.14 and said to do what is reasonable; licence is Apache-2.0; nothing is reported upstream (2.15). Started task 0.18 to write them into PARITY.md and make the small changes that follow. Kafka gzip and TLS (7.4.5) and the row set swap (7.7b) are unblocked; the swap waits for the open engine branch (4.24) to merge. He asked about benchmarks: only the row set micro-benchmark exists; an end-to-end benchmark against Deephaven becomes a task after the swap.
+- 2026-11-17T08:03Z: task 7.4.6 came back with the partitioned consume done in 30 minutes and 368k tokens and cdc not started; opened pull request 135. Combining two medium tasks in one agent did not work: the first used the whole budget. Resumed the 4.24 agent with its context.
