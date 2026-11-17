@@ -383,6 +383,80 @@ pub(super) fn kafka_topics(py: Python<'_>, config: Vec<(String, String)>) -> PyR
         .map_err(exception)
 }
 
+/// The topic, and the subject and version of the key's and the value's schemas, as
+/// `deephaven.stream.kafka.cdc.CDCSpec` holds them: `None` is Java's null.
+type CdcSpecArgument = (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
+fn cdc_spec(spec: CdcSpecArgument) -> oxhaven_kafka::CdcSpec {
+    let (topic, key_subject, key_version, value_subject, value_version) = spec;
+    oxhaven_kafka::CdcSpec {
+        topic,
+        key_subject,
+        key_version,
+        value_subject,
+        value_version,
+    }
+}
+
+/// `deephaven.stream.kafka.cdc.consume`: the table a topic of change events describes.
+#[pyfunction]
+pub(super) fn kafka_cdc_consume(
+    py: Python<'_>,
+    config: Vec<(String, String)>,
+    spec: CdcSpecArgument,
+    partitions: Option<Vec<i32>>,
+    blink: bool,
+    drop_columns: Vec<String>,
+) -> PyResult<TableHandle> {
+    let options = oxhaven_kafka::CdcOptions {
+        config,
+        spec: cdc_spec(spec),
+        partitions,
+        blink,
+        drop_columns,
+    };
+    let graph: Arc<dyn UpdateGraph> = super::runtime()?.context.graph.clone();
+    let table = py
+        .detach(|| oxhaven_kafka::consume_cdc(graph, &options))
+        .map_err(exception)?;
+    Ok(TableHandle { table })
+}
+
+/// `deephaven.stream.kafka.cdc.consume_raw`: the change events as they are, in a table of
+/// `table_type` (`blink`, `append` or `ring` with its capacity), or `None` for Java's null.
+#[pyfunction]
+pub(super) fn kafka_cdc_consume_raw(
+    py: Python<'_>,
+    config: Vec<(String, String)>,
+    spec: CdcSpecArgument,
+    partitions: Option<Vec<i32>>,
+    table_type: Option<(String, i32)>,
+) -> PyResult<TableHandle> {
+    let table_type = match table_type {
+        None => None,
+        Some((kind, capacity)) => Some(match kind.as_str() {
+            "blink" => TableType::Blink,
+            "append" => TableType::Append,
+            "ring" => TableType::Ring(capacity),
+            other => return Err(PyValueError::new_err(format!("no table type {other}"))),
+        }),
+    };
+    let spec = cdc_spec(spec);
+    let graph: Arc<dyn UpdateGraph> = super::runtime()?.context.graph.clone();
+    let table = py
+        .detach(|| {
+            oxhaven_kafka::consume_cdc_raw(graph, &config, &spec, partitions.as_deref(), table_type)
+        })
+        .map_err(exception)?;
+    Ok(TableHandle { table })
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::tests::ONE_INTERPRETER;
