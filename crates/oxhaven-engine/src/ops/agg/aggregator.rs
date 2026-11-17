@@ -2,11 +2,10 @@
 
 use super::keys::KeyTable;
 use super::operator::{AggOperator, Effect, GroupReader};
+use super::slot_source::ResultColumn;
 use super::values::{failure, Run, Values};
-use crate::table::{shared_reads_through, tracked_source};
 use crate::update::modified_pre_shift;
 use arrow::array::{ArrayRef, UInt64Array};
-use oxhaven_column::WritableSource;
 use oxhaven_contracts::graph::locked;
 use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::ColumnType;
@@ -117,7 +116,7 @@ pub(super) struct Layout {
 /// One operator with its input columns and result column.
 struct OpColumn {
     plan: Planned,
-    result: Arc<WritableSource>,
+    result: ResultColumn,
     marks: Marks,
 }
 
@@ -126,7 +125,7 @@ struct Keys {
     /// The indexes of the key columns in the parent.
     columns: Vec<usize>,
     /// The key columns of the result: the key of slot `s` at row key `s`.
-    results: Vec<Arc<WritableSource>>,
+    results: Vec<ResultColumn>,
 }
 
 /// The positions of a chunk brought together by slot.
@@ -224,10 +223,7 @@ impl Aggregator {
         layout: Layout,
     ) -> Result<Aggregator, TableFailure> {
         let graph = parent.update_graph().filter(|_| parent.is_refreshing());
-        let source = |column_type: ColumnType| match &graph {
-            Some(graph) => tracked_source(graph, column_type),
-            None => Arc::new(WritableSource::new(column_type)),
-        };
+        let source = |column_type: ColumnType| ResultColumn::new(column_type, graph.as_ref());
         let parent_types: Vec<ColumnType> = parent
             .definition()
             .columns()
@@ -293,18 +289,18 @@ impl Aggregator {
                 // keys of a refreshing parent out of the hash table and for a static
                 // parent shows the hash table's own sources through a redirection.
                 let source = if self.parent.is_refreshing() {
-                    source.clone() as Arc<dyn ColumnSource>
+                    source.source()
                 } else {
-                    shared_reads_through(source)
+                    source.shared()
                 };
                 Some((place, source))
             })
             .collect();
         for (column, &place) in self.ops.iter().zip(&self.layout.ops) {
             let source = if column.plan.op.holds_results() {
-                column.result.clone() as Arc<dyn ColumnSource>
+                column.result.source()
             } else {
-                shared_reads_through(&column.result)
+                column.result.shared()
             };
             placed.push((place, column.plan.op.result_column(source)));
         }
@@ -801,7 +797,7 @@ impl Aggregator {
     /// Lets the operators that could not answer from their state read their groups.
     fn recompute(&mut self) -> Result<(), TableFailure> {
         let group_rows: &[RowSet] = self.group_rows.as_deref().unwrap_or(&[]);
-        let keys: &[Arc<WritableSource>] = self.keys.as_ref().map_or(&[], |keys| &keys.results);
+        let keys: &[ResultColumn] = self.keys.as_ref().map_or(&[], |keys| &keys.results);
         for column in &mut self.ops {
             let pending = column.marks.marked(RECOMPUTE);
             if pending.is_empty() {

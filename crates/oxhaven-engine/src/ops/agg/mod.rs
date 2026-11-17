@@ -56,6 +56,7 @@ pub(crate) mod keys;
 mod min_max;
 mod operator;
 mod periods;
+pub(crate) mod slot_source;
 mod sorted;
 mod sum;
 mod values;
