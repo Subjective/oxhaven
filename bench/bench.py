@@ -60,6 +60,8 @@ class Ctx:
     session: Session
     n: int
     tables: dict[str, Table] = field(default_factory=dict)
+    # State a case keeps across its repetitions, made by its first setup (untimed).
+    state: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -76,6 +78,8 @@ class Case:
     done: str = DONE_EXPORT
     # Sizes this case runs at; None means every size.
     sizes: tuple[int, ...] | None = None
+    # Untimed check of the last repetition's result; None means `checksum`.
+    checker: Callable[[Any], dict] | None = None
 
 
 def fresh(t: Table, n: int) -> Table:
@@ -222,6 +226,85 @@ class Ticking:
 
 
 # ---------------------------------------------------------------------------------------------
+# A sorted refreshing table of n rows: an append-only input table filled from the source's
+# `Id`, `A` and `B` (on the server, untimed), and `sort("A")` of it made once its rows are in.
+# One case appends small batches to it and waits for the sort to take them; the other reads
+# the first 1M rows of the sorted result, which reads the input table's columns through the
+# sort's redirection.
+
+SORT_SCHEMA = pa.schema([("Id", pa.int64()), ("A", pa.int32()), ("B", pa.float64())])
+SORT_BATCH = 1_000
+
+
+class RefreshingSort:
+    def __init__(self, ctx: Ctx):
+        s = ctx.session
+        self.n = ctx.n
+        self.input = s.input_table(schema=SORT_SCHEMA)
+        self.barrier = Barrier(s)
+        self.input.add(fresh(ctx.tables["T"].view(["Id", "A", "B"]), ctx.n))
+        self.barrier.wait()
+        self.sorted = self.input.sort("A")
+        self.rep = 0
+
+    def batch(self, ctx: Ctx) -> Table:
+        # The source's formulas for the next ids, so that the rows land all over the sort.
+        ids = [self.n + self.rep * SORT_BATCH + i for i in range(SORT_BATCH)]
+        self.rep += 1
+        a = [(i * 31337) % 100003 for i in ids]
+        b = [((i * 15485863) % 1000003) / 7.0 for i in ids]
+        arrays = [pa.array(ids, pa.int64()), pa.array(a, pa.int32()), pa.array(b, pa.float64())]
+        return ctx.session.import_table(pa.Table.from_arrays(arrays, schema=SORT_SCHEMA))
+
+
+def refreshing_sort(ctx: Ctx) -> RefreshingSort:
+    if "sort" not in ctx.state:
+        ctx.state["sort"] = RefreshingSort(ctx)
+    return ctx.state["sort"]
+
+
+def sort_append_run(ctx: Ctx, st) -> Table:
+    rs, batch = st
+    rs.input.add(batch)
+    rs.barrier.wait()
+    return rs.sorted
+
+
+def ordered_arrow_checksum(t: pa.Table) -> dict:
+    out = checksum(t)
+    first = numeric_columns(t.schema)[0]
+    values = t.column(first).to_pylist()
+    out["weighted"] = _num(sum((i % 1009) * v for i, v in enumerate(values) if v is not None))
+    out["head"] = _rows(t.slice(0, 3))
+    out["tail"] = _rows(t.slice(max(0, t.num_rows - 3)))
+    return out
+
+
+def refreshing_cases() -> list[Case]:
+    return [
+        Case(
+            "sort_refreshing_append",
+            "ticking",
+            lambda ctx: (refreshing_sort(ctx), refreshing_sort(ctx).batch(ctx)),
+            sort_append_run,
+            done=(
+                f"append of {SORT_BATCH} rows to the n-row input table returned, then two barrier "
+                "changes returned (the cycle that sorted them in has finished)"
+            ),
+            checker=lambda t: checksum(t.snapshot()),
+        ),
+        Case(
+            "doget_sorted_refreshing",
+            "read",
+            lambda ctx: fresh(refreshing_sort(ctx).sorted, 1_000_000),
+            lambda ctx, t: t.to_arrow(),
+            done="every record batch of the first 1M rows of the sorted refreshing table received",
+            checker=ordered_arrow_checksum,
+        ),
+    ]
+
+
+# ---------------------------------------------------------------------------------------------
 # Checksums: row count, the sum of every numeric column, a position-weighted sum of the first
 # numeric column (so that order counts), and the first and last three rows.
 
@@ -304,7 +387,12 @@ def measure(case: Case, ctx: Ctx, warmup: int, reps: int) -> dict:
             if i >= warmup:
                 times.append(elapsed)
             if i == warmup + reps - 1:
-                check = checksum(result) if not isinstance(case, TickCase) else case.check(result)
+                if isinstance(case, TickCase):
+                    check = case.check(result)
+                elif case.checker is not None:
+                    check = case.checker(result)
+                else:
+                    check = checksum(result)
             del state, result
     except Exception as e:  # noqa: BLE001 - every failure is a result
         out = failure(e)
@@ -358,7 +446,7 @@ def run(args: argparse.Namespace) -> int:
         name, url = spec.split("=", 1)
         servers.append((name, url))
     sizes = [int(s) for s in args.sizes.split(",")]
-    cases = static_cases()
+    cases = static_cases() + refreshing_cases()
     tick = TickCase()
     cases.append(tick)
     if args.cases:
