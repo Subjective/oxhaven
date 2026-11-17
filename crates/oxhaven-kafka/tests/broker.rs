@@ -991,10 +991,9 @@ fn keyed(keys: &[&str]) -> Arc<dyn Table> {
 
 type Record = (i32, Option<String>, Option<String>);
 
-/// The partition, key and value of the records of `topic` from its beginning, until
-/// `count` have been read or nothing more came for two seconds; at most twenty seconds.
-fn records_of(topic: &str, count: usize) -> Vec<Record> {
-    let records = timed_records_of(topic, count);
+/// The partition, key and value of every record of `topic`, from its beginning.
+fn records_of(topic: &str) -> Vec<Record> {
+    let records = timed_records_of(topic);
     let records = records
         .into_iter()
         .map(|(partition, _, key, value)| (partition, key, value));
@@ -1005,35 +1004,64 @@ fn records_of(topic: &str, count: usize) -> Vec<Record> {
 type TimedRecord = (i32, Option<i64>, Option<String>, Option<String>);
 
 /// As [`records_of`], with each record's timestamp.
-fn timed_records_of(topic: &str, count: usize) -> Vec<TimedRecord> {
+///
+/// Each partition is read from its beginning to the high watermark it has when this is
+/// called, so every record the caller produced is read: `produce` returns once the broker
+/// acknowledged what it sent (it flushes, as Java's `PublicationGuard#close`), and an
+/// acknowledged record is below the high watermark. It does not stop when nothing comes
+/// for a while: the partitions of a topic start to arrive at different times, the more so
+/// on a loaded machine, and a reader that took a quiet spell for the end missed one.
+fn timed_records_of(topic: &str) -> Vec<TimedRecord> {
     let consumer: BaseConsumer = ClientConfig::new()
         .set("bootstrap.servers", broker())
         .set("group.id", fresh("reader"))
-        .set("auto.offset.reset", "earliest")
         .set("enable.auto.commit", "false")
         .create()
         .unwrap();
-    consumer.subscribe(&[topic]).unwrap();
-    let text = |bytes: Option<&[u8]>| bytes.map(|b| String::from_utf8(b.to_vec()).unwrap());
-    let mut records = Vec::new();
-    let deadline = Instant::now() + Duration::from_secs(20);
-    let mut last = Instant::now();
-    while records.len() < count && Instant::now() < deadline {
-        match consumer.poll(Duration::from_millis(200)) {
-            Some(message) => {
-                let message = message.unwrap();
-                let record = (
-                    message.partition(),
-                    message.timestamp().to_millis(),
-                    text(message.key()),
-                    text(message.payload()),
-                );
-                records.push(record);
-                last = Instant::now();
-            }
-            None if !records.is_empty() && last.elapsed() > Duration::from_secs(2) => break,
-            None => {}
+    let timeout = Duration::from_secs(10);
+    let metadata = consumer.fetch_metadata(Some(topic), timeout).unwrap();
+    let partitions = metadata.topics().iter().flat_map(|t| t.partitions());
+    let mut ends = Vec::new();
+    let mut assignment = TopicPartitionList::new();
+    for partition in partitions.map(|p| p.id()) {
+        let (low, high) = consumer
+            .fetch_watermarks(topic, partition, timeout)
+            .unwrap();
+        if high > low {
+            ends.push((partition, high));
+            assignment
+                .add_partition_offset(topic, partition, Offset::Beginning)
+                .unwrap();
         }
+    }
+    let mut records = Vec::new();
+    if ends.is_empty() {
+        return records;
+    }
+    consumer.assign(&assignment).unwrap();
+    let text = |bytes: Option<&[u8]>| bytes.map(|b| String::from_utf8(b.to_vec()).unwrap());
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while !ends.is_empty() {
+        assert!(
+            Instant::now() < deadline,
+            "{topic}: partitions {ends:?} (partition, end) not read to their end in 60 s; \
+             read {records:?}"
+        );
+        if let Some(message) = consumer.poll(Duration::from_millis(200)) {
+            let message = message.unwrap();
+            records.push((
+                message.partition(),
+                message.timestamp().to_millis(),
+                text(message.key()),
+                text(message.payload()),
+            ));
+        }
+        // The position, not the last offset read: a transaction's markers take offsets.
+        let positions = consumer.position().unwrap();
+        ends.retain(|&(partition, end)| {
+            let position = positions.find_partition(topic, partition);
+            !matches!(position.map(|p| p.offset()), Some(Offset::Offset(at)) if at >= end)
+        });
     }
     records
 }
@@ -1108,7 +1136,7 @@ fn records_go_to_the_partition_of_their_key_or_the_one_chosen() {
     one.partition = Some(1);
     oxhaven_kafka::produce(keyed(&chosen), &one).unwrap();
 
-    let records = records_of(topic, usize::MAX);
+    let records = records_of(topic);
     // The last record of each key: earlier runs published the same keys.
     let partition_of = |key: &str| {
         let record = records
@@ -1229,7 +1257,7 @@ fn avro_records_published_through_a_registry_are_consumed_back() {
     oxhaven_kafka::produce(table, &published).unwrap();
     // Zig-zag: N 1 is 2 and 2 is 4; S is branch 1 (2) and "a" of length 1 (2), or branch 0.
     assert_eq!(
-        records_of(&topic, 2),
+        records_of(&topic),
         [
             (
                 0,
@@ -1303,7 +1331,7 @@ fn records_take_their_topic_partition_and_timestamp_from_columns() {
     let before = before.unwrap().as_millis() as i64;
     oxhaven_kafka::produce(table, &options).unwrap();
 
-    let first = timed_records_of("oxhaven_produce_two", usize::MAX);
+    let first = timed_records_of("oxhaven_produce_two");
     let first = first
         .iter()
         .find(|record| record.2.as_deref() == Some(&keys[0]));
@@ -1316,7 +1344,7 @@ fn records_take_their_topic_partition_and_timestamp_from_columns() {
             Some("va".to_owned())
         ))
     );
-    let second = timed_records_of(&other, 1);
+    let second = timed_records_of(&other);
     assert_eq!(second.len(), 1, "{second:?}");
     let (partition, timestamp, key, value) = second[0].clone();
     assert_eq!(
@@ -1326,5 +1354,112 @@ fn records_take_their_topic_partition_and_timestamp_from_columns() {
     assert!(
         timestamp.is_some_and(|t| t >= before),
         "{timestamp:?} is before {before}"
+    );
+}
+
+/// Behavior: io.deephaven.kafka.CdcTools#consumeToTable and #consumeRawToTable, with the
+/// subjects of `cdcShortSpec`: Debezium's change events of a table of `id` and `name`,
+/// written by hand in the envelope of its Postgres connector (cut down), fetched through a
+/// registry the test serves.
+#[test]
+#[ignore = "needs a broker: crates/oxhaven-kafka/tests/broker.sh"]
+fn change_events_become_the_current_rows_of_their_table() {
+    let table = fresh("cdc");
+    let topic = format!("oxhaven.cdc.{table}");
+    let key_schema = r#"{"type":"record","name":"Key","fields":[{"name":"id","type":"int"}]}"#;
+    let value_schema = r#"{"type":"record","name":"Envelope","fields":[{"name":"before","type":["null",{"type":"record","name":"Value","fields":[{"name":"id","type":"int"},{"name":"name","type":["null","string"],"default":null}]}],"default":null},{"name":"after","type":["null","Value"],"default":null},{"name":"op","type":"string"},{"name":"ts_ms","type":["null","long"],"default":null}]}"#;
+    let schema = |text: &str| format!(r#"{{"schema":"{}"}}"#, text.replace('"', "\\\""));
+    let mut answers = Vec::new();
+    for (side, id, text) in [("key", 1, key_schema), ("value", 2, value_schema)] {
+        let subject = format!("{topic}-{side}");
+        answers.push((
+            format!("/subjects/{subject}/versions/latest"),
+            format!(r#"{{"id":{id},"version":1}}"#),
+        ));
+        answers.push((
+            format!("/schemas/ids/{id}?fetchMaxId=false&subject="),
+            schema(text),
+        ));
+        answers.push((
+            format!("/schemas/ids/{id}?fetchMaxId=false&subject={subject}"),
+            schema(text),
+        ));
+    }
+    let registry = serve_registry(answers);
+
+    let framed = |id: i32, body: Vec<u8>| [vec![0], id.to_be_bytes().to_vec(), body].concat();
+    // Zig-zag: an int n is 2n; a union's branch 1 is 2; a string of one letter is 2 and
+    // the letter.
+    let row = |id: u8, name: u8| vec![2 * id, 2, 2, name];
+    let event = |before: Option<Vec<u8>>, after: Option<Vec<u8>>, op: u8| {
+        let side = |row: Option<Vec<u8>>| row.map_or(vec![0], |row| [vec![2], row].concat());
+        framed(2, [side(before), side(after), vec![2, op, 0]].concat())
+    };
+    let records = [
+        (1, Some(event(None, Some(row(1, b'a')), b'c'))),
+        (2, Some(event(None, Some(row(2, b'b')), b'c'))),
+        (1, Some(event(Some(row(1, b'a')), Some(row(1, b'z')), b'u'))),
+        (3, Some(event(None, Some(row(3, b'c')), b'c'))),
+        (3, Some(event(Some(row(3, b'c')), None, b'd'))),
+        (2, Some(event(Some(row(2, b'b')), None, b'd'))),
+        // The tombstone of the delete of 2.
+        (2, None),
+    ];
+    let producer: BaseProducer = ClientConfig::new()
+        .set("bootstrap.servers", broker())
+        .create()
+        .unwrap();
+    for (id, value) in &records {
+        let key = framed(1, vec![2 * id]);
+        let mut record = BaseRecord::<Vec<u8>, Vec<u8>>::to(&topic)
+            .partition(0)
+            .key(&key);
+        if let Some(value) = value {
+            record = record.payload(value);
+        }
+        producer.send(record).map_err(|(error, _)| error).unwrap();
+    }
+    producer.flush(Duration::from_secs(60)).unwrap();
+
+    let config = vec![
+        ("bootstrap.servers".to_owned(), broker()),
+        ("schema.registry.url".to_owned(), registry),
+    ];
+    let spec = oxhaven_kafka::CdcSpec::short("oxhaven", "cdc", &table);
+    let graph = SteppedUpdateGraph::new();
+    let shared: Arc<dyn UpdateGraph> = graph.clone();
+    let options = oxhaven_kafka::CdcOptions {
+        config: config.clone(),
+        spec: spec.clone(),
+        partitions: None,
+        blink: false,
+        drop_columns: Vec::new(),
+    };
+    let current = oxhaven_kafka::consume_cdc(shared.clone(), &options).unwrap();
+    // The deleted 3 is gone; the tombstone after the delete of 2 shows it again, with a
+    // null name, as in Java.
+    wait_for(&graph, current.as_ref(), 2);
+    let ids = |table: &dyn Table| -> Vec<Option<i32>> {
+        let index = table.definition().index_of("id").unwrap();
+        let column = table.column(index).chunk(&table.row_set()).unwrap();
+        column.as_primitive::<Int32Type>().iter().collect()
+    };
+    assert_eq!(ids(current.as_ref()), [Some(1), Some(2)]);
+    assert_eq!(
+        strings(current.as_ref(), "name"),
+        [Some("z".to_owned()), None]
+    );
+
+    let raw = oxhaven_kafka::consume_cdc_raw(shared, &config, &spec, None, Some(TableType::Append))
+        .unwrap();
+    wait_for(&graph, raw.as_ref(), records.len() as u64);
+    let ops = ["c", "c", "u", "c", "d", "d"].map(|op| Some(op.to_owned()));
+    assert_eq!(
+        strings(raw.as_ref(), "op"),
+        [ops.to_vec(), vec![None]].concat()
+    );
+    assert_eq!(
+        strings(raw.as_ref(), "before__name"),
+        [None, None, Some("a"), None, Some("c"), Some("b"), None].map(|n| n.map(str::to_owned))
     );
 }

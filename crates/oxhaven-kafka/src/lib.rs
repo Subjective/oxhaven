@@ -8,6 +8,8 @@
 //! | [`consume_to_partitioned_table`] | A constituent per partition: `KafkaTools#consumeToPartitionedTable` |
 //! | [`consume_partitioned_from`] | The same over any [`RecordSource`] |
 //! | [`client::ClientSource`] | The record source that talks to brokers, over librdkafka |
+//! | [`consume_cdc`] | The table a topic of change events describes: `CdcTools#consumeToTable` |
+//! | [`consume_cdc_raw`] | The change events as they are: `CdcTools#consumeRawToTable` |
 //! | [`check_avro_schema`] | Reads an Avro schema as `KafkaTools#getAvroSchema` does |
 //! | [`topics`] | The topics of a broker: `KafkaTools#listTopics` |
 //! | [`produce`] | Publishes a table to a topic: `KafkaTools#produceFromTable` |
@@ -21,6 +23,7 @@ mod avro;
 mod avro_produce;
 mod avro_spec;
 mod avro_text;
+mod cdc;
 pub mod client;
 mod config;
 pub mod json;
@@ -44,6 +47,7 @@ use oxhaven_contracts::table::Table;
 
 pub use avro_produce::AvroProduceSpec;
 pub use avro_spec::{AvroMapping, AvroSchema};
+pub use cdc::{consume_cdc, consume_cdc_from, consume_cdc_raw, current_rows, CdcOptions, CdcSpec};
 pub use client::topics;
 pub use partitioned::{
     consume_partitioned_from, consume_to_partitioned_table, CONSTITUENT_COLUMN, PARTITION_COLUMN,
