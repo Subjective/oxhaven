@@ -344,8 +344,9 @@ Booleans or timestamps, such as the result of grouping a table that has a timest
 Java's result column is `list<string>`, and after `ungroup` it is `java.lang.Object`.
 
 Rule: Oxhaven keeps the element type: the column stays a vector of its strings, Booleans or
-timestamps (`list<timestamp>` for timestamps). Nothing else of `head_by` and `tail_by` is
-covered. The case is A5 of `tasks/4.17-fuzz-findings.md`, with its scenario files
+timestamps (`list<timestamp>` for timestamps), and `ungroup` of it gives a column of that
+element type (`java.lang.String`, sortable, for strings, where Java gives `java.lang.Object`).
+Nothing else of `head_by` and `tail_by` is covered. The case is A5 of `tasks/4.17-fuzz-findings.md`, with its scenario files
 `F4-headby-*.json`; the fuzzer keeps it out (`build` in `oracle/harness/fuzz_wide.py`).
 
 ### A15. Refusals where Java's result is undefined, inconsistent or wrong
