@@ -13,7 +13,7 @@
 //!
 //! | Key columns | A row's key is | Stored as |
 //! | --- | --- | --- |
-//! | one column of a primitive, boolean or time type | an `i64` | a `Vec<i64>` |
+//! | one column of a primitive, boolean or time type | an `i64` | in the hash table itself |
 //! | one string column | the string's bytes, borrowed from the chunk | one byte buffer |
 //! | anything else | the row's bytes in Arrow's row format, borrowed from the encoded chunk | one byte buffer |
 //!
