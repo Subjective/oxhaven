@@ -1221,3 +1221,7 @@ All gates including replay passed locally.
 ## 2026-11-17 19:30 UTC: pull request 154 merged
 
 Seven green checks.
+
+## 2026-11-17 19:32 UTC: task 10.1 started
+
+Back to breadth alongside the last performance run: 95 unported calls remain in the workspace; task 10.1 takes those in aggregations, update_by and filters, with Deephaven recordings where a scenario can express the request.
