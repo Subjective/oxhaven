@@ -1149,3 +1149,7 @@ Task 7.5.1 (Kafka producing) reported after its resume: all gates passed on the 
 - 2026-11-17T13:20Z: merged pull request 144 (fast joins) on seven green checks, including the workspace tests and replay its agent could not finish locally. Started task 9.3 (sort and bulk reads through a redirection). Two agents building.
 - 2026-11-17T13:35Z: task 9.2 came back: `select_distinct` is now faster than the recorded Deephaven numbers, high-cardinality aggregations and `group_by` within about 1.5x, `last_by` still 3x to 5x. Opened pull request 145. The disk filled a second time (52 MB free): the allowance is about 40 GB and each build directory is 8 to 11 GB, so from now on at most two agents build and only one of them may hold a release build.
 - 2026-11-17T13:40Z: merged pull request 145 (fast aggregations and select_distinct) on seven green checks. Started task 9.4 on the default model: the 10M-row gap in filters and formulas, measuring per-row overhead before adding threads.
+
+## 2026-11-17 14:12 UTC: task 9.4 reported, pull request 146 opened
+
+The agent found per-row overhead, not the single thread, was the main cost of filters and formulas at 10M rows. It stopped at its context budget with only the three changed crates tested locally; the workspace tests and replay run in CI. The end-to-end benchmark rerun waits until task 9.3 has released its build.
