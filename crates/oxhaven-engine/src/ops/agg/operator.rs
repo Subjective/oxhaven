@@ -3,7 +3,7 @@
 use super::slot_source::ResultColumn;
 use super::values::{Run, Runs};
 use arrow::array::ArrayRef;
-use oxhaven_contracts::rowset::RowSet;
+use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{ColumnSource, TableFailure};
 use oxhaven_contracts::update::TableUpdate;
@@ -158,6 +158,23 @@ pub trait AggOperator: Send {
         effects.extend(runs.iter().map(|(slot, run)| self.add(slot, &run)));
     }
 
+    /// Whether the operator takes added rows one at a time in row order
+    /// ([`AggOperator::add_rows`]), without their values and without the rows of a group
+    /// brought together. When every operator of an aggregation does and none needs group
+    /// rows, the framework does not group a chunk's rows by slot.
+    fn adds_rows(&self) -> bool {
+        false
+    }
+
+    /// Rows added, in row order: the row `row_keys[i]` joins slot `slots[i]`. Notes the
+    /// effect of each row on its slot in `marks`; together they must be what
+    /// [`AggOperator::add_runs`] says of the same rows grouped. Only called when
+    /// [`AggOperator::adds_rows`] says so.
+    fn add_rows(&mut self, slots: &[usize], row_keys: &[RowKey], marks: &mut Marks) {
+        let _ = (slots, row_keys, marks);
+        unreachable!("add_rows of an operator that does not take rows one at a time");
+    }
+
     /// [`AggOperator::remove`] for every group of a chunk, as
     /// [`AggOperator::add_runs`] is for `add`.
     fn remove_runs(&mut self, runs: &Runs<'_>, effects: &mut Vec<Effect>) {
@@ -252,4 +269,63 @@ pub trait AggOperator: Send {
     ///
     /// Behavior: IterativeChunkedAggregationOperator#propagateFailure
     fn failed(&mut self, _failure: &TableFailure) {}
+}
+
+pub(super) const MODIFIED: u8 = 1;
+pub(super) const RECOMPUTE: u8 = 2;
+
+/// What one operator said about each slot during the current cycle.
+#[derive(Default)]
+pub struct Marks {
+    state: Vec<u8>,
+    /// The slots with a non-zero state.
+    touched: Vec<usize>,
+}
+
+impl Marks {
+    #[inline]
+    pub fn note(&mut self, slot: usize, effect: Effect) {
+        let bits = if effect.modified { MODIFIED } else { 0 }
+            | if effect.recompute { RECOMPUTE } else { 0 };
+        if bits == 0 {
+            return;
+        }
+        if self.state.len() <= slot {
+            self.state.resize(slot + 1, 0);
+        }
+        if self.state[slot] == 0 {
+            self.touched.push(slot);
+        }
+        self.state[slot] |= bits;
+    }
+
+    /// The slots marked with `bit`, increasing.
+    pub(super) fn marked(&self, bit: u8) -> Vec<usize> {
+        let mut slots: Vec<usize> = self
+            .touched
+            .iter()
+            .copied()
+            .filter(|&slot| self.state[slot] & bit != 0)
+            .collect();
+        slots.sort_unstable();
+        slots
+    }
+
+    /// Whether any slot is marked with `bit`.
+    pub(super) fn any(&self, bit: u8) -> bool {
+        self.touched.iter().any(|&slot| self.state[slot] & bit != 0)
+    }
+
+    /// Makes [`Marks::note`] of slots below `slots` not grow the marks.
+    pub(super) fn reserve(&mut self, slots: usize) {
+        if self.state.len() < slots {
+            self.state.resize(slots, 0);
+        }
+    }
+
+    pub(super) fn clear(&mut self) {
+        for slot in self.touched.drain(..) {
+            self.state[slot] = 0;
+        }
+    }
 }
