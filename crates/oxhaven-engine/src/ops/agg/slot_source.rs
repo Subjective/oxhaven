@@ -44,9 +44,14 @@ struct State {
     stored: u64,
     /// The place of each row key's value; keys past the end read as null.
     places: Vec<Place>,
-    /// What each key changed in step `prev_step` held before it, first write wins.
-    prev: HashMap<RowKey, Place>,
-    prev_step: u64,
+    /// The updating step whose writes `prev` and `prev_len` describe, if any.
+    prev_step: Option<u64>,
+    /// The length of `places` before the first write of `prev_step`: a key at or past it
+    /// held nothing before the step, so needs no record.
+    prev_len: usize,
+    /// What each key below `prev_len` that `prev_step` changed held before it, first write
+    /// wins. Looked up only, never iterated.
+    prev: HashMap<RowKey, Place, ahash::RandomState>,
 }
 
 impl SlotSource {
@@ -60,8 +65,9 @@ impl SlotSource {
                 batches: vec![null],
                 stored: 0,
                 places: Vec::new(),
-                prev: HashMap::new(),
-                prev_step: 0,
+                prev_step: None,
+                prev_len: 0,
+                prev: HashMap::with_hasher(ahash::RandomState::with_seeds(1, 2, 3, 4)),
             }),
         }
     }
@@ -105,11 +111,10 @@ impl SlotSource {
         }
         let step = self.updating_step();
         let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
-        if step != Some(state.prev_step) {
+        if step != state.prev_step {
             state.prev.clear();
-        }
-        if let Some(step) = step {
             state.prev_step = step;
+            state.prev_len = state.places.len();
         }
         state.compact_if_wasteful();
         let Ok(batch) = u32::try_from(state.batches.len()) else {
@@ -121,10 +126,15 @@ impl SlotSource {
         if state.places.len() < end {
             state.places.resize(end, NULL_PLACE);
         }
-        let State { places, prev, .. } = &mut *state;
+        let State {
+            places,
+            prev,
+            prev_len,
+            ..
+        } = &mut *state;
         for (index, &key) in keys.iter().enumerate() {
             let old = std::mem::replace(&mut places[key as usize], (batch, index as u32));
-            if step.is_some() {
+            if step.is_some() && (key as usize) < *prev_len {
                 prev.entry(key).or_insert(old);
             }
         }
@@ -138,10 +148,13 @@ impl SlotSource {
     ) -> Result<ArrayRef, TableFailure> {
         let state = self.state.read().unwrap_or_else(PoisonError::into_inner);
         let overlay =
-            use_prev && !state.prev.is_empty() && self.updating_step() == Some(state.prev_step);
+            use_prev && state.prev_step.is_some() && self.updating_step() == state.prev_step;
         let places: Vec<Place> = keys
             .map(|key| {
                 if overlay {
+                    if usize::try_from(key).is_ok_and(|key| key >= state.prev_len) {
+                        return NULL_PLACE;
+                    }
                     if let Some(&place) = state.prev.get(&key) {
                         return place;
                     }

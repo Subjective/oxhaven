@@ -162,6 +162,30 @@ fn group(positions: impl Iterator<Item = usize>, slots: &[usize]) -> Grouped {
     Grouped { order, runs }
 }
 
+/// Adds `rows`, (slot, row key) pairs in row key order, to the row sets of their slots.
+fn collect_group_rows(group_rows: &mut [RowSet], rows: Vec<(usize, RowKey)>) {
+    // A counting sort by slot keeps each slot's row keys increasing.
+    let mut starts = vec![0usize; group_rows.len() + 1];
+    for &(slot, _) in &rows {
+        starts[slot + 1] += 1;
+    }
+    for slot in 0..group_rows.len() {
+        starts[slot + 1] += starts[slot];
+    }
+    let mut next = starts.clone();
+    let mut sorted = vec![0; rows.len()];
+    for (slot, row_key) in rows {
+        sorted[next[slot]] = row_key;
+        next[slot] += 1;
+    }
+    for (slot, group) in group_rows.iter_mut().enumerate() {
+        let keys = &sorted[starts[slot]..starts[slot + 1]];
+        if !keys.is_empty() {
+            group.insert(&RowSet::from_keys(keys.iter().copied()));
+        }
+    }
+}
+
 /// `rows` in pieces of at most [`CHUNK_SIZE`] rows, in order.
 fn chunks(rows: &RowSet) -> impl Iterator<Item = RowSet> + '_ {
     (0..rows.size())
@@ -212,6 +236,10 @@ pub(super) struct Aggregator {
     row_counts: Vec<u64>,
     /// The parent rows of each slot, kept only if an operator needs them.
     group_rows: Option<Vec<RowSet>>,
+    /// While [`Aggregator::initial`] adds the parent's rows: the (slot, row key) of each
+    /// row added, which become the group rows at the end, instead of a row set insertion
+    /// per run of each chunk.
+    initial_rows: Option<Vec<(usize, RowKey)>>,
     /// Where the result has each key column and each operator's column.
     layout: Layout,
     preserve_empty: bool,
@@ -274,6 +302,7 @@ impl Aggregator {
             slots: 0,
             row_counts: Vec::new(),
             group_rows,
+            initial_rows: None,
             layout,
             preserve_empty,
             blink,
@@ -336,7 +365,15 @@ impl Aggregator {
     /// #doNoKeyAddition; the size of the result without keys is that of #noKeyAggregation.
     pub fn initial(&mut self) -> Result<RowSet, TableFailure> {
         let rows = self.parent.row_set();
-        self.process(&rows, false, true)?;
+        if self.group_rows.is_some() {
+            self.initial_rows = Some(Vec::with_capacity(rows.size() as usize));
+        }
+        let added = self.process(&rows, false, true);
+        let initial_rows = self.initial_rows.take();
+        added?;
+        if let (Some(group_rows), Some(initial_rows)) = (&mut self.group_rows, initial_rows) {
+            collect_group_rows(group_rows, initial_rows);
+        }
         if self.preserve_empty {
             for slot in (0..self.slots).filter(|&slot| self.row_counts[slot] == 0) {
                 for column in &mut self.ops {
@@ -573,7 +610,10 @@ impl Aggregator {
                     failure("aggregation: more rows removed from a group than it has")
                 })?
             };
-            if let Some(group_rows) = &mut self.group_rows {
+            if let (true, Some(initial_rows)) = (add, &mut self.initial_rows) {
+                let positions = grouped.order[range.clone()].iter();
+                initial_rows.extend(positions.map(|&p| (slot, row_keys[p])));
+            } else if let Some(group_rows) = &mut self.group_rows {
                 let keys =
                     RowSet::from_keys(grouped.order[range.clone()].iter().map(|&p| row_keys[p]));
                 if add {
