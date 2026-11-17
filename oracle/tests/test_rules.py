@@ -268,6 +268,47 @@ def test_timestamps_are_exact_to_the_nanosecond():
     assert (found[0].expected, found[0].actual) == (1700000000000000000, 1700000000000000001)
 
 
+TEMPORAL = [
+    (pa.date64(), 1700000000000, 1700086400000),       # a LocalDate, in milliseconds
+    (pa.date32(), 19675, 19676),
+    (pa.time64("ns"), 80000000000000, 80000000000001),  # a LocalTime
+    (pa.duration("ns"), 3600000000000, 3600000000001),  # a Duration
+]
+
+
+@pytest.mark.parametrize("arrow_type, value, other", TEMPORAL)
+def test_dates_times_of_day_and_durations_are_exact(arrow_type, value, other):
+    """The wire form of `LocalDate`, `LocalTime` and `Duration`: no tolerance, also when
+    the column is computed, null equals only null, and the same inside an array."""
+    assert rules.comparison_class(arrow_type) == rules.EXACT
+    a = table(X=pa.array([value, None], arrow_type))
+    assert diff(a, a) == []
+    for cells in ([other, None], [value, value], [None, None]):
+        b = table(X=pa.array(cells, arrow_type))
+        assert kinds(diff(a, b)) == [rules.VALUE], cells
+        assert kinds(diff(a, b, computed=frozenset({"X"}))) == [rules.VALUE], cells
+    found = diff(a, table(X=pa.array([other, None], arrow_type)))
+    assert (found[0].expected, found[0].actual) == (value, other)
+    lists = pa.list_(arrow_type)
+    a = table(X=pa.array([[value, None], None], lists))
+    assert diff(a, a) == []
+    for cells in ([[other, None], None], [[value], None], [[value, None], []]):
+        assert kinds(diff(a, table(X=pa.array(cells, lists)))) == [rules.VALUE], cells
+
+
+def test_a_date_and_a_timestamp_are_different_column_types():
+    a = table(X=pa.array([0], pa.date64()))
+    assert rules.COLUMN_TYPE in kinds(diff(a, table(X=pa.array([0], pa.timestamp("ms")))))
+    assert rules.COLUMN_TYPE in kinds(diff(a, table(X=pa.array([0], pa.date32()))))
+
+
+def test_a_period_is_still_a_type_the_rules_do_not_know():
+    """The interval of months a `Period` is sent as, and the other intervals."""
+    for unknown in (pa.month_day_nano_interval(),):
+        assert rules.comparison_class(unknown) is None
+        assert rules.comparison_class(pa.list_(unknown)) is None
+
+
 def test_report_names_scenario_table_step_column_row_and_values():
     actual = BASE.set_column(3, "S", pa.array(["a", None, "x"], pa.string()))
     found = diff(BASE, actual)
