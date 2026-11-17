@@ -1289,3 +1289,7 @@ Two builders, 21 GB free. Both briefs now say: report first, clean up second, on
 ## 2026-11-17 23:42 UTC: pull request 160 merged
 
 Seven green checks on the run after the label was set. Main is at e9e9a183.
+
+## 2026-11-17 23:55 UTC: container restarted, tasks 10.6 and 10.7 resumed
+
+The container restarted at about 23:52 UTC. Worktrees, pushed branches and build directories survived; both agents were resumed from their transcripts with a message.
