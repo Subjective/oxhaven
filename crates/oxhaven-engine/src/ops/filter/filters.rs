@@ -22,7 +22,7 @@ use oxhaven_column::sentinel::sentinels_to_nulls;
 use oxhaven_contracts::expr::{Formula, FormulaCompiler};
 use oxhaven_contracts::rowset::{RowKey, RowRange, RowSet};
 use oxhaven_contracts::schema::{ColumnType, TableClass, TableDefinition};
-use oxhaven_contracts::table::{Table, TableFailure};
+use oxhaven_contracts::table::{ColumnSource, Table, TableFailure};
 use oxhaven_rowset::concat_ordered;
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
@@ -863,6 +863,26 @@ fn float_key(key: &Key) -> Result<Option<f64>, TableFailure> {
     }
 }
 
+/// Whether a column of this type is judged by a typed kernel. A column of another type may
+/// be held as numbers too, and is not compared as one.
+fn has_typed_kernel(column_type: &ColumnType) -> bool {
+    matches!(
+        column_type,
+        ColumnType::Byte
+            | ColumnType::Short
+            | ColumnType::Char
+            | ColumnType::Int
+            | ColumnType::Long
+            | ColumnType::Float
+            | ColumnType::Double
+            | ColumnType::Instant
+    )
+}
+
+/// Scattered rows of an array in memory are judged with all the rows between them when the
+/// rows from the first to the last are at most this many times the selected ones.
+const WHOLE_PER_ROW: u64 = 32;
+
 /// The rows of one filter read as a column chunk are judged in pieces of this many: 2^16,
 /// as Java's parallel `where` (`QueryTable.parallelWhereRowsPerSegment`).
 const PIECE_ROWS: usize = 1 << 16;
@@ -933,18 +953,7 @@ impl Resolved {
         column_type: &ColumnType,
         chunk: ArrayRef,
     ) -> Result<BooleanBuffer, TableFailure> {
-        // A column of another type may be held as numbers too, and is not compared as one.
-        let primitive = matches!(
-            column_type,
-            ColumnType::Byte
-                | ColumnType::Short
-                | ColumnType::Char
-                | ColumnType::Int
-                | ColumnType::Long
-                | ColumnType::Float
-                | ColumnType::Double
-                | ColumnType::Instant
-        );
+        let primitive = has_typed_kernel(column_type);
         if let Some(mask) = primitive.then(|| self.primitive_kernel(&chunk)).flatten() {
             return Ok(mask);
         }
@@ -988,6 +997,56 @@ impl Resolved {
         })
     }
 
+    /// [`Resolved::filter_column`] for scattered rows of a column that is an array in memory,
+    /// when the rows lie close together: every row from the first selected to the last is
+    /// judged, selected or not, and the rows kept are those of them that are selected. A
+    /// pass over the array costs less than a row, where reading scattered rows and finding
+    /// the key of each kept one costs tens of nanoseconds a row. `None` when that does not
+    /// apply, and the rows are then read as any column's.
+    ///
+    /// Only for the typed kernels, which cannot fail, and only for an array in memory,
+    /// whose rows can all be read: so no failure is reported that reading the selected
+    /// rows alone would not report, and none is missed. Previous values of such a column
+    /// are its current ones.
+    ///
+    /// No Java counterpart: Java reads the selected rows of every column
+    /// (`AbstractFilterExecution#doFilter`); the rows kept are the same.
+    fn filter_stored(&self, source: &Arc<dyn ColumnSource>, selection: &RowSet) -> Option<RowSet> {
+        if selection.as_single_range().is_some() || !has_typed_kernel(source.column_type()) {
+            return None;
+        }
+        let (first, last) = (selection.first_row_key()?, selection.last_row_key()?);
+        let spread = (last - first) as u64 + 1;
+        if spread > WHOLE_PER_ROW * selection.size() {
+            return None;
+        }
+        let values = oxhaven_column::stored_values(source)?;
+        if last as u64 >= values.len() as u64 {
+            // A row the array does not have: reading the selected rows reports it.
+            return None;
+        }
+        // From the start of the first row's block of the row set, so that each piece is
+        // a block of its own and joining the pieces rebuilds none.
+        let first = first - first % PIECE_ROWS as RowKey;
+        let values = values.slice(first as usize, (last - first) as usize + 1);
+        // Whether there is a kernel depends on the type and the keys, not on the cells.
+        self.primitive_kernel(&values.slice(0, 0))?;
+        let pieces = parallel::pieces_of(values.len(), PIECE_ROWS);
+        let judged = parallel::map_pieces(pieces.len(), |piece| {
+            let (offset, length) = pieces[piece];
+            let mask = self.primitive_kernel(&values.slice(offset, length))?;
+            let words: Vec<u64> = mask.bit_chunks().iter_padded().collect();
+            Some(RowSet::from_bitmap(
+                first + offset as RowKey,
+                &words,
+                length,
+            ))
+        });
+        let judged = concat_ordered(judged.into_iter().collect::<Option<Vec<_>>>()?);
+        // The selected rows among them: block against block, 64 rows at a step.
+        Some(judged.intersect(selection))
+    }
+
     /// The rows of `selection` that this filter, one that reads `column` alone, keeps.
     ///
     /// The column is read once, on the calling thread. Its chunk is then judged in pieces
@@ -1003,6 +1062,9 @@ impl Resolved {
         use_prev: bool,
     ) -> Result<RowSet, TableFailure> {
         let source = table.column(column);
+        if let Some(kept) = self.filter_stored(&source, selection) {
+            return Ok(kept);
+        }
         let chunk = if use_prev {
             source.prev_chunk(selection)?
         } else {
@@ -1023,6 +1085,34 @@ impl Resolved {
     }
 }
 
+/// A piece of scattered rows gets a bitmap of its keys when the keys from its first row to
+/// its last are at most this many times its rows: 8 bytes of bitmap a row at the most.
+/// Rows further apart are joined range by range.
+const SPREAD_PER_ROW: u64 = 64;
+
+/// Puts the `count` bits of `from` that start at bit `from_at` into `to` from bit `to_at`
+/// on, where `to` has no bit set yet. Bit `i` is bit `i % 64` of word `i / 64`.
+fn copy_bits(from: &[u64], from_at: usize, to: &mut [u64], to_at: usize, count: usize) {
+    let mut done = 0;
+    while done < count {
+        let step = (count - done).min(64);
+        let (word, shift) = ((from_at + done) / 64, (from_at + done) % 64);
+        let mut bits = from[word] >> shift;
+        if shift + step > 64 {
+            bits |= from[word + 1] << (64 - shift);
+        }
+        if step < 64 {
+            bits &= (1 << step) - 1;
+        }
+        let (word, shift) = ((to_at + done) / 64, (to_at + done) % 64);
+        to[word] |= bits << shift;
+        if shift + step > 64 {
+            to[word + 1] |= bits >> (64 - shift);
+        }
+        done += step;
+    }
+}
+
 /// What the piece of `selection` that starts at position `offset` keeps, given whether it
 /// keeps each of its rows, as a row set of its own. A piece is made on the thread that
 /// judged it, so the whole result is never built key by key on one thread.
@@ -1035,7 +1125,25 @@ pub(super) fn kept_of_piece(selection: &RowSet, offset: usize, mask: &BooleanBuf
         return RowSet::from_bitmap(first, &words, mask.len());
     }
     let rows = selection.sub_set_by_position_range(offset as u64, (offset + mask.len()) as u64);
-    // The ranges of the piece's rows and the kept stretches of positions, walked together.
+    if let (Some(first), Some(last)) = (rows.first_row_key(), rows.last_row_key()) {
+        let spread = (last - first) as u64 + 1;
+        if spread <= SPREAD_PER_ROW * mask.len() as u64 {
+            // The piece's rows lie close together: the bit of each row is put at the row's
+            // key in a bitmap of the keys from the first row to the last, a range of rows
+            // at a time, and the row set is made of that bitmap.
+            let bits: Vec<u64> = mask.bit_chunks().iter_padded().collect();
+            let mut keys = vec![0_u64; (spread as usize).div_ceil(64)];
+            let mut at = 0;
+            for range in rows.ranges() {
+                let size = range.size() as usize;
+                copy_bits(&bits, at, &mut keys, (range.first() - first) as usize, size);
+                at += size;
+            }
+            return RowSet::from_bitmap(first, &keys, spread as usize);
+        }
+    }
+    // Rows far apart: the ranges of the piece's rows and the kept stretches of positions,
+    // walked together.
     let mut ranges = rows.ranges();
     let mut range = ranges.next();
     // The position within the piece of the first key of `range`.

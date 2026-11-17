@@ -521,3 +521,108 @@ fn whole_pieces_keep_the_keys_of_their_set_bits() {
     }
     assert!(compared >= oxhaven_testkit::at_least_for(300, 0..30));
 }
+
+/// Scattered rows of a column that is an array in memory are judged with the rows between
+/// them when they lie close together. Against the same cells in a source that is not known
+/// to be such an array, whose selected rows are read and judged alone: every primitive
+/// type with nulls, reserved values, NaN and bounds; every kind of filter; rows that are
+/// close together and far apart, from a block's start and from inside one, ending inside a
+/// piece; on 1, 2 and 4 threads; and with previous values.
+#[test]
+fn close_scattered_rows_of_a_stored_column_keep_what_reading_them_keeps() {
+    use crate::table::{QueryTable, TableSpec};
+    use oxhaven_column::{stored_values, FlatSource};
+    use oxhaven_contracts::table::ColumnSource;
+    let rows = 2 * PIECE + 4321;
+    let mut compared = 0_u64;
+    for seed in test_seeds(0..10) {
+        for (column_type, chunk) in columns(rows, seed) {
+            let definition = definition(&[("X", column_type.clone())]);
+            let source = |stored: bool| -> Arc<dyn ColumnSource> {
+                let source = FlatSource::new(column_type.clone(), chunk.clone()).expect("a source");
+                if stored {
+                    source.shared()
+                } else {
+                    Arc::new(source)
+                }
+            };
+            let table = |stored: bool| -> Arc<dyn Table> {
+                let columns = vec![source(stored)];
+                assert_eq!(stored_values(&columns[0]).is_some(), stored);
+                QueryTable::new_static(TableSpec::new(
+                    definition.clone(),
+                    RowSet::flat(rows as u64),
+                    columns,
+                ))
+            };
+            let (stored, plain) = (table(true), table(false));
+            let all = filters(&column_type);
+            // A few filters of each kind for each seed: all of them over the seeds.
+            let chosen = all.iter().skip(seed as usize % 7).step_by(7);
+            let selections = [
+                RowSet::from_keys((0..rows as i64).filter(|key| key % 3 != 1)),
+                RowSet::from_keys((70_001..rows as i64 - 5).filter(|key| key % 11 == 4)),
+                RowSet::from_keys((5..rows as i64).filter(|key| key % 40 == 0)),
+                RowSet::from_keys([7, 9]),
+                RowSet::from_keys([0, rows as i64 - 1]),
+            ];
+            for filter in chosen {
+                for selection in &selections {
+                    let expected = filter
+                        .filter(&*plain, selection, false)
+                        .expect("the selected rows, read");
+                    for (threads, use_prev) in [(1, false), (2, false), (4, false), (1, true)] {
+                        let kept =
+                            with_threads(threads, || filter.filter(&*stored, selection, use_prev))
+                                .expect("the rows between, judged");
+                        assert!(
+                            kept == expected,
+                            "{column_type:?}, seed {seed}, {threads} threads, {} rows selected",
+                            selection.size()
+                        );
+                        kept.check_layout();
+                        compared += 1;
+                    }
+                }
+            }
+        }
+    }
+    assert!(compared >= oxhaven_testkit::at_least_for(10_000, 0..10));
+}
+
+/// A source dropped leaves the record of arrays in memory, and a source that is not an
+/// array in memory, or was never shared as one, is not in it.
+#[test]
+fn only_a_shared_array_is_known_as_stored() {
+    use oxhaven_column::{stored_values, FlatSource};
+    use oxhaven_contracts::table::ColumnSource;
+    let values: ArrayRef = Arc::new(arrow::array::Int32Array::from(vec![1, 2, 3]));
+    let shared = FlatSource::new(ColumnType::Int, values.clone())
+        .expect("a source")
+        .shared();
+    assert_eq!(stored_values(&shared).expect("stored").len(), 3);
+    let plain: Arc<dyn ColumnSource> =
+        Arc::new(FlatSource::new(ColumnType::Int, values).expect("a source"));
+    assert!(stored_values(&plain).is_none());
+    // A view column computes its rows when they are read.
+    let table = table(10);
+    let viewed =
+        crate::ops::select::update_view(&table, &["V = A + 1"], &Compiler).expect("a view");
+    let view_column = viewed.column(viewed.definition().index_of("V").expect("V"));
+    assert!(stored_values(&view_column).is_none());
+    assert!(stored_values(&table.column(0)).is_some());
+    // So a row an earlier filter dropped is not computed: here it would fail.
+    let divided =
+        crate::ops::select::update_view(&table, &["Q = 100 % K"], &Compiler).expect("a view");
+    let all = divided.row_set();
+    let resolved =
+        |text: &str| resolve(&spec(text), divided.definition(), &Compiler).expect("resolved");
+    assert!(resolved("Q > 3").filter(&*divided, &all, false).is_err());
+    let nonzero = resolved("K != 0")
+        .filter(&*divided, &all, false)
+        .expect("filtered");
+    let kept = resolved("Q > 3")
+        .filter(&*divided, &nonzero, false)
+        .expect("no remainder by zero");
+    assert_eq!(kept, RowSet::from_keys([6, 8]));
+}

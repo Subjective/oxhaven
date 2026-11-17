@@ -216,13 +216,27 @@ fn parts(table: &Arc<dyn Table>, rows: i64, reps: usize) {
         unstructured_filter(from, &[filter], &Compiler).expect("where")
     };
     let mut stage = table.clone();
-    for filter in ["K10 = 3", "B > 50000.0", "A < 50000"] {
+    for (filter, column) in [("K10 = 3", 1), ("B > 50000.0", 5), ("A < 50000", 4)] {
         let from = stage.clone();
         let what = format!("{filter}, of {} rows", from.row_set().size());
         time(&what, rows, reps, || {
             black_box(where_one(&from, filter));
         });
+        // What of that is reading the filter's column at the rows left.
+        let (source, left) = (from.column(column), from.row_set());
+        time("  of which reading the column", rows, reps, || {
+            black_box(source.chunk(&left).expect("the column"));
+        });
         stage = where_one(&from, filter);
+    }
+    // A range filter over one row in so many, for the spread of rows up to which judging
+    // every row between the selected ones beats reading the selected ones.
+    for step in [4, 16, 64, 256, 1024] {
+        let from = where_one(table, &format!("Id % {step} == 0"));
+        let what = format!("B > 50000.0, of 1 row in {step}");
+        time(&what, rows, reps, || {
+            black_box(where_one(&from, "B > 50000.0"));
+        });
     }
     // The row set of `where_range`, built by one sequential builder over all the kept
     // ranges, as a filter built it before task 9.6, and as it is built since: a row set
