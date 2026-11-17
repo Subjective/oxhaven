@@ -1273,3 +1273,7 @@ The select column-array family (P1 to P4). P5 to P7 wait on the owner.
 ## 2026-11-17 23:23 UTC: task 10.5 reported, pull request 159 opened
 
 The assumption in 10.2 about two distances was wrong: Deephaven does not mark both sides modified, its incremental update keeps stale values. The agent wrote the correct computation and left the refusal in place; owner question 8 goes to review-items-2.md as 7.4. The scenario table_column_arrays_offsets, recorded from Deephaven, waits in scratchpad/t105/oracle-prepared for a pull request with the oracle-change label.
+
+## 2026-11-17 23:32 UTC: pull request 159 merged
+
+Seven green checks on head 62641c2a. Main is at e5a637ce.
