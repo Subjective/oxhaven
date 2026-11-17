@@ -413,15 +413,19 @@ The variants `times` (`harness/fuzz_times.py`, the family `time_types` of
 instant (static, keyed or append-only) each get an `update` that makes columns of these
 types with nulls, the `ZonedDateTime` as one instant in three zones. Over them it draws
 sorts, match and range filters with the literal spellings of each type, natural, exact and
-cross joins on these columns, `select_distinct`, and `agg_by` of and by them (`min`, `max`,
-`first`, `last`, `count_distinct`, `unique`, `distinct`, sorted first and last, `median`,
-percentile). The wire does not carry the zone of a `ZonedDateTime`, so a `view` with
-`hourOfDay(Z, true)` shows it now and then; a table with a `Period` column, which the
-rules cannot read, is compared through a view without it. `fuzz_times.RESTRICTIONS` lists
-what it steps around because of a finding in `tasks/4.24-fuzz-time-types.md` that is
-still open: every as-of join, sorted first or last by a `Period`, and the orderings of a
-`ZoneId`. Task 4.25 lifted the filters on a `LocalDateTime`, the range comparisons with
-null and the ordering aggregations of a `Period`. To shrink a seed of this family by
+cross joins on these columns, `aj` and `raj` with all four rules on these stamps and keys
+(the family names `aj`; `raj` is drawn as a form of it), `select_distinct`, and `agg_by`
+of and by them (`min`, `max`, `first`, `last`, `count_distinct`, `unique`, `distinct`,
+sorted first and last, `median`, percentile). The wire does not carry the zone of a
+`ZonedDateTime`, so a `view` with `hourOfDay(Z, true)` shows it now and then; a table with
+a `Period` column, which the rules cannot read, is compared through a view without it.
+`fuzz_times.RESTRICTIONS` lists what it steps around because of a finding in
+`tasks/4.24-fuzz-time-types.md` that is still open: sorted first or last by a `Period`,
+the orderings of a `ZoneId`, an as-of join on a `Period` or `ZoneId` stamp, and the
+strict rules (`>`, `<`) of an as-of join whose right table is refreshing (a defect of the
+reference's ticking result). Task 4.25
+lifted the filters on a `LocalDateTime`, the range comparisons with null and the ordering
+aggregations of a `Period`; task 4.26 the as-of joins on the other six types. To shrink a seed of this family by
 hand when the shrinker ends at a table with a `Period` column, start from the scenario
 `--keep-going` writes.
 

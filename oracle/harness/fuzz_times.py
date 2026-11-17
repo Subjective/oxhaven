@@ -44,7 +44,11 @@ RESTRICTIONS: dict[str, str] = {
     "J1": "time_agg: no min, max, median, percentile, count_distinct, unique or distinct of "
           "a ZoneId column, and no sorted first or last by one (the reference fails when "
           "two zones meet in a group)",
-    "R6": "time_aj: no as-of join on a column of these types",
+    "R8": "time_aj: no as-of join on a Period or ZoneId stamp (the reference fails once it "
+          "compares two that are not one object)",
+    "J2": "time_aj: no strict rule (> or <) when the right table is refreshing (the "
+          "reference's ticking result joins a right row added later with a stamp equal to "
+          "the left one)",
 }
 
 DATE, TIME, DATETIME, DURATION, DOW, ZONED, PERIOD, ZONE = (
@@ -374,18 +378,30 @@ class _Times(_Second):
     time_natural_join = time_exact_join = time_join
 
     def time_aj(self, name: str, left: _Table) -> bool:
-        """An as-of join on a time column of the other parent, whatever its type."""
-        if "R6" in RESTRICTIONS:
-            return False
+        """An as-of join, `aj` or `raj` with any of its two rules, on a time column of the
+        other parent, with `K` and now and then another time column (of any type) as exact
+        matches."""
         rng = self.rng
         right = self.tables["c" if self.parent.get(left.name) == "b" else "b"]
-        stamps = [c for c in self.timed(left) if c in dict(right.columns)]
+        shared = [c for c in self.timed(left)
+                  if c in dict(right.columns) and left.type_of(c) == right.type_of(c)]
+        stamps = [c for c in shared
+                  if "R8" not in RESTRICTIONS or left.type_of(c) not in (PERIOD, ZONE)]
         if not stamps:
             return False
         stamp = rng.choice(stamps)
-        on = (["K"] if "K" in dict(left.columns) and self.chance(0.6) else []) + [
-            f"{stamp} {rng.choice(['>=', '>'])} {stamp}"]
+        kind = rng.choice(["aj", "raj"])
+        rule = rng.choice([">=", ">"] if kind == "aj" else ["<=", "<"])
+        source = {"b": "t", "c": "r"}[right.name]
+        if len(rule) == 1 and "J2" in RESTRICTIONS and any(
+                "ticking" in doc for doc in self.inputs if doc["name"] == source):
+            rule += "="
+        on = ["K"] if "K" in dict(left.columns) and self.chance(0.5) else []
+        keys = [c for c in shared if c != stamp]
+        if keys and self.chance(0.3):
+            on.insert(rng.randrange(len(on) + 1), rng.choice(keys))
+        on.append(f"{stamp} {rule} {stamp}")
         out = self.fresh("J")
-        self.add({"name": name, "op": "aj", "left": left.name, "right": right.name, "on": on,
+        self.add({"name": name, "op": kind, "left": left.name, "right": right.name, "on": on,
                   "joins": [f"{out} = V"]}, list(left.columns) + [(out, "int32")], left.rows)
         return True
