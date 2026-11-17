@@ -525,14 +525,27 @@ impl Plan {
                 }
             }
         }
-        // Behavior: io.deephaven.engine.table.TableDefinition#checkDuplicateNames
-        let definition = TableDefinition::new(definitions).map_err(|duplicate| {
+        // Behavior: io.deephaven.engine.table.TableDefinition#checkForNullOrDuplicates,
+        // which lists every name that comes again, each time it does (probe same_subject
+        // of task 7.5.3)
+        let mut seen = std::collections::HashSet::new();
+        let duplicates: Vec<&str> = definitions
+            .iter()
+            .map(|column| column.name.as_str())
+            .filter(|name| !seen.insert(*name))
+            .collect();
+        let duplicate = |names: &[&str]| {
             invalid(format!(
                 "java.lang.IllegalArgumentException: Supplied ColumnDefinitions include \
                  duplicate names [{}]",
-                duplicate.0
+                names.join(", ")
             ))
-        })?;
+        };
+        if !duplicates.is_empty() {
+            return Err(duplicate(&duplicates));
+        }
+        let definition = TableDefinition::new(definitions)
+            .map_err(|duplicate_name| duplicate(&[duplicate_name.0.as_str()]))?;
         Ok(Self {
             topic: topic.to_owned(),
             definition,

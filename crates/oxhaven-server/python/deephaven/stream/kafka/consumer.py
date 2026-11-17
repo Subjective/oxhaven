@@ -52,13 +52,19 @@ KeyValueSpec.IGNORE = KeyValueSpec({"kind": "ignore"})
 KeyValueSpec.FROM_PROPERTIES = KeyValueSpec({"kind": "simple", "column": None, "type": None})
 
 
+class _JTableType(tuple):
+    """What `TableType.j_object` is: the kind of table and the capacity of a ring. The
+    reference holds a Java `KafkaTools.TableType` there, which a Java call such as
+    `cdc.consume_raw` takes where it does not take the `TableType`."""
+
+
 class TableType:
     """The kind of table a topic is consumed into."""
 
     @staticmethod
     def blink() -> "TableType":
         """Each row is in the table for one update cycle."""
-        return TableType(("blink", 0))
+        return TableType(_JTableType(("blink", 0)))
 
     @staticmethod
     def stream() -> "TableType":
@@ -69,12 +75,12 @@ class TableType:
     @staticmethod
     def append() -> "TableType":
         """Every row stays in the table."""
-        return TableType(("append", 0))
+        return TableType(_JTableType(("append", 0)))
 
     @staticmethod
     def ring(capacity: int) -> "TableType":
         """The last `capacity` rows stay in the table."""
-        return TableType(("ring", capacity))
+        return TableType(_JTableType(("ring", capacity)))
 
     def __init__(self, j_table_type):
         self._j_table_type = j_table_type
