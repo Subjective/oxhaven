@@ -1142,6 +1142,14 @@ class Table:
         try:
             aggs = _engine.to_sequence(aggs)
             by = _engine.to_sequence(by)
+            if any(getattr(agg, "_reaggregating", False) for agg in aggs):
+                # Java applies such a formula to the results of the level below; the
+                # request this sends has no field for it
+                raise NotImplementedError(
+                    "not ported: io.deephaven.engine.table.impl.by.AggregationProcessor."
+                    "RollupReaggregatedConverter#visit(Formula): a formula aggregation "
+                    "with reaggregating=True in a rollup"
+                )
             request = {
                 "aggregate": {
                     "source_id": _engine.source(0),
