@@ -1189,3 +1189,7 @@ The slow refreshing read was a map lookup per row in the writable column, not lo
 ## 2026-11-17 16:59 UTC: pull request 150 merged
 
 Seven green checks. No new builder started: the end-to-end benchmark rerun against Deephaven needs a quiet machine and starts when the second run of task 9.5 reports.
+
+## 2026-11-17 17:18 UTC: second run of task 9.5 reported, pull request 151 opened
+
+All gates including replay passed locally. The agent used 328k tokens of context against a 180k line; the hand-over rule is still not holding on its own.
