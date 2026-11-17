@@ -1390,3 +1390,251 @@ fn the_default_additions_follow_changes_of_their_right_columns() {
         .unwrap();
     assert_eq!(update.modified_columns, ModifiedColumnSet::of([3]));
 }
+
+/// Left rows at row keys far apart, for which the redirection is not an array, and then at
+/// row keys that an array holds again.
+#[test]
+fn a_left_table_of_row_keys_far_apart_follows_both_tables() {
+    const FAR: RowKey = 1 << 40;
+    let pair = Pair::new(
+        Side::Live(
+            &[10, FAR, 2 * FAR],
+            &left_columns(&[1, 2, 1], &["a", "b", "c"]),
+        ),
+        Side::Live(&[5, 6], &right_columns(&[1, 2], &[100, 200])),
+        kv(ErrorOnDuplicate),
+    );
+    assert_eq!(pair.v(), ["100", "200", "100"]);
+    pair.left(
+        TableChange::new()
+            .remove([10])
+            .add([3 * FAR], left_row(2, "d")),
+    );
+    assert_eq!(pair.v(), ["200", "100", "200"]);
+    let update = pair.right(TableChange::new().remove([5])).unwrap();
+    assert_eq!(keys(&update.modified), [2 * FAR]);
+    assert_eq!(pair.v(), ["200", "null", "200"]);
+    pair.left(TableChange::new().shift(FAR, 3 * FAR, -FAR + 7));
+    assert_eq!(keys(&pair.result.row_set()), [7, FAR + 7, 2 * FAR + 7]);
+    assert_eq!(pair.v(), ["200", "null", "200"]);
+    pair.left(TableChange::new().remove([FAR + 7, 2 * FAR + 7]));
+    pair.step(
+        Some(TableChange::new().add([8, 9], vec![ints([1, 2]), strings(["e", "f"])])),
+        Some(TableChange::new().add([5], right_row(1, 101))),
+    );
+    assert_eq!(pair.v(), ["200", "101", "200"]);
+}
+
+/// A static table whose rows are not at `0..size`: the redirection of the result is made
+/// in one piece for whatever row keys the left table has.
+#[test]
+fn a_static_left_table_of_any_row_keys_is_joined() {
+    const FAR: RowKey = 1 << 40;
+    let right = static_table(&right_columns(&[1, 2], &[100, 200]));
+    for rows in [
+        vec![0, 1, 2, 3],
+        vec![3, 5, 9, 4000],
+        vec![0, 7, FAR, FAR + 1],
+    ] {
+        let left: Arc<dyn Table> = ReferenceTable::new_static(
+            definition(&[("K", ColumnType::Int), ("Tag", ColumnType::String)]),
+            RowSet::from_keys(rows.iter().copied()),
+            vec![ints([2, 9, 1, 2]), strings(["a", "b", "c", "d"])],
+        );
+        assert_eq!(keys(&left.row_set()), rows);
+        let joined = natural_join(&left, &right, &on(&["K"]), &add(&["V"]), ErrorOnDuplicate);
+        let joined = joined.unwrap();
+        assert_eq!(keys(&joined.row_set()), rows);
+        assert_eq!(column(&*joined, "V"), ["200", "null", "100", "200"]);
+    }
+}
+
+/// With a static right table the join has no slot for a key that table lacks, and still
+/// tells a row that moved between two such keys from one that kept its key.
+#[test]
+fn a_left_row_moving_between_keys_without_right_rows_reports_the_added_columns() {
+    let pair = Pair::new(
+        Side::Live(&[10, 20], &left_columns(&[7, 1], &["a", "b"])),
+        Side::Fixed(&right_columns(&[1, 2], &[100, 200])),
+        kv(ErrorOnDuplicate),
+    );
+    let update = pair
+        .left(TableChange::new().modify([10], [(0, ints([8]))]))
+        .unwrap();
+    assert_eq!(update.modified_columns, ModifiedColumnSet::of([0, V]));
+    assert_eq!(pair.v(), ["null", "100"]);
+    // The key column written with the values it had.
+    let update = pair
+        .left(TableChange::new().modify([10, 20], [(0, ints([8, 1]))]))
+        .unwrap();
+    assert_eq!(keys(&update.modified), [10, 20]);
+    assert_eq!(update.modified_columns, ModifiedColumnSet::of([0]));
+    assert_eq!(pair.v(), ["null", "100"]);
+}
+
+/// When one cycle makes the join refuse several keys, the failure names the least of
+/// them, whatever order the keys arrived in.
+#[test]
+fn a_cycle_that_refuses_several_keys_fails_with_the_least_of_them() {
+    for right_keys in [[3, 1, 2], [1, 2, 3], [2, 3, 1]] {
+        let pair = Pair::new(
+            Side::Live(&[10, 20, 30], &left_columns(&[3, 2, 1], &["a", "b", "c"])),
+            Side::Live(&[5, 6, 7], &right_columns(&right_keys, &[100, 200, 300])),
+            |left, right| exact_join(left, right, &on(&["K"]), &add(&["V"])).unwrap(),
+        );
+        let message = pair.fails(None, Some(TableChange::new().remove([5, 6, 7])));
+        assert_eq!(
+            message,
+            "Tables don't have one-to-one mapping - no mappings for key 1."
+        );
+    }
+    // A duplicate of one key and the loss of another: the lesser key, whichever it is.
+    let start = |right_keys: [i32; 2]| {
+        Pair::new(
+            Side::Live(&[10, 20], &left_columns(&[4, 6], &["a", "b"])),
+            Side::Live(&[5, 6], &right_columns(&right_keys, &[100, 200])),
+            |left, right| exact_join(left, right, &on(&["K"]), &add(&["V"])).unwrap(),
+        )
+    };
+    let pair = start([6, 4]);
+    let change = TableChange::new().remove([5]).add([9], right_row(4, 400));
+    assert_eq!(
+        pair.fails(None, Some(change)),
+        "Natural Join found duplicate right key for 4"
+    );
+    let pair = start([4, 6]);
+    let change = TableChange::new().remove([5]).add([9], right_row(6, 600));
+    assert_eq!(
+        pair.fails(None, Some(change)),
+        "Tables don't have one-to-one mapping - no mappings for key 4."
+    );
+}
+
+/// Each kind of key a join hashes in its own way, with both tables changing: a string, a
+/// double and a float with their NaNs and zeros, and several columns. Null keys match in
+/// all of them.
+#[test]
+fn every_kind_of_key_follows_changes_of_both_tables() {
+    // The values a key column takes, by number: 0 is null, 1 and 2 are equal, and 3 and 4
+    // are equal for the floating point types.
+    type Make = fn(&[usize]) -> ArrayRef;
+    type KeyColumn = (&'static str, ColumnType, Make);
+    let text: Make = |picks| {
+        let values = [None, Some("a"), Some("a"), Some(""), Some("b")];
+        Arc::new(StringArray::from_iter(
+            picks.iter().map(|pick| values[*pick]),
+        ))
+    };
+    let double: Make = |picks| {
+        let other_nan = f64::from_bits(0xfff8_0000_0000_0001);
+        let values = [None, Some(f64::NAN), Some(other_nan), Some(0.0), Some(-0.0)];
+        Arc::new(Float64Array::from_iter(
+            picks.iter().map(|pick| values[*pick]),
+        ))
+    };
+    let float: Make = |picks| {
+        let values = [None, Some(f32::NAN), Some(-f32::NAN), Some(-0.0), Some(0.0)];
+        Arc::new(Float32Array::from_iter(
+            picks.iter().map(|pick| values[*pick]),
+        ))
+    };
+    let flag: Make = |picks| {
+        let values = [None, Some(true), Some(true), Some(false), Some(false)];
+        Arc::new(BooleanArray::from_iter(
+            picks.iter().map(|pick| values[*pick]),
+        ))
+    };
+    // The key columns of each case, and whether its keys 3 and 4 are one key.
+    let cases: Vec<(Vec<KeyColumn>, bool)> = vec![
+        (vec![("K", ColumnType::String, text)], false),
+        (vec![("K", ColumnType::Double, double)], true),
+        (vec![("K", ColumnType::Float, float)], true),
+        (
+            vec![
+                ("K", ColumnType::Double, double),
+                ("L", ColumnType::String, text),
+            ],
+            false,
+        ),
+        (
+            vec![
+                ("K", ColumnType::Boolean, flag),
+                ("L", ColumnType::Float, float),
+            ],
+            true,
+        ),
+    ];
+    for (key_columns, same) in &cases {
+        let names: Vec<&str> = key_columns.iter().map(|(name, _, _)| *name).collect();
+        let name = format!("{names:?} of {:?}", key_columns[0].1);
+        let columns = |picks: &[usize], values: &[i64]| {
+            let mut columns: Vec<(&'static str, ColumnType, ArrayRef)> = key_columns
+                .iter()
+                .map(|(name, column_type, make)| (*name, column_type.clone(), make(picks)))
+                .collect();
+            columns.push(("V", ColumnType::Long, longs(values.iter().copied())));
+            columns
+        };
+        let rows = |picks: &[usize], values: &[i64]| -> Vec<ArrayRef> {
+            let columns = columns(picks, values).into_iter();
+            columns.map(|(_, _, values)| values).collect()
+        };
+        let rekey = |pick: usize| -> Vec<(usize, ArrayRef)> {
+            let columns = key_columns.iter().enumerate();
+            columns
+                .map(|(index, (_, _, make))| (index, make(&[pick])))
+                .collect()
+        };
+        let on = on(&names);
+        let build = move |left: &Arc<dyn Table>, right: &Arc<dyn Table>| {
+            let add = [JoinAddition::renamed("RV", "V")];
+            natural_join(left, right, &on, &add, ErrorOnDuplicate).unwrap()
+        };
+        // Left rows with the keys null, 1, 2 and 3; right rows with the keys 2 and 4.
+        let pair = Pair::new(
+            Side::Live(&[10, 20, 30, 40], &columns(&[0, 1, 2, 3], &[0, 0, 0, 0])),
+            Side::Live(&[5, 6], &columns(&[2, 4], &[200, 400])),
+            build,
+        );
+        let rv = || column(&*pair.result, "RV");
+        let of_four = |value: &'static str| if *same { value } else { "null" };
+        assert_eq!(rv(), ["null", "200", "200", of_four("400")], "{name}");
+
+        // The null key arrives on the right, and the right row of key 2 is replaced by
+        // one of key 1 at another row key.
+        let change = TableChange::new()
+            .remove([5])
+            .add([7, 8], rows(&[0, 1], &[1, 100]));
+        let update = pair.right(change).unwrap();
+        assert_eq!(keys(&update.modified), [10, 20, 30], "{name}");
+        assert_eq!(rv(), ["1", "100", "100", of_four("400")], "{name}");
+
+        // A left row is written with the other form of its key: the key is the same.
+        let update = pair
+            .left(TableChange::new().modify([20], rekey(2)))
+            .unwrap();
+        let key_indices = 0..key_columns.len();
+        assert_eq!(
+            update.modified_columns,
+            ModifiedColumnSet::of(key_indices),
+            "{name}"
+        );
+        // Then it takes the null key, and a row with key 4 arrives.
+        pair.left(
+            TableChange::new()
+                .modify([20], rekey(0))
+                .add([50], rows(&[4], &[0])),
+        );
+        assert_eq!(rv(), ["1", "1", "100", of_four("400"), "400"], "{name}");
+        pair.right(
+            TableChange::new()
+                .remove([6, 7])
+                .add([9], rows(&[3], &[300])),
+        );
+        assert_eq!(
+            rv(),
+            ["null", "null", "100", "300", of_four("300")],
+            "{name}"
+        );
+    }
+}

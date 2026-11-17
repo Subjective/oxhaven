@@ -132,6 +132,29 @@ pub(crate) struct KeyColumns {
 }
 
 impl KeyColumns {
+    /// The match columns of `rows`, one array per column; with `use_prev`, as of the end of
+    /// the previous cycle for `rows` of the previous key space. For hashing with a
+    /// [`KeyTable`](super::key_table::KeyTable), which needs no key per row.
+    pub(crate) fn chunks(
+        &self,
+        table: &dyn Table,
+        rows: &RowSet,
+        use_prev: bool,
+    ) -> Result<Vec<ArrayRef>, TableFailure> {
+        if rows.is_empty() {
+            return Ok(Vec::new());
+        }
+        let chunk = |&column: &usize| {
+            let source = table.column(column);
+            if use_prev {
+                source.prev_chunk(rows)
+            } else {
+                source.chunk(rows)
+            }
+        };
+        self.columns.iter().map(chunk).collect()
+    }
+
     /// The key of each row of `rows`, in row order; with `use_prev`, as of the end of the
     /// previous cycle for `rows` of the previous key space.
     pub(crate) fn read(

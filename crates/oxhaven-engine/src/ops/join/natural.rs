@@ -1,17 +1,28 @@
 //! The natural join: its checks, its initial result and its incremental half.
 //!
 //! The result has the left table's rows at the left table's row keys. Its added columns
-//! read the right table through a row redirection from left row key to right row key. The
-//! join keeps, for every key, the left rows and the right rows that have it; an update
-//! changes those sets and the redirection, and reports the left rows whose right row
-//! changed as modified.
+//! read the right table through a row redirection from left row key to right row key.
 //!
-//! Java has four implementations of this, chosen by which side is refreshing and by the
-//! key type, each with its own hash table. This is one implementation over an ordered map.
-//! It keeps Java's order of work within a cycle (right table first: removes, shifts,
-//! modifies, adds; then the left table; then the keys the right table touched), because
-//! that order decides which combinations of changes fail.
+//! The keys of both tables are numbered by a [`KeyTable`], a chunk of key columns at a
+//! time, and what the join knows about a key is kept by that number, its slot. How much it
+//! keeps depends on which table can change:
+//!
+//! | Left | Right | Kept per key | Kept per left row |
+//! | --- | --- | --- | --- |
+//! | static | static | nothing: one pass over each table | the redirection |
+//! | refreshing | static | the first and last right row | the redirection |
+//! | either | refreshing | the right rows and the left rows | the redirection |
+//!
+//! An update changes those sets and the redirection, and reports the left rows whose right
+//! row changed as modified.
+//!
+//! Java has four implementations of this, chosen by which side is refreshing, each with a
+//! hash table generated per key type. This is one implementation. It keeps Java's order of
+//! work within a cycle (right table first: removes, shifts, modifies, adds; then the left
+//! table; then the keys the right table touched), because that order decides which
+//! combinations of changes fail.
 
+use super::key_table::{KeyTable, NO_SLOT};
 use super::keys::{key_text, Key, KeyColumns};
 use super::{JoinAddition, JoinError, JoinMatch, NaturalJoinType};
 use crate::table::{reads_through, MergedOperator, QueryTable, TableSpec};
@@ -30,16 +41,111 @@ fn failure(error: impl std::fmt::Display) -> TableFailure {
     }
 }
 
-/// The rows of both tables that have one key.
-#[derive(Default)]
-struct Slot {
-    left: BTreeSet<RowKey>,
-    right: BTreeSet<RowKey>,
+/// The rows of one table that have one key. Most keys of a right table have one row, and
+/// that one is kept without a set.
+#[derive(Default, Debug)]
+enum Rows {
+    #[default]
+    Empty,
+    One(RowKey),
+    /// Two rows or more.
+    Many(BTreeSet<RowKey>),
 }
 
-/// The keys in use, in key order, so that a cycle visits them in the same order on every
-/// run. A key stays only while a row of either table has it.
-type Slots = BTreeMap<Key, Slot>;
+impl Rows {
+    /// `rows` in increasing order.
+    fn from_sorted(rows: Vec<RowKey>) -> Self {
+        match rows.as_slice() {
+            [] => Rows::Empty,
+            [only] => Rows::One(*only),
+            _ => Rows::Many(rows.into_iter().collect()),
+        }
+    }
+
+    fn insert(&mut self, row: RowKey) {
+        match self {
+            Rows::Empty => *self = Rows::One(row),
+            Rows::One(only) if *only == row => {}
+            Rows::One(only) => *self = Rows::Many(BTreeSet::from([*only, row])),
+            Rows::Many(rows) => {
+                rows.insert(row);
+            }
+        }
+    }
+
+    fn remove(&mut self, row: RowKey) {
+        match self {
+            Rows::One(only) if *only == row => *self = Rows::Empty,
+            Rows::Many(rows) => {
+                rows.remove(&row);
+                if let (1, Some(only)) = (rows.len(), rows.first()) {
+                    *self = Rows::One(*only);
+                }
+            }
+            Rows::Empty | Rows::One(_) => {}
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        matches!(self, Rows::Empty)
+    }
+
+    /// The first and the last row.
+    fn ends(&self) -> Option<(RowKey, RowKey)> {
+        match self {
+            Rows::Empty => None,
+            Rows::One(only) => Some((*only, *only)),
+            Rows::Many(rows) => rows.first().copied().zip(rows.last().copied()),
+        }
+    }
+
+    fn iter(&self) -> impl Iterator<Item = RowKey> + '_ {
+        let (one, many) = match self {
+            Rows::Empty => (None, None),
+            Rows::One(only) => (Some(*only), None),
+            Rows::Many(rows) => (None, Some(rows.iter().copied())),
+        };
+        one.into_iter().chain(many.into_iter().flatten())
+    }
+}
+
+/// The rows of each slot below `slots`, for `rows` whose slots are `row_slots` in order.
+fn grouped(rows: &RowSet, row_slots: &[u32], slots: usize) -> Vec<Rows> {
+    let mut groups = vec![Vec::new(); slots];
+    for (row, &slot) in rows.iter().zip(row_slots) {
+        groups[slot as usize].push(row);
+    }
+    groups.into_iter().map(Rows::from_sorted).collect()
+}
+
+/// The rows of `slot`, which may be newer than `rows` is long.
+fn rows_of(rows: &mut Vec<Rows>, slot: u32) -> &mut Rows {
+    let slot = slot as usize;
+    if rows.len() <= slot {
+        rows.resize_with(slot + 1, Rows::default);
+    }
+    &mut rows[slot]
+}
+
+/// The right rows of every key.
+enum RightRows {
+    /// Of a static right table: the first and the last row of each slot, which is all a
+    /// join ever asks of a key that cannot change.
+    Fixed(Vec<Option<(RowKey, RowKey)>>),
+    /// Of a refreshing right table.
+    Changing(Vec<Rows>),
+}
+
+impl RightRows {
+    /// The first and last right row of `slot`, which may be `NO_SLOT`.
+    fn ends(&self, slot: u32) -> Option<(RowKey, RowKey)> {
+        let slot = slot as usize;
+        match self {
+            RightRows::Fixed(ends) => *ends.get(slot)?,
+            RightRows::Changing(rows) => rows.get(slot)?.ends(),
+        }
+    }
+}
 
 /// What the right table offers for one key.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -52,22 +158,33 @@ enum Match {
     Duplicate,
 }
 
+/// The match of a key whose first and last right rows are `ends`.
+///
 /// Behavior: the `joinType` branches of `buildFromRightSide` in the hashers under
 /// io.deephaven.engine.table.impl.naturaljoin.typed.staticopen, and
 /// io.deephaven.engine.table.impl.NaturalJoinHelper.ModifiedSlotUpdater#accept for the
 /// first and last row of a set of duplicates
-fn pick(join_type: NaturalJoinType, right: &BTreeSet<RowKey>) -> Match {
-    match (right.first(), right.last()) {
-        (Some(first), Some(last)) if first == last => Match::Row(*first),
-        (Some(first), Some(last)) => match join_type {
-            NaturalJoinType::FirstMatch => Match::Row(*first),
-            NaturalJoinType::LastMatch => Match::Row(*last),
+fn pick(join_type: NaturalJoinType, ends: Option<(RowKey, RowKey)>) -> Match {
+    match ends {
+        Some((first, last)) if first == last => Match::Row(first),
+        Some((first, last)) => match join_type {
+            NaturalJoinType::FirstMatch => Match::Row(first),
+            NaturalJoinType::LastMatch => Match::Row(last),
             NaturalJoinType::ErrorOnDuplicate | NaturalJoinType::ExactlyOneMatch => {
                 Match::Duplicate
             }
         },
-        _ => Match::None,
+        None => Match::None,
     }
+}
+
+/// Why a join refuses a key.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Refusal {
+    /// Several right rows have it.
+    Duplicate,
+    /// No right row has it, in an exact join.
+    NoRightRow,
 }
 
 /// A join's arguments, checked against the two tables.
@@ -180,7 +297,7 @@ impl Plan {
         self.key_types.is_empty()
     }
 
-    /// The right row for a left row with `key`, given the right rows that have the key.
+    /// The right row for a left row whose key has the first and last right rows `ends`.
     /// `require` says whether an exact join insists on a right row here.
     ///
     /// Behavior: the duplicate checks of `decorateLeftSide` and `addLeftSide` in the hashers
@@ -190,13 +307,25 @@ impl Plan {
     /// io.deephaven.engine.table.impl.NaturalJoinHelper#checkRightTableSizeZeroKeys
     fn matched(
         &self,
-        key: &Key,
-        right: &BTreeSet<RowKey>,
+        ends: Option<(RowKey, RowKey)>,
         require: bool,
-    ) -> Result<Option<RowKey>, JoinError> {
-        match pick(self.join_type, right) {
+    ) -> Result<Option<RowKey>, Refusal> {
+        match pick(self.join_type, ends) {
             Match::Row(row) => Ok(Some(row)),
-            Match::Duplicate => Err(JoinError::DuplicateRightKey(if self.zero_keys() {
+            Match::Duplicate => Err(Refusal::Duplicate),
+            Match::None if require && self.join_type == NaturalJoinType::ExactlyOneMatch => {
+                Err(Refusal::NoRightRow)
+            }
+            Match::None => Ok(None),
+        }
+    }
+
+    /// The error of a join that refuses `key`.
+    ///
+    /// Behavior: the messages of the methods [`Plan::matched`] names
+    fn refused(&self, refusal: Refusal, key: &Key) -> JoinError {
+        match refusal {
+            Refusal::Duplicate => JoinError::DuplicateRightKey(if self.zero_keys() {
                 "naturalJoin with zero key columns may not have more than one row in the right \
                  hand side table!"
                     .to_string()
@@ -205,20 +334,34 @@ impl Plan {
                     "Natural Join found duplicate right key for {}",
                     key_text(key, &self.key_types)
                 )
-            })),
-            Match::None if require && self.join_type == NaturalJoinType::ExactlyOneMatch => {
-                Err(JoinError::NoRightRow(if self.zero_keys() {
-                    "exactJoin with zero key columns must have exactly one row in the right hand \
-                     side table!"
-                        .to_string()
-                } else {
-                    format!(
-                        "Tables don't have one-to-one mapping - no mappings for key {}.",
-                        key_text(key, &self.key_types)
-                    )
-                }))
-            }
-            Match::None => Ok(None),
+            }),
+            Refusal::NoRightRow => JoinError::NoRightRow(if self.zero_keys() {
+                "exactJoin with zero key columns must have exactly one row in the right hand \
+                 side table!"
+                    .to_string()
+            } else {
+                format!(
+                    "Tables don't have one-to-one mapping - no mappings for key {}.",
+                    key_text(key, &self.key_types)
+                )
+            }),
+        }
+    }
+
+    /// The error of a join that refuses the key of one of the `rows` of the left table,
+    /// each with its reason. When it refuses several keys in one cycle, the error names the
+    /// least of them, so that it is the same on every run.
+    fn refused_rows(&self, left: &dyn Table, mut rows: Vec<(RowKey, Refusal)>) -> JoinError {
+        rows.sort_unstable_by_key(|(row, _)| *row);
+        let set = RowSet::from_keys(rows.iter().map(|(row, _)| *row));
+        let keys = match self.left_keys.read(left, &set, false) {
+            Ok(keys) => keys,
+            Err(failure) => return JoinError::Table(failure),
+        };
+        let least = keys.iter().zip(&rows).min_by(|a, b| a.0.cmp(b.0));
+        match least {
+            Some((key, (_, refusal))) => self.refused(*refusal, key),
+            None => panic!("a refusal names a row"),
         }
     }
 }
@@ -278,16 +421,18 @@ struct Touch {
     changed: bool,
 }
 
+/// The keys the right table touched in a cycle, by slot.
+type Touched = BTreeMap<u32, Touch>;
+
 fn touch<'a>(
-    touched: &'a mut BTreeMap<Key, Touch>,
-    slots: &Slots,
+    touched: &'a mut Touched,
+    right: &[Rows],
     join_type: NaturalJoinType,
-    key: &Key,
+    slot: u32,
 ) -> &'a mut Touch {
-    touched.entry(key.clone()).or_insert_with(|| {
-        let before = slots
-            .get(key)
-            .map_or(Match::None, |slot| pick(join_type, &slot.right));
+    touched.entry(slot).or_insert_with(|| {
+        let ends = right.get(slot as usize).and_then(Rows::ends);
+        let before = pick(join_type, ends);
         Touch {
             before,
             now: match before {
@@ -300,13 +445,20 @@ fn touch<'a>(
     })
 }
 
-fn drop_if_empty(slots: &mut Slots, key: &Key) {
-    if slots
-        .get(key)
-        .is_some_and(|slot| slot.left.is_empty() && slot.right.is_empty())
-    {
-        slots.remove(key);
-    }
+/// What a join keeps between cycles, besides the redirection.
+///
+/// A key keeps its slot once it has one, also when no row has the key any more, as a key
+/// keeps its place in the hash tables of
+/// io.deephaven.engine.table.impl.naturaljoin.IncrementalNaturalJoinStateManagerTypedBase.
+struct State {
+    /// The slot of every key of the right table, and with a refreshing right table also of
+    /// every key of the left table.
+    keys: KeyTable,
+    right: RightRows,
+    /// The left rows of each slot, when the right table is refreshing: a change of a right
+    /// row changes the result at the left rows of its key. A static right table never asks
+    /// which left rows have a key.
+    left: Option<Vec<Rows>>,
 }
 
 /// The incremental half of a join, and the state it keeps between cycles.
@@ -314,7 +466,7 @@ struct NaturalJoin {
     left: Arc<dyn Table>,
     right: Arc<dyn Table>,
     plan: Plan,
-    slots: Mutex<Slots>,
+    state: Mutex<State>,
     /// Left row key to the right row key of its match. A left row without a match has no
     /// entry.
     redirection: Arc<WritableRowRedirection>,
@@ -343,22 +495,56 @@ impl NaturalJoin {
         left: &Arc<dyn Table>,
         right: &Arc<dyn Table>,
     ) -> Result<(TableSpec, NaturalJoin), JoinError> {
-        let mut slots = Slots::new();
+        let mut keys = KeyTable::new();
         let right_rows = right.row_set();
-        let right_keys = plan.right_keys.read(&**right, &right_rows, false)?;
-        for (row, key) in right_rows.iter().zip(right_keys) {
-            slots.entry(key).or_default().right.insert(row);
-        }
-        let redirection = Arc::new(WritableRowRedirection::new());
+        let right_slots = keys.insert(
+            &plan.right_keys.chunks(&**right, &right_rows, false)?,
+            right_rows.size() as usize,
+        );
+        let right_state = if right.is_refreshing() {
+            RightRows::Changing(grouped(&right_rows, &right_slots, keys.len()))
+        } else {
+            let mut ends: Vec<Option<(RowKey, RowKey)>> = vec![None; keys.len()];
+            for (row, &slot) in right_rows.iter().zip(&right_slots) {
+                // Rows come in increasing order.
+                match &mut ends[slot as usize] {
+                    Some((_, last)) => *last = row,
+                    none => *none = Some((row, row)),
+                }
+            }
+            RightRows::Fixed(ends)
+        };
+        drop(right_slots);
+
         let left_rows = left.row_set();
-        let left_keys = plan.left_keys.read(&**left, &left_rows, false)?;
-        for (row, key) in left_rows.iter().zip(left_keys) {
-            let slot = slots.entry(key.clone()).or_default();
-            slot.left.insert(row);
-            if let Some(inner) = plan.matched(&key, &slot.right, true)? {
-                redirection.put(row, inner);
+        let left_size = left_rows.size() as usize;
+        let left_chunks = plan.left_keys.chunks(&**left, &left_rows, false)?;
+        // Only a refreshing right table can give a row to a key that has none now.
+        let left_slots = if right.is_refreshing() {
+            keys.insert(&left_chunks, left_size)
+        } else {
+            keys.find(&left_chunks, left_size)
+        };
+        drop(left_chunks);
+        let mut inner = Vec::with_capacity(left_size);
+        for (position, &slot) in left_slots.iter().enumerate() {
+            match plan.matched(right_state.ends(slot), true) {
+                Ok(row) => inner.push(row.unwrap_or(NULL_ROW_KEY)),
+                Err(refusal) => {
+                    let row = left_rows.get(position as u64).unwrap_or(NULL_ROW_KEY);
+                    return Err(plan.refused_rows(&**left, vec![(row, refusal)]));
+                }
             }
         }
+        let redirection = Arc::new(WritableRowRedirection::from_rows(&left_rows, inner));
+        let state = State {
+            left: right
+                .is_refreshing()
+                .then(|| grouped(&left_rows, &left_slots, keys.len())),
+            keys,
+            right: right_state,
+        };
+        drop(left_slots);
         let graph = [left, right]
             .into_iter()
             .filter(|table| table.is_refreshing())
@@ -401,13 +587,25 @@ impl NaturalJoin {
             right: right.clone(),
             require_on_left_changes: right.is_refreshing() || plan.zero_keys(),
             plan,
-            slots: Mutex::new(slots),
+            state: Mutex::new(state),
             redirection,
             left_columns: ModifiedColumnTransformer::identity(left_count),
             right_columns,
             all_added: ModifiedColumnSet::of(added),
         };
         Ok((spec, join))
+    }
+
+    /// The slot of each of `rows` of the right table, by its key now or, with `use_prev`,
+    /// before this cycle.
+    fn right_slots(
+        &self,
+        keys: &mut KeyTable,
+        rows: &RowSet,
+        use_prev: bool,
+    ) -> Result<Vec<u32>, TableFailure> {
+        let chunks = self.plan.right_keys.chunks(&*self.right, rows, use_prev)?;
+        Ok(keys.insert(&chunks, rows.size() as usize))
     }
 
     /// Applies the right table's change to the keys. Every key a change reaches is noted in
@@ -421,55 +619,57 @@ impl NaturalJoin {
     /// modified rows and adds.
     fn apply_right(
         &self,
-        slots: &mut Slots,
+        state: &mut State,
         update: &TableUpdate,
         probe_modifies: bool,
-        touched: &mut BTreeMap<Key, Touch>,
+        touched: &mut Touched,
     ) -> Result<(), TableFailure> {
-        let right = &*self.right;
-        let keys = &self.plan.right_keys;
+        let State { keys, right, .. } = state;
+        let RightRows::Changing(right) = right else {
+            panic!("a static right table does not change");
+        };
         let join_type = self.plan.join_type;
-        let keys_modified =
-            !update.modified.is_empty() && update.modified_columns.contains_any(&keys.columns);
+        let keys_modified = !update.modified.is_empty()
+            && update
+                .modified_columns
+                .contains_any(&self.plan.right_keys.columns);
 
         let mut leaving = update.removed.clone();
         if keys_modified {
             leaving.insert(&modified_pre_shift(update).map_err(failure)?);
         }
-        for (row, key) in leaving.iter().zip(keys.read(right, &leaving, true)?) {
-            let touch = touch(touched, slots, join_type, &key);
+        let slots = self.right_slots(keys, &leaving, true)?;
+        for (row, slot) in leaving.iter().zip(slots) {
+            let touch = touch(touched, right, join_type, slot);
             touch.changed = true;
             if touch.now == Some(row) {
                 touch.now = None;
             }
-            if let Some(slot) = slots.get_mut(&key) {
-                slot.right.remove(&row);
-            }
+            rows_of(right, slot).remove(row);
         }
 
         if !update.shifted.is_empty() {
-            let staying = right.prev_row_set().minus(&leaving);
+            let staying = self.right.prev_row_set().minus(&leaving);
             let mut moves = Vec::new();
             for range in update.shifted.ranges() {
                 let rows = staying.sub_set_by_key_range(range.first, range.last);
-                for (row, key) in rows.iter().zip(keys.read(right, &rows, true)?) {
-                    moves.push((key, row, row + range.delta));
+                let slots = self.right_slots(keys, &rows, true)?;
+                for (row, slot) in rows.iter().zip(slots) {
+                    moves.push((slot, row, row + range.delta));
                 }
             }
             // Every row leaves its old key before any row takes a new one: a row may move to
             // where another row of the same key was.
-            for (key, old, new) in &moves {
-                let touch = touch(touched, slots, join_type, key);
-                if !touch.moved && touch.now == Some(*old) {
-                    touch.now = Some(*new);
+            for &(slot, old, new) in &moves {
+                let touch = touch(touched, right, join_type, slot);
+                if !touch.moved && touch.now == Some(old) {
+                    touch.now = Some(new);
                     touch.moved = true;
                 }
-                if let Some(slot) = slots.get_mut(key) {
-                    slot.right.remove(old);
-                }
+                rows_of(right, slot).remove(old);
             }
-            for (key, _, new) in moves {
-                slots.entry(key).or_default().right.insert(new);
+            for (slot, _, new) in moves {
+                rows_of(right, slot).insert(new);
             }
         }
 
@@ -477,23 +677,16 @@ impl NaturalJoin {
         if keys_modified {
             arriving.insert(&update.modified);
         } else if probe_modifies {
-            for key in keys.read(right, &update.modified, false)? {
-                touch(touched, slots, join_type, &key).changed = true;
+            for slot in self.right_slots(keys, &update.modified, false)? {
+                touch(touched, right, join_type, slot).changed = true;
             }
         }
-        for (row, key) in arriving.iter().zip(keys.read(right, &arriving, false)?) {
-            touch(touched, slots, join_type, &key).changed = true;
-            slots.entry(key).or_default().right.insert(row);
+        let slots = self.right_slots(keys, &arriving, false)?;
+        for (row, slot) in arriving.iter().zip(slots) {
+            touch(touched, right, join_type, slot).changed = true;
+            rows_of(right, slot).insert(row);
         }
         Ok(())
-    }
-
-    fn remove_left(&self, slots: &mut Slots, key: &Key, row: RowKey) {
-        if let Some(slot) = slots.get_mut(key) {
-            slot.left.remove(&row);
-        }
-        drop_if_empty(slots, key);
-        self.redirection.remove(row);
     }
 
     /// Applies the left table's change to the keys and the redirection, and says whether a
@@ -504,28 +697,66 @@ impl NaturalJoin {
     /// and io.deephaven.engine.table.impl.NaturalJoinHelper.LeftTickingListener#onUpdate:
     /// removes, then the modified rows whose key really changed leave their old key, then
     /// shifts, then those rows and the added rows are matched.
-    fn apply_left(&self, slots: &mut Slots, update: &TableUpdate) -> Result<bool, TableFailure> {
+    fn apply_left(&self, state: &mut State, update: &TableUpdate) -> Result<bool, TableFailure> {
         let left = &*self.left;
-        let keys = &self.plan.left_keys;
-        let removed = keys.read(left, &update.removed, true)?;
-        for (row, key) in update.removed.iter().zip(removed) {
-            self.remove_left(slots, &key, row);
+        let columns = &self.plan.left_keys;
+        let State {
+            keys,
+            right,
+            left: left_rows,
+        } = state;
+        let tracked = left_rows.is_some();
+        // The slot of each of `rows` in the join's table. Without a set of left rows per
+        // key there is nothing to keep for a key the right table does not have.
+        let slots_of = |keys: &mut KeyTable, rows: &RowSet, use_prev: bool| {
+            let chunks = columns.chunks(left, rows, use_prev)?;
+            let size = rows.size() as usize;
+            Ok::<_, TableFailure>(if tracked {
+                keys.insert(&chunks, size)
+            } else {
+                keys.find(&chunks, size)
+            })
+        };
+
+        if let Some(left_rows) = left_rows.as_mut() {
+            let slots = slots_of(keys, &update.removed, true)?;
+            for (row, slot) in update.removed.iter().zip(slots) {
+                rows_of(left_rows, slot).remove(row);
+            }
+        }
+        for row in update.removed.iter() {
+            self.redirection.remove(row);
         }
 
         let mut rekeyed_before = Vec::new();
-        let mut arriving: Vec<(RowKey, Key)> = Vec::new();
-        if !update.modified.is_empty() && update.modified_columns.contains_any(&keys.columns) {
+        let mut arriving: Vec<(RowKey, u32)> = Vec::new();
+        if !update.modified.is_empty() && update.modified_columns.contains_any(&columns.columns) {
             // Shifts keep the order of rows, so the two sets pair up row by row.
             let before_rows = modified_pre_shift(update).map_err(failure)?;
-            let before = keys.read(left, &before_rows, true)?;
-            let after = keys.read(left, &update.modified, false)?;
+            let size = before_rows.size() as usize;
+            let before = columns.chunks(left, &before_rows, true)?;
+            let after = columns.chunks(left, &update.modified, false)?;
+            // Whether a row changed its key is asked of the two keys. The join's table
+            // answers it only when it has a slot for every key of the left table; a table
+            // of these rows alone answers it otherwise.
+            let (old, new, joined) = if tracked {
+                let old = keys.insert(&before, size);
+                let new = keys.insert(&after, size);
+                (old, new.clone(), new)
+            } else {
+                let mut these = KeyTable::new();
+                let old = these.insert(&before, size);
+                (old, these.insert(&after, size), keys.find(&after, size))
+            };
             let rows = before_rows.iter().zip(update.modified.iter());
-            for ((old_row, new_row), (old_key, new_key)) in rows.zip(before.into_iter().zip(after))
-            {
-                if old_key != new_key {
-                    self.remove_left(slots, &old_key, old_row);
+            for (index, (old_row, new_row)) in rows.enumerate() {
+                if old[index] != new[index] {
+                    if let Some(left_rows) = left_rows.as_mut() {
+                        rows_of(left_rows, old[index]).remove(old_row);
+                    }
+                    self.redirection.remove(old_row);
                     rekeyed_before.push(old_row);
-                    arriving.push((new_row, new_key));
+                    arriving.push((new_row, joined[index]));
                 }
             }
         }
@@ -537,35 +768,49 @@ impl NaturalJoin {
             let mut moves = Vec::new();
             for range in update.shifted.ranges() {
                 let rows = staying.sub_set_by_key_range(range.first, range.last);
-                for (row, key) in rows.iter().zip(keys.read(left, &rows, true)?) {
-                    moves.push((key, row, row + range.delta));
+                let slots = if tracked {
+                    slots_of(keys, &rows, true)?
+                } else {
+                    vec![NO_SLOT; rows.size() as usize]
+                };
+                for (row, slot) in rows.iter().zip(slots) {
+                    moves.push((slot, row, row + range.delta));
                 }
             }
             let mut matches = Vec::with_capacity(moves.len());
-            for (key, old, _) in &moves {
-                if let Some(slot) = slots.get_mut(key) {
-                    slot.left.remove(old);
+            for &(slot, old, _) in &moves {
+                if let Some(left_rows) = left_rows.as_mut() {
+                    rows_of(left_rows, slot).remove(old);
                 }
-                matches.push(self.redirection.remove(*old));
+                matches.push(self.redirection.remove(old));
             }
-            for ((key, _, new), inner) in moves.into_iter().zip(matches) {
-                slots.entry(key).or_default().left.insert(new);
+            for ((slot, _, new), inner) in moves.into_iter().zip(matches) {
+                if let Some(left_rows) = left_rows.as_mut() {
+                    rows_of(left_rows, slot).insert(new);
+                }
                 if inner != NULL_ROW_KEY {
                     self.redirection.put(new, inner);
                 }
             }
         }
 
-        let added = keys.read(left, &update.added, false)?;
+        let added = slots_of(keys, &update.added, false)?;
         arriving.extend(update.added.iter().zip(added));
-        for (row, key) in arriving {
-            let slot = slots.entry(key.clone()).or_default();
-            slot.left.insert(row);
-            let matched = self
+        for (row, slot) in arriving {
+            if let Some(left_rows) = left_rows.as_mut() {
+                rows_of(left_rows, slot).insert(row);
+            }
+            match self
                 .plan
-                .matched(&key, &slot.right, self.require_on_left_changes);
-            if let Some(inner) = matched.map_err(failure)? {
-                self.redirection.put(row, inner);
+                .matched(right.ends(slot), self.require_on_left_changes)
+            {
+                Ok(Some(inner)) => {
+                    self.redirection.put(row, inner);
+                }
+                Ok(None) => {}
+                Err(refusal) => {
+                    return Err(failure(self.plan.refused_rows(left, vec![(row, refusal)])))
+                }
             }
         }
         Ok(rekeyed)
@@ -582,16 +827,13 @@ impl NaturalJoin {
     /// of duplicates as a new match; here it is one only if the first or last row changed.
     fn settle(
         &self,
-        slot: &Slot,
-        key: &Key,
+        left: &Rows,
+        right: Option<(RowKey, RowKey)>,
         touch: &Touch,
         right_columns_changed: bool,
         modified: &mut Vec<RowKey>,
-    ) -> Result<bool, TableFailure> {
-        let after = self
-            .plan
-            .matched(key, &slot.right, false)
-            .map_err(failure)?;
+    ) -> Result<bool, Refusal> {
+        let after = self.plan.matched(right, false)?;
         let same_row = match (touch.before, after) {
             (Match::None, None) => true,
             (Match::Row(_), Some(row)) => touch.now == Some(row),
@@ -599,29 +841,29 @@ impl NaturalJoin {
         };
         if same_row {
             if touch.changed && right_columns_changed {
-                modified.extend(&slot.left);
+                modified.extend(left.iter());
             }
             if let (Match::Row(old), Some(new)) = (touch.before, after) {
                 if old != new {
                     // The match was shifted. Its values are the same.
-                    for &row in &slot.left {
+                    for row in left.iter() {
                         self.redirection.put(row, new);
                     }
                 }
             }
             return Ok(false);
         }
-        modified.extend(&slot.left);
+        modified.extend(left.iter());
         match after {
             Some(inner) => {
-                for &row in &slot.left {
+                for row in left.iter() {
                     self.redirection.put(row, inner);
                 }
             }
             None => {
                 // The key lost its right row: an exact join fails here.
-                self.plan.matched(key, &slot.right, true).map_err(failure)?;
-                for &row in &slot.left {
+                self.plan.matched(right, true)?;
+                for row in left.iter() {
                     self.redirection.remove(row);
                 }
             }
@@ -639,22 +881,22 @@ impl MergedOperator for NaturalJoin {
         _result: &QueryTable,
         upstream: &[Option<Arc<TableUpdate>>],
     ) -> Result<TableUpdate, TableFailure> {
-        let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
         let mut columns = ModifiedColumnSet::empty();
         let mut modified: Vec<RowKey> = Vec::new();
-        let mut touched = BTreeMap::new();
+        let mut touched = Touched::new();
         let mut right_columns_changed = false;
         if let Some(update) = &upstream[1] {
             if !update.modified.is_empty() {
                 columns = self.right_columns.transform(&update.modified_columns);
             }
             right_columns_changed = !columns.is_empty();
-            self.apply_right(&mut slots, update, right_columns_changed, &mut touched)?;
+            self.apply_right(&mut state, update, right_columns_changed, &mut touched)?;
         }
 
         let mut downstream = TableUpdate::empty();
         if let Some(update) = &upstream[0] {
-            if self.apply_left(&mut slots, update)? {
+            if self.apply_left(&mut state, update)? {
                 // Java does not look at which rows got another right row.
                 columns = columns.union(&self.all_added);
             }
@@ -667,12 +909,20 @@ impl MergedOperator for NaturalJoin {
         }
 
         let mut redirected = false;
-        for (key, touch) in &touched {
-            if let Some(slot) = slots.get(key).filter(|slot| !slot.left.is_empty()) {
-                redirected |=
-                    self.settle(slot, key, touch, right_columns_changed, &mut modified)?;
+        let mut refused = Vec::new();
+        let left_rows = state.left.as_deref().unwrap_or_default();
+        for (&slot, touch) in &touched {
+            let Some(left) = left_rows.get(slot as usize).filter(|left| !left.is_empty()) else {
+                continue;
+            };
+            let right = state.right.ends(slot);
+            match self.settle(left, right, touch, right_columns_changed, &mut modified) {
+                Ok(changed) => redirected |= changed,
+                Err(refusal) => refused.extend(left.iter().next().map(|row| (row, refusal))),
             }
-            drop_if_empty(&mut slots, key);
+        }
+        if !refused.is_empty() {
+            return Err(failure(self.plan.refused_rows(&*self.left, refused)));
         }
         if redirected {
             columns = columns.union(&self.all_added);

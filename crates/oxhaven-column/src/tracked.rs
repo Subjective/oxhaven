@@ -20,6 +20,18 @@ impl Clock for Arc<dyn UpdateGraph> {
     }
 }
 
+/// The step of `clock`, if it has one and is updating: the step whose previous values are
+/// being recorded.
+pub(crate) fn updating_step(clock: Option<&Arc<dyn Clock>>) -> Option<u64> {
+    match clock?.now() {
+        ClockValue {
+            step,
+            phase: ClockPhase::Updating,
+        } => Some(step),
+        _ => None,
+    }
+}
+
 /// Current values by row key, plus the values that keys changed in the current cycle held at
 /// the end of the previous cycle.
 ///
@@ -72,13 +84,7 @@ impl<V: Copy> Tracked<V> {
     }
 
     fn updating_step(&self) -> Option<u64> {
-        match self.clock.as_ref()?.now() {
-            ClockValue {
-                step,
-                phase: ClockPhase::Updating,
-            } => Some(step),
-            _ => None,
-        }
+        updating_step(self.clock.as_ref())
     }
 
     /// Starts one mutating operation: drops a record left by an earlier cycle and decides

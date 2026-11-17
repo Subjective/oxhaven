@@ -1322,6 +1322,7 @@ dependencies = [
  "arrow",
  "chrono",
  "chrono-tz",
+ "hashbrown 0.17.1",
  "oxhaven-column",
  "oxhaven-contracts",
  "oxhaven-expr",
