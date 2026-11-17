@@ -1000,6 +1000,19 @@ broker under the open tables of both.
   held records of two partitions and one of them could not be read, Java had handed the
   other partition's records to its constituent before it failed the bad one, Oxhaven had
   not (it goes by partition number). Owner's items 26 and 27.
+- Task 7.4.5, TLS and SASL: Java on 10878, Oxhaven on 10879, the broker of
+  `tests/broker.sh` with its SSL, SASL_SSL and SASL_PLAINTEXT listeners, 56 cases of
+  `consume`, `produce` and `topics` (`tasks/7.4.5-kafka-security.md`). Same in 34: the 20
+  configurations that connect (key and trust stores of each kind, hostname verification
+  off, PLAIN and both SCRAMs with and without TLS, JAAS lines with comments, escapes and
+  unquoted values), Java's texts for the 13 it refuses, and an SSL client at the
+  plaintext port, which waits 60 s in both. Different in text only (`PARITY.md` A5) in
+  10, failing as fast in both: a wrong password, an untrusted or misnamed broker, a
+  missing client certificate, a wrong key store password. Refused by name here where Java
+  connects, in 3 (`ldaps`, `ssl.protocol=TLSv1.2`, `ssl.cipher.suites`: owner's item 31);
+  refused by name where Java fails in other words, in 5 (GSSAPI, `tokenauth`,
+  `sasl.login.class`, an unknown login module, a key password other than the store's);
+  failing at once here where Java times out after 60 s, in 4 (owner's item 32).
 - **Row order across partitions.** Within a partition both keep offset order. Where two
   partitions have records in one poll, Java delivers them in the order of a `HashMap` of
   partitions and Oxhaven by partition number, so the last rows of an append-only table,
