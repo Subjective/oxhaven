@@ -811,6 +811,79 @@ fn clock(text: &str, exact: bool) -> Option<(i64, i64, i64, i64)> {
 /// Read only when the text starts with a year of four digits and a `-`: Java reads longer
 /// years after a sign, and wraps around for years far from 1970.
 fn parse_zoned(content: &str) -> Result<(i64, Option<&'static str>), FormulaError> {
+    match zoned_reach(content, false)? {
+        (Reach::Within(nanos), id) => Ok((nanos, id)),
+        _ => Err(FormulaError::Unsupported(format!(
+            "time literal '{content}' outside the range of a 64-bit nanosecond timestamp"
+        ))),
+    }
+}
+
+/// Where an instant falls against the instants a column of this server holds: those of a
+/// `long` of nanoseconds since the epoch that `DateTimeUtils#epochNanos` converts.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Reach {
+    /// Nanoseconds since the epoch.
+    Within(i64),
+    /// Later than every instant a column holds: from epoch second
+    /// `Long.MAX_VALUE / 1_000_000_000` on.
+    After,
+    /// Earlier than every instant a column holds, or at the smallest `long`, which is the
+    /// null instant.
+    Before,
+}
+
+/// The year that starts an instant written as text, and the text after it and its `-`.
+/// `None` when the text does not start with digits, signed or not, and a `-`;
+/// `Some(None)` for a year Java rejects. Without `signed`, only four digits without a sign
+/// are read, and every other start is `None`.
+///
+/// Behavior: `DateTimeFormatter.ISO_LOCAL_DATE` and `DateTimeUtils.FORMATTER_ISO_LOCAL_DATE`,
+/// which both read the year as `appendValue(YEAR, 4, 10, SignStyle.EXCEEDS_PAD)` and parse
+/// strictly (`DateTimeFormatterBuilder.NumberPrinterParser#parse`): four to ten digits,
+/// more than four only after a sign, `+` only before more than four, `-` not before zero,
+/// and a year from -999999999 to 999999999 (`ChronoField.YEAR`). Seen on Java 42.9 as time
+/// table start times: `+10000-...`, `+00001-...`, `+010000-...`, `+0999999999-...`,
+/// `-0001-...` and `-999999999-...` are read; `+2024-...`, `-0000-...`, `10000-...`,
+/// `+1000000000-...` and `-1000000000-...` are not.
+fn leading_year(content: &str, signed: bool) -> Option<Option<(i64, &str)>> {
+    let bytes = content.as_bytes();
+    let sign = match bytes.first()? {
+        b'+' if signed => 1,
+        b'-' if signed => -1,
+        _ => 0,
+    };
+    let start = usize::from(sign != 0);
+    let digits = bytes[start..]
+        .iter()
+        .take_while(|b| b.is_ascii_digit())
+        .count();
+    let end = start + digits;
+    if digits == 0 || bytes.get(end) != Some(&b'-') {
+        return None;
+    }
+    if sign == 0 && digits != 4 {
+        // Java rejects these too; a formula's literal tries other kinds of time first.
+        return if signed { Some(None) } else { None };
+    }
+    let year = match content[start..end].parse::<i64>() {
+        Ok(year) if digits <= 10 && year <= 999_999_999 => year,
+        _ => return Some(None),
+    };
+    let read = match sign {
+        1 => digits > 4,
+        -1 => year != 0,
+        _ => true,
+    };
+    let year = if sign < 0 { -year } else { year };
+    Some(read.then_some((year, &content[end + 1..])))
+}
+
+/// The instant of a time literal and the id of its zone, as [`parse_zoned`], with where it
+/// falls when it is outside the range of a column. A year with a sign, or of more than
+/// four digits, is read only when `signed` (see [`leading_year`]); without it, such text is
+/// unsupported.
+fn zoned_reach(content: &str, signed: bool) -> Result<(Reach, Option<&'static str>), FormulaError> {
     let unsupported = || FormulaError::Unsupported(format!("time literal '{content}'"));
     let invalid = || {
         FormulaError::Syntax(format!(
@@ -823,19 +896,28 @@ fn parse_zoned(content: &str) -> Result<(i64, Option<&'static str>), FormulaErro
     if !content.chars().all(plausible) {
         return Err(invalid());
     }
-    let year = match content.as_bytes().get(..5) {
-        Some([digits @ .., b'-']) if digits.iter().all(u8::is_ascii_digit) => {
-            content[..4].parse::<i64>().map_err(|_| unsupported())?
-        }
-        _ => return Err(unsupported()),
+    let (year, rest) = match leading_year(content, signed) {
+        Some(Some(read)) => read,
+        Some(None) => return Err(invalid()),
+        None => return Err(unsupported()),
     };
-    let rest = &content[5..];
+    // `DATE_TZ_PATTERN`, the date and a zone without a time, takes four digits only.
+    let plain_year = content.as_bytes()[0].is_ascii_digit();
     let read = match rest.split_once(' ') {
         // Java takes the zone from the first space on.
-        Some((local, name)) => spaced(year, local, name),
+        Some((local, name)) => spaced(year, plain_year, local, name),
         None => iso(year, rest),
     };
     let ((month, day), (hour, minute, second, nanos), placed, id) = read.ok_or_else(invalid)?;
+
+    // No offset Java reads, of at most 18 hours, moves a local time of these years into
+    // the range of a column, which runs from 1677-09-21 to 2262-04-11.
+    if year > 2262 {
+        return Ok((Reach::After, id));
+    }
+    if year < 1677 {
+        return Ok((Reach::Before, id));
+    }
 
     // Hour 24 is midnight of the next day.
     let local = days_from_civil(year, month, day) * 86_400 + hour * 3_600 + minute * 60 + second;
@@ -855,12 +937,14 @@ fn parse_zoned(content: &str) -> Result<(i64, Option<&'static str>), FormulaErro
     };
     let total = i128::from(seconds) * NANOS_PER_SECOND + i128::from(nanos);
     // The smallest long is the value Java reserves for a null instant.
-    match i64::try_from(total) {
-        Ok(value) if value != i64::MIN && seconds < i64::MAX / 1_000_000_000 => Ok((value, id)),
-        _ => Err(FormulaError::Unsupported(format!(
-            "time literal '{content}' outside the range of a 64-bit nanosecond timestamp"
-        ))),
-    }
+    let reach = match i64::try_from(total) {
+        Ok(value) if value != i64::MIN && seconds < i64::MAX / 1_000_000_000 => {
+            Reach::Within(value)
+        }
+        _ if seconds > 0 => Reach::After,
+        _ => Reach::Before,
+    };
+    Ok((reach, id))
 }
 
 /// The month and day, the time, the placement and the zone id of a time literal.
@@ -878,7 +962,8 @@ type Local = (
 /// `java.time.ZonedDateTime#parse` has failed. The zone is one of
 /// `io.deephaven.time.TimeZoneAliases#zoneId`: an alias, a region ([`zone`]), an offset
 /// ([`zone_offset`]) or one of Java's `SystemV` zones ([`system_v`]). `yyyy-MM-dd` or
-/// `yyyy-MM-ddT` and a zone of letters, `_` and `/` is midnight (`DATE_TZ_PATTERN`), and
+/// `yyyy-MM-ddT`, with a `plain_year` of four digits without a sign, and a zone of
+/// letters, `_` and `/` is midnight (`DATE_TZ_PATTERN`), and
 /// any other text is read with `FORMATTER_ISO_LOCAL_DATE_TIME`: the month, day, hour,
 /// minute and second in one or two digits each, `T` in either case, the seconds optional
 /// and after them a `.` and zero to nine digits. Both resolve as `ResolverStyle.SMART`
@@ -888,7 +973,7 @@ type Local = (
 /// and `2023-12-31T24:00:00 America/New_York` (2024-01-01T05:00:00Z) are read;
 /// `2023-11-14T24:00:01 UTC`, `2023-02-32T22:13:20 UTC`, `2023-11-14T22:13:20 Etc/GMT-15`
 /// and `2023-11-14 SystemV/EST5` are not.
-fn spaced(year: i64, local: &str, name: &str) -> Option<Local> {
+fn spaced(year: i64, plain_year: bool, local: &str, name: &str) -> Option<Local> {
     let (placed, id) = match (zone(name), zone_offset(name), system_v(name)) {
         (Some(zone), _, _) => (Placed::In(zone), Some(zone_id(&zone))),
         (None, Some(offset), _) => (Placed::Offset(offset?), None),
@@ -903,6 +988,9 @@ fn spaced(year: i64, local: &str, name: &str) -> Option<Local> {
     let (month, day) = date.split_once('-')?;
     let midnight = time.is_empty();
     if midnight {
+        if !plain_year {
+            return None;
+        }
         let lettered = name
             .bytes()
             .all(|b| b.is_ascii_alphabetic() || b == b'_' || b == b'/');
@@ -1017,6 +1105,27 @@ pub(crate) fn instant_of_text(text: &str) -> Result<i64, FormulaError> {
     } else {
         offset.wrapping_mul(1_000_000_000)
     })
+}
+
+/// Reads text as [`instant_of_text`] does, and also a year with a sign or of more than
+/// four digits; an instant outside the range of a column is told as such in place of
+/// being refused.
+///
+/// Behavior: `io.deephaven.time.DateTimeUtils#parseInstant`, which gives a
+/// `java.time.Instant` for every year `java.time` reads, from -999999999 to 999999999.
+pub(crate) fn instant_reach_of_text(text: &str) -> Result<Reach, FormulaError> {
+    let digits = text.strip_prefix('-').unwrap_or(text);
+    if (1..=19).contains(&digits.len()) && digits.bytes().all(|b| b.is_ascii_digit()) {
+        return instant_of_text(text).map(Reach::Within);
+    }
+    match zoned_reach(text, true) {
+        Ok((reach, _)) => Ok(reach),
+        // Java reads no text that does not start with a year.
+        Err(FormulaError::Unsupported(_)) if leading_year(text, true).is_none() => Err(
+            FormulaError::Syntax(format!("Cannot parse instant: {text}")),
+        ),
+        Err(error) => Err(error),
+    }
 }
 
 fn is_leap_year(year: i64) -> bool {
@@ -1755,6 +1864,56 @@ mod tests {
                 let _ = time_literals(&format!("'{text}'"));
             }
         }
+    }
+
+    /// Read and refused as Deephaven 42.9 read them as time table start times; a formula's
+    /// time literal still leaves a signed year unsupported.
+    #[test]
+    fn signed_years_are_read_where_asked_as_java_reads_them() {
+        for text in [
+            "+10000-01-01T00:00:00Z",
+            "+010000-01-01T00:00:00Z",
+            "+0999999999-01-01T00:00:00Z",
+            "+10000-1-1T0:0 UTC",
+            "+10001-02-29T00:00:00 UTC",
+            "+1000000-07-01T00:00:00 America/New_York",
+        ] {
+            assert_eq!(instant_reach_of_text(text), Ok(Reach::After), "{text}");
+            assert!(
+                matches!(value(text), Err(FormulaError::Unsupported(_))),
+                "{text}"
+            );
+        }
+        for text in [
+            "-0001-01-01T00:00:00Z",
+            "+00001-01-01T00:00:00Z",
+            "-999999999-01-01T00:00:00Z",
+            "-2024-01-01T00:00:00 UTC",
+        ] {
+            assert_eq!(instant_reach_of_text(text), Ok(Reach::Before), "{text}");
+        }
+        for text in [
+            "+2024-01-01T00:00:00Z",
+            "-0000-01-01T00:00:00Z",
+            "+1000000000-01-01T00:00:00Z",
+            "10000-01-01T00:00:00Z",
+            "+10000-01-01 UTC",
+            "+10001-02-29T00:00:00Z",
+            "-PT1S",
+        ] {
+            assert!(
+                matches!(instant_reach_of_text(text), Err(FormulaError::Syntax(_))),
+                "{text}"
+            );
+        }
+        assert_eq!(
+            instant_reach_of_text("2024-01-01T00:00:00 ET"),
+            Ok(Reach::Within(1_704_085_200_000_000_000))
+        );
+        assert_eq!(
+            instant_reach_of_text("2262-04-11T23:47:16Z"),
+            Ok(Reach::After)
+        );
     }
 
     #[test]

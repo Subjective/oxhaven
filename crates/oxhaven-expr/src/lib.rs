@@ -26,6 +26,19 @@ pub fn parse_instant_text(text: &str) -> Result<i64, FormulaError> {
     parse::instant_of_text(text)
 }
 
+/// Where `text`, read as `DateTimeUtils#parseInstant` reads text, falls against the
+/// instants a column holds: [`InstantReach::Within`] with its nanoseconds since the epoch,
+/// or after or before every one of them. Unlike [`parse_instant_text`] it reads a year
+/// written with a sign (`+10000-01-01T00:00:00Z`) and refuses no instant for its size.
+/// `Syntax` where Java throws, `Unsupported` for a spelling not ported.
+///
+/// Behavior: `io.deephaven.time.DateTimeUtils#parseInstant`
+pub fn parse_instant_reach(text: &str) -> Result<InstantReach, FormulaError> {
+    parse::instant_reach_of_text(text)
+}
+
+pub use parse::Reach as InstantReach;
+
 /// The formula language.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct Compiler;
