@@ -1217,3 +1217,7 @@ Seven green checks. Decision: the second run may add a row set constructor from 
 ## 2026-11-17 19:24 UTC: task 9.9 reported, pull request 154 opened
 
 All gates including replay passed locally.
+
+## 2026-11-17 19:30 UTC: pull request 154 merged
+
+Seven green checks.
