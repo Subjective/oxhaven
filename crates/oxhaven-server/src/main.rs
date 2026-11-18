@@ -67,6 +67,14 @@ struct Args {
     storage_root: Option<PathBuf>,
 }
 
+/// The process's allocator when built with the `mimalloc` feature (on by default). It reuses
+/// freed memory instead of returning it to the system and taking it again, which with the
+/// system allocator was about a sixth of the server's processor time (docs/BENCHMARK.md,
+/// "After task 9.13").
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut parsed = Args {
         host: "0.0.0.0".to_string(),

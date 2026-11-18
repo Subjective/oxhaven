@@ -408,6 +408,10 @@ The widget's bar is then the resident memory, less what the allocator can hand o
 without asking the system, of the amount at which the kernel would end the process. The
 figures need `/proc`; without it the call is `UNIMPLEMENTED`. The interpreter's own
 allocator keeps free memory that `free_memory` does not count, so "in use" errs high.
+Since task 9.13 the binary's Rust allocations go to mimalloc (the default `mimalloc`
+feature), so `fordblks` covers only what C code (the interpreter, librdkafka) freed into
+glibc's allocator; mimalloc soon returns freed pages to the system (under 90 MB resident
+30 seconds after a benchmark run), so little free memory is left uncounted (`docs/BENCHMARK.md`, "After task 9.13").
 
 ## Stopping a running command
 

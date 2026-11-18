@@ -1,0 +1,11 @@
+config=mimalloc threads=1 binary=/tmp/claude-0/-home-user/f70c6dae-7b08-56df-adc6-ea0375049d39/scratchpad/p913/server-mimalloc 
+start 04:30:24 utime_s=0 stime_s=0 VmHWM: 18640 kB VmRSS: 18640 kB  load="0.52, 0.88, 1.40"
+uptime before run 1:  04:30:24 up  4:36,  0 user,  load average: 0.52, 0.88, 1.40
+after-run1 04:31:36 utime_s=62.41 stime_s=2.55 VmHWM: 2727260 kB VmRSS: 1313740 kB  load="0.82, 0.90, 1.36"
+uptime before run 2:  04:31:36 up  4:37,  0 user,  load average: 0.82, 0.90, 1.36
+after-run2 04:32:47 utime_s=124.94 stime_s=5.13 VmHWM: 2771892 kB VmRSS: 1345468 kB  load="0.93, 0.92, 1.33"
+idle30-after-run2 04:33:17 utime_s=124.94 stime_s=5.14 VmHWM: 2771892 kB VmRSS: 78816 kB  load="0.56, 0.83, 1.29"
+uptime before run 3:  04:33:17 up  4:39,  0 user,  load average: 0.56, 0.83, 1.29
+after-run3 04:34:30 utime_s=188.90 stime_s=7.79 VmHWM: 2819316 kB VmRSS: 1300856 kB  load="0.88, 0.87, 1.26"
+idle30-after-run3 04:35:00 utime_s=188.90 stime_s=7.80 VmHWM: 2819316 kB VmRSS: 79020 kB  load="0.53, 0.79, 1.22"
+done

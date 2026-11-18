@@ -9,6 +9,11 @@ publish = false
 workspace = true
 
 [features]
+# mimalloc as the binary's global allocator: it keeps memory it has freed for reuse instead
+# of returning it to the system and faulting it in again. Without the feature the binary
+# uses the system allocator. The library and its tests are unaffected either way.
+default = ["mimalloc"]
+mimalloc = ["dep:mimalloc"]
 # The Python console: embeds CPython, so building with it needs a Python 3 with a shared
 # libpython and its headers, and running needs that libpython. See docs/CONSOLE.md.
 python = ["dep:oxhaven-csv", "dep:oxhaven-kafka", "dep:oxhaven-parquet", "dep:pyo3", "dep:prost-reflect", "dep:serde_json", "arrow/ffi"]
@@ -27,6 +32,7 @@ httpdate.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
 libc.workspace = true
+mimalloc = { workspace = true, optional = true }
 oxhaven-column = { path = "../oxhaven-column" }
 oxhaven-contracts = { path = "../oxhaven-contracts" }
 oxhaven-csv = { path = "../oxhaven-csv", optional = true }

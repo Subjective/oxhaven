@@ -1,0 +1,24 @@
+round 1 system:  04:49:55 up  4:55,  0 user,  load average: 0.30, 0.71, 0.92
+  sum_by_med     median  254.8 min  236.6 max  338.9
+  avg_by_med     median  280.1 min  271.2 max  343.5
+  count_by_med   median   89.8 min   86.7 max  130.9
+  agg_by_multi   median  305.4 min  289.4 max  390.8
+  last_by        median  112.6 min  107.6 max  122.6
+round 1 mimalloc:  04:50:13 up  4:56,  0 user,  load average: 0.48, 0.72, 0.93
+  sum_by_med     median  283.6 min  236.5 max  387.2
+  avg_by_med     median  328.3 min  276.2 max  369.4
+  count_by_med   median   89.0 min   85.4 max  138.0
+  agg_by_multi   median  393.7 min  311.3 max  484.7
+  last_by        median  110.9 min  107.5 max  172.7
+round 2 system:  04:50:32 up  4:56,  0 user,  load average: 0.55, 0.73, 0.92
+  sum_by_med     median  241.8 min  235.2 max  372.5
+  avg_by_med     median  309.9 min  269.1 max  410.7
+  count_by_med   median   88.1 min   85.6 max  135.1
+  agg_by_multi   median  333.7 min  298.5 max  454.9
+  last_by        median  119.3 min  106.4 max  179.4
+round 2 mimalloc:  04:50:51 up  4:56,  0 user,  load average: 0.67, 0.75, 0.92
+  sum_by_med     median  267.1 min  241.3 max  365.5
+  avg_by_med     median  283.2 min  267.5 max  344.4
+  count_by_med   median   90.5 min   86.9 max  152.3
+  agg_by_multi   median  307.1 min  295.4 max  373.8
+  last_by        median  106.8 min   97.0 max  175.7

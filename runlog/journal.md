@@ -1349,3 +1349,17 @@ Josh asked whether the speed work copies Deephaven or improves on it; answered: 
 ## 2026-11-18 04:19 UTC: pull request 166 merged
 
 Seven green checks on head 4a55bd79. Main is at eb3902ac.
+
+## 2026-11-18 05:15 UTC: task 9.13 reported, pull request 167; task 10.10 started
+
+Task 9.13 measured the system allocator, a tuned system allocator and mimalloc. mimalloc won: sorts, group_by and joins 11 to 38% faster at the same peak memory, idle memory under 90 MB. It is on by default behind the feature `mimalloc` of the server. Known cost: GetHeapInfo's free memory now counts only the system allocator's side.
+
+Task 10.10 rewrites the text of large doubles in structured filters. Josh ruled that code ported from OpenJDK must stay out, so the agent works from 1,981 recorded Deephaven outputs and public descriptions of shortest round-trip printing, and may not read JDK source or the rejected branch.
+
+## 2026-11-18 05:20 UTC: pull request 167 merged
+
+Seven green checks on head 2ea994c7. Main is at 236ecde7. Josh asked what remains after the speed work; answered with the list of refusals (125 places), the parts out of scope, the allowed differences and the thinner checks.
+
+## 2026-11-18 05:42 UTC: Josh approved closing the gaps; task 11.1 started
+
+Josh asked how the Python console calls that need Java objects would be fixed, then approved the recommendation: port the Java classes the library touches, by demand, with no embedded JVM. Order agreed through the coordinator: calendars and time zones, Java arrays and casts, the columns-to-rows transform; then update_by and aggregation refusals, then the rest by likely use; then a Kafka corpus, chained as-of joins in the fuzzer and a soak test. Out-of-scope parts stay out, and what waits on review-items-2 items 7.1 to 7.7 stays parked. Task 11.1 (calendars and time zones) runs on Opus beside task 10.10.

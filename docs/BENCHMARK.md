@@ -1986,3 +1986,140 @@ sorts and the high-cardinality aggregations, and would be measured on its own.
   because later cycles change them. The benchmark's tables are static.
 - Aggregating a cycle's added rows into an existing result (`append_only_cycles` above,
   about 5%) was not the subject.
+
+## After task 9.13 (2026-11-18): the server's allocator
+
+Task 9.13 (`tasks/9.13-server-allocator.md`) chose the server binary's memory allocator by
+measurement. Task 9.12 had found that about a sixth of the server's processor time over a
+run is the kernel handing it fresh memory. Three configurations of one source tree were
+measured:
+
+- (a) **system**: glibc's allocator, as before;
+- (b) **tuned**: the same binary with glibc told to keep memory,
+  `GLIBC_TUNABLES=glibc.malloc.mmap_threshold=33554432:glibc.malloc.trim_threshold=4294967296:glibc.malloc.arena_max=1`
+  (the setting task 9.12 tried: blocks up to 32 MB from the heap, freed memory returned to
+  the system only above 4 GB, one arena);
+- (c) **mimalloc**: the `mimalloc` crate as the binary's global allocator.
+
+The short reading: `mimalloc` makes the sorts, the high-cardinality aggregations at 1M
+rows, `group_by` and the joins at 10M rows 11% to 38% faster, cuts the server's system
+time per run from 11 to 13 s to under 3 s, peaks at the same memory as glibc (0% to 3%
+lower), does not grow across three passes, and gives back nearly everything when idle (76
+to 89 MB resident after 30 idle seconds, against 1265 to 1337 MB with glibc). Tuned glibc
+reaches similar times only once it has kept enough memory (from the second pass), and then
+holds it: 2010 to 2138 MB resident when idle, more after each pass. **`mimalloc` is now the
+server binary's allocator**, behind the cargo feature `mimalloc` of `oxhaven-server`, on
+by default.
+
+**How it was measured.**
+
+- One source tree (this task's branch on top of task 9.12, the same engine code as `main`
+  at `eb3902ac`), two release builds: `cargo build --release -p oxhaven-server`
+  (mimalloc) and the same with `--no-default-features` (system and tuned), default release
+  profile, without the `python` feature. The two binaries differ only in the allocator.
+- Each configuration and thread count ran in its own server process
+  (`oxhaven-server --host 127.0.0.1 --port 10969 --psk oxhaven --threads <1|4>`, with the
+  environment variable for tuned), which got the whole case list three times
+  (`bench/bench.py run`, default sizes and repetitions, as in task 9.11). Runs 1 and 2 are
+  the times below; run 3 completes the long-lived check. Order: system, tuned, mimalloc
+  on 1 thread, then the same on 4 threads, 04:20 to 04:49, one server at a time, no build
+  running. The one-minute load was 0.5 to 1.7 before each run and 0.8 to 1.2 after it.
+- Processor time is the server's own (`utime` and `stime` of `/proc/<pid>/stat`), taken
+  as the difference from the end of the run before. Peak memory is `VmHWM` and resident
+  memory `VmRSS` of `/proc/<pid>/status`, read after each run and after 30 idle seconds
+  following runs 2 and 3.
+- Every case gave the same check (row count, sums, first and last rows) in all three
+  configurations, on both thread counts, in every run.
+
+Medians in milliseconds, run 1 / run 2, for the cases that move by 10% or more; the ratio
+is mimalloc over system (mean of the two runs). The table of every case is
+`bench/results/2026-11-18-task-9.13.md`; raw files are
+`bench/results/2026-11-18-task-9.13-{system,tuned,mimalloc}-p{1,4}-run{1,2,3}.json` and
+`...-p{1,4}-memory.txt`.
+
+| case | rows | 1 thread: system | tuned | mimalloc | ratio | 4 threads: system | tuned | mimalloc | ratio |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `build` | 10M | 1049 / 974 | 802 / 606 | 659 / 659 | 0.65 | 506 / 488 | 475 / 280 | 266 / 256 | 0.52 |
+| `update_string` | 10M | 246 / 249 | 202 / 171 | 184 / 215 | 0.81 | 111 / 109 | 86.3 / 70.6 | 69.1 / 65.1 | 0.61 |
+| `update_cond` | 10M | 92.2 / 87.0 | 58.0 / 55.6 | 58.1 / 68.6 | 0.71 | 37.4 / 35.6 | 41.8 / 34.4 | 38.0 / 29.9 | 0.93 |
+| `sort_int` | 1M | 43.1 / 23.5 | 22.5 / 21.8 | 24.3 / 24.4 | 0.73 | 47.8 / 29.0 | 30.0 / 25.0 | 23.7 / 25.0 | 0.63 |
+| `sort_int` | 10M | 593 / 558 | 541 / 406 | 412 / 396 | 0.70 | 583 / 554 | 518 / 417 | 414 / 407 | 0.72 |
+| `sort_two` | 10M | 1851 / 1687 | 1525 / 1364 | 1392 / 1372 | 0.78 | 1752 / 1721 | 1687 / 1468 | 1538 / 1366 | 0.84 |
+| `sort_string` | 10M | 1670 / 1514 | 1462 / 1345 | 1316 / 1360 | 0.84 | 1521 / 1555 | 1494 / 1308 | 1342 / 1257 | 0.85 |
+| `sum_by_high` | 1M | 155 / 144 | 136 / 109 | 116 / 103 | 0.73 | 156 / 193 | 113 / 116 | 115 / 131 | 0.71 |
+| `avg_by_high` | 1M | 147 / 153 | 126 / 119 | 122 / 112 | 0.78 | 157 / 158 | 130 / 121 | 121 / 147 | 0.85 |
+| `count_by_high` | 1M | 96.5 / 93.9 | 103 / 74.0 | 77.7 / 76.9 | 0.81 | 92.6 / 105 | 87.6 / 78.1 | 82.5 / 93.0 | 0.89 |
+| `sum_by_high` | 10M | 499 / 554 | 464 / 474 | 473 / 505 | 0.93 | 561 / 519 | 589 / 461 | 478 / 439 | 0.85 |
+| `count_by_high` | 10M | 284 / 310 | 270 / 329 | 273 / 308 | 0.98 | 389 / 343 | 285 / 291 | 279 / 241 | 0.71 |
+| `group_by` | 10M | 388 / 392 | 376 / 255 | 285 / 269 | 0.71 | 342 / 358 | 280 / 225 | 233 / 238 | 0.67 |
+| `natural_join_small` | 10M | 139 / 138 | 119 / 92.2 | 93.1 / 94.8 | 0.68 | 144 / 143 | 125 / 91.8 | 91.2 / 98.2 | 0.66 |
+| `natural_join_large` | 10M | 397 / 452 | 359 / 376 | 291 / 393 | 0.81 | 396 / 419 | 385 / 298 | 269 / 236 | 0.62 |
+| `exact_join_large` | 10M | 392 / 515 | 344 / 324 | 286 / 321 | 0.67 | 415 / 411 | 423 / 340 | 297 / 254 | 0.67 |
+| `aj` | 10M | 185 / 186 | 159 / 154 | 156 / 161 | 0.85 | 206 / 208 | 196 / 165 | 173 / 162 | 0.81 |
+| `sum_by_med` | 10M | 253 / 242 | 251 / 297 | 298 / 253 | 1.12 | 257 / 237 | 294 / 239 | 286 / 241 | 1.07 |
+| `count_by_med` | 10M | 90.3 / 89.8 | 107 / 80.9 | 129 / 132 | 1.45 | 86.1 / 86.0 | 99.0 / 83.7 | 95.3 / 91.4 | 1.08 |
+| `agg_by_multi` | 1M | 34.4 / 35.6 | 32.3 / 33.3 | 39.5 / 33.4 | 1.04 | 38.0 / 33.1 | 33.1 / 29.8 | 45.4 / 34.5 | 1.12 |
+| `agg_by_multi` | 10M | 306 / 312 | 295 / 326 | 302 / 327 | 1.02 | 318 / 303 | 332 / 307 | 330 / 346 | 1.09 |
+| `last_by` | 10M | 105 / 105 | 102 / 109 | 105 / 106 | 1.00 | 109 / 106 | 133 / 104 | 116 / 144 | 1.21 |
+
+The last five rows are where `mimalloc` read slower. They were measured again alone at
+10M rows on 1 thread, a fresh server of each kind in turn, twice, with 2 warm-up and 9
+timed repetitions (`bench/results/2026-11-18-task-9.13-recheck.txt`). Median, system /
+mimalloc, round 1 and round 2: `count_by_med` 89.8 / 89.0 and 88.1 / 90.5, `last_by`
+112.6 / 110.9 and 119.3 / 106.8, `agg_by_multi` 305 / 394 and 334 / 307, `sum_by_med`
+255 / 284 and 242 / 267, `avg_by_med` 280 / 328 and 310 / 283. The minimum of each is
+the same on both allocators within 8%. So `count_by_med` and `last_by` were noise; the
+medium-cardinality sums and `agg_by_multi` at 10M rows spread widely on both allocators
+and may be up to about 10% slower in the median with `mimalloc`. No other case in the
+table of every case is 10% slower in both runs.
+
+**Processor time and memory.** Per run of the whole case list: the server's user and
+system processor time in seconds; peak resident memory (`VmHWM`, since the process
+started) and resident memory (`VmRSS`) at the end of the run, in MB; resident memory
+after 30 idle seconds. MB here are MiB (kB of `/proc` over 1024).
+
+| configuration | threads | run 1: user / system | run 2 | run 3 | peak after run 1 / 2 / 3 | resident after run 1 / 2 / 3 | idle after run 2 / 3 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| system | 1 | 66.1 / 13.0 | 65.6 / 11.5 | 65.9 / 11.2 | 2690 / 2755 / 2824 | 497 / 1265 / 1287 | 1265 / 1287 |
+| tuned | 1 | 63.1 / 6.8 | 63.7 / 1.1 | 64.2 / 0.9 | 2466 / 2518 / 2595 | 1539 / 2010 / 2138 | 2010 / 2138 |
+| mimalloc | 1 | 62.4 / 2.5 | 62.5 / 2.6 | 64.0 / 2.7 | 2663 / 2706 / 2753 | 1282 / 1313 / 1270 | 76 / 77 |
+| system | 4 | 66.8 / 12.9 | 65.7 / 11.9 | 66.1 / 11.0 | 2744 / 2749 / 2784 | 1331 / 1336 / 1397 | 1336 / 1337 |
+| tuned | 4 | 65.8 / 8.7 | 65.4 / 1.3 | 66.6 / 1.1 | 2517 / 2569 / 2621 | 1501 / 2010 / 2138 | 2010 / 2138 |
+| mimalloc | 4 | 65.5 / 3.0 | 61.5 / 2.8 | 65.3 / 3.0 | 2747 / 2747 / 2747 | 1347 / 1212 / 1182 | 89 / 78 |
+
+A whole run took 83 to 85 s (system), 70 to 76 s (tuned) and 71 to 73 s (mimalloc) on 1
+thread; 77 to 79, 66 to 75 and 65 to 70 s on 4.
+
+- *Peak:* `mimalloc`'s is the system allocator's or up to 3% lower. Tuned glibc's is 7% to
+  9% lower: with one arena and no trimming it serves the largest case from memory it
+  already holds.
+- *Growth across passes:* with the system allocator the peak rose by 134 MB over three
+  passes on 1 thread and resident memory by 768 MB from pass 1 to pass 2; tuned glibc's
+  resident memory went 1539, 2010, 2138 MB and is never given back; `mimalloc`'s was 1182
+  to 1347 MB after each pass and fell below 90 MB within 30 idle seconds each time (it
+  returns freed pages to the system after a short delay, not at once and not never).
+- *System time:* glibc spends 11 to 13 s per run in the kernel; tuned glibc 7 to 9 s in its
+  first run and about 1 s once it holds its memory; `mimalloc` 2.5 to 3 s in every run.
+
+**What was chosen, and why.** `mimalloc`: 11% to 38% on the sorts, on `sum_by_high`,
+`avg_by_high` and `count_by_high` at 1M rows, on `group_by` and on the joins at 10M rows,
+from the first run, with the same peak memory, no growth, and the least memory held while
+idle. Tuned glibc would need no new dependency, but it reaches similar times only from the
+second run and keeps about 2 GB for good, so it was not preferred.
+
+- `crates/oxhaven-server/Cargo.toml`: feature `mimalloc = ["dep:mimalloc"]`, in
+  `default`; `src/main.rs`: `#[global_allocator] static ALLOCATOR: mimalloc::MiMalloc`
+  under `#[cfg(feature = "mimalloc")]`. Only the binary uses it: the library crates, their
+  tests and the server's library tests keep the system allocator.
+- Workspace dependency `mimalloc = { version = "0.1.52", default-features = false }` (no
+  `secure` mode; mimalloc 2.x). Licences: `mimalloc` 0.1.52 MIT; `libmimalloc-sys` 0.1.49
+  MIT, which compiles the bundled C source of Microsoft's mimalloc (MIT) with `cc`. Its
+  build dependencies `cc`, `find-msvc-tools`, `jobserver`, `libc` and `shlex` are MIT OR
+  Apache-2.0 and were already in the workspace's tree; the two crates above are the only
+  new ones.
+- C code in the process (CPython with the `python` feature, librdkafka for Kafka) still
+  allocates with glibc's `malloc`: the crate does not replace `malloc`, and each allocator
+  frees only what it handed out. `GetHeapInfo`'s `free_memory` (`docs/CONSOLE.md`, "The
+  memory figures") reads glibc's statistics and now counts only that C side.
+- **Turning it off:** `cargo build -p oxhaven-server --no-default-features` (add
+  `--features python` for the console) builds the binary with the system allocator.
