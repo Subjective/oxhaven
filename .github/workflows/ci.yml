@@ -88,9 +88,10 @@ jobs:
     # Builds the server with its Python console, starts it, and compares it with the recorded
     # Java results (table scenarios and script scenarios) and the client smoke checks, against
     # oracle/replay-baseline.json. See oracle/README.md. Its environment has jedi, so the
-    # tests of completion in the console run here too, and must not be skipped.
+    # tests of completion in the console run here too, and must not be skipped. Last, the
+    # short soak test runs against the same binary.
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
@@ -126,6 +127,18 @@ jobs:
           libdir="$(python3 -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           LD_LIBRARY_PATH="$libdir:${LD_LIBRARY_PATH:-}" \
             cargo test --locked -p oxhaven-server --features python --lib -- console::python::completer_tests
+      # The short soak test (docs/SOAK.md), here because this job has built the server with
+      # its console and has the client's environment: two minutes of the ticking workload
+      # against that binary, with the invariants of the nightly run and looser statistics.
+      - name: Soak test, short
+        env:
+          VIRTUAL_ENV: ${{ github.workspace }}/oracle/.venv
+        run: |
+          oracle/.venv/bin/python bench/soak.py selftest
+          oracle/.venv/bin/python bench/soak.py run --profile short \
+            --binary "${CARGO_TARGET_DIR:-target}/debug/oxhaven-server" \
+            --server-log "$RUNNER_TEMP/oracle-replay/soak-server.log" \
+            --out "$RUNNER_TEMP/oracle-replay/soak-short.json"
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
