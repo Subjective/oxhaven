@@ -9,6 +9,9 @@
 //! the table service's handler without its checks of the request, where Java's engine
 //! answers what its table service refuses.
 //!
+//! [`columns_to_rows`] is a static method of a Java class that `jpy` hands a script, and
+//! that the engine carries out (`deephaven._columns_to_rows`).
+//!
 //! The rest reads a table: [`is_flat`], [`is_blink`], [`read_columns`] for the iterators
 //! and [`to_string`].
 
@@ -18,12 +21,13 @@ use std::sync::Arc;
 use oxhaven_contracts::graph::locked;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
+use oxhaven_engine::ops::columns_to_rows::{self as transform_columns, ColumnsToRowsError};
 use oxhaven_engine::ops::select::ColumnPair;
 use oxhaven_engine::ops::transpose::{NewColumnBehavior, TransposeError};
 use oxhaven_engine::ops::{distinct, filter, merge, select, sort, transpose};
 use oxhaven_engine::table::{self, attribute_map, AttributeValue};
 use oxhaven_proto::grpc::batch_table_request::operation::Op;
-use pyo3::exceptions::{PyRuntimeError, PyValueError};
+use pyo3::exceptions::{PyNotImplementedError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 use serde_json::Value;
@@ -388,6 +392,46 @@ fn local_op(
         .map_err(failure)
 }
 
+/// `ColumnsToRowsTransform.columnsToRows` of `source`, which `jpy` hands a script
+/// (`deephaven._columns_to_rows` chooses the overload and checks for Java's `null`s).
+/// Java's refusal is a `RuntimeError` with the text of its exception, as `jpy` raises it;
+/// what is not ported is a `NotImplementedError`.
+///
+/// Behavior: `io.deephaven.engine.table.impl.util.ColumnsToRowsTransform#columnsToRows`
+#[pyfunction]
+fn columns_to_rows(
+    py: Python<'_>,
+    source: PyRef<'_, TableHandle>,
+    label_column: &str,
+    value_columns: Vec<String>,
+    labels: Vec<String>,
+    transpose_columns: Vec<Vec<String>>,
+) -> PyResult<TableHandle> {
+    let tables = vec![source.table.clone()];
+    let made = py.detach(|| {
+        guarded(&tables, || {
+            Ok(transform_columns::columns_to_rows(
+                &tables[0],
+                label_column,
+                &value_columns,
+                &labels,
+                &transpose_columns,
+            ))
+        })
+    });
+    match made.map_err(failure)? {
+        Ok(table) => Ok(TableHandle { table }),
+        Err(error @ ColumnsToRowsError::NotPorted(_)) => {
+            Err(PyNotImplementedError::new_err(error.to_string()))
+        }
+        Err(ColumnsToRowsError::Table(failure)) => Err(PyRuntimeError::new_err(failure.message)),
+        Err(error) => Err(PyRuntimeError::new_err(format!(
+            "{}: {error}",
+            error.java_exception()
+        ))),
+    }
+}
+
 /// Behavior: `io.deephaven.engine.table.Table#isFlat`
 #[pyfunction]
 fn is_flat(source: PyRef<'_, TableHandle>) -> bool {
@@ -633,6 +677,7 @@ fn to_string(
 /// Adds the functions of this module to the native module `_oxhaven`.
 pub(super) fn register(native: &Bound<'_, PyModule>) -> PyResult<()> {
     native.add_function(wrap_pyfunction!(local_op, native)?)?;
+    native.add_function(wrap_pyfunction!(columns_to_rows, native)?)?;
     native.add_function(wrap_pyfunction!(is_flat, native)?)?;
     native.add_function(wrap_pyfunction!(is_blink, native)?)?;
     native.add_function(wrap_pyfunction!(attributes, native)?)?;

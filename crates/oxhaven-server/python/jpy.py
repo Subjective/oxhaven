@@ -78,6 +78,11 @@ def _backed(java_class: str, name: str):
         from deephaven import _calendar
 
         return _calendar.date_time_utils.get(name)
+    if java_class == "io.deephaven.engine.table.impl.util.ColumnsToRowsTransform" and name == "columnsToRows":
+        # what `dx.data.marketing` of `deephaven.plot.express` calls (task 11.3)
+        from deephaven import _columns_to_rows
+
+        return _columns_to_rows.columnsToRows
     return None
 
 
