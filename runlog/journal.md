@@ -1371,3 +1371,7 @@ Task 10.10 formats every double literal of a structured filter as Java does, fro
 ## 2026-11-18 06:38 UTC: task 11.1 reported, pull request 169
 
 Calendars work in the Python console for calendar files; about 400 expressions compared with Deephaven. The three calendars Deephaven ships are under the Deephaven Community License, so the agent copied nothing and wrote owner question 7.9; Josh is asked by decision card. PARITY.md A10 still says every Java class is refused by jpy; two DateTimeUtils methods are now carried out, as Josh approved, and the wording needs a follow-up change.
+
+## 2026-11-18 06:42 UTC: pull request 168 merged
+
+Seven green checks on head 852fe40c, the replay among them. Main is at 7ff844bf.
