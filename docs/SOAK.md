@@ -38,8 +38,9 @@ VIRTUAL_ENV=/tmp/soak-venv /tmp/soak-venv/bin/python bench/soak.py run \
 `--token-expire-ms 30000`, and stops it with SIGINT at the end. Options: `--duration` and
 `--warmup` (seconds, instead of the profile's), `--seed` (default 1), `--cycle-ms`,
 `--round-seconds` (default 2), `--console python|none` (default: what the server was built
-with), `--server-log <file>`, `--step-timeout`, `--inject` (below). A server built without the
-`python` feature can be soaked too; the checks that need the console say that they did not run.
+with), `--server-log <file>`, `--step-timeout`, `--inject` and `--skip` (both below). A server
+built without the `python` feature can be soaked too; the checks that need the console say
+that they did not run.
 
 The run is deterministic in what it sends: the rows, the choice of operations and their order
 come from `--seed`. What the clock decides (which cycle a write lands in, the rows of the time
@@ -52,7 +53,8 @@ to end, so the load is the same from the first round to the last.
 
 - **A long-lived graph over three keyed input tables** (`trades` with 2,000 possible keys,
   `quotes`, `dims`), written by one session: each round adds and changes rows in all three and
-  deletes rows from `trades`. The key spaces are fixed, so the tables stop growing once the
+  deletes rows from `trades`, ten times over (about 1,200 trades written and 700 deleted a
+  round). The key spaces are fixed, so the tables stop growing once the
   keys have been written (about 1,100 trades at any time) and a steady state exists. Thirteen
   chains of ticking operations hang off them: `where`, `update`, `where` + `update_view`,
   `agg_by` with six aggregations by one key and by two, `sort` + `last_by`, `natural_join`,
@@ -134,16 +136,20 @@ samples), which a few high samples do not move. Its slope must not exceed the pr
 
 | profile | warm-up | limit | what it catches |
 | --- | ---: | ---: | --- |
-| `long` | 7 min | 24 MB per hour | 13 KB kept per round: a table of a few hundred rows, a session, a subscription |
-| `short` | 40 s | 600 MB per hour | 330 KB kept per round: one of the churn's tables |
+| `long` | 15 min | 24 MB per hour | 13 KB kept per round: a table of a few hundred rows, a session, a subscription, or 11 bytes per trade written |
+| `short` | 40 s | 1,500 MB per hour | 830 KB kept per round: one of the churn's 50,000-row tables |
 
-The limits come from the noise. Between two quiet points the resident size moves by several
-megabytes without any trend, as the allocator returns freed pages to the system late and in
-pieces (150 to 172 MB over a five-minute run). Over the 38 minutes the long profile
-fits, that noise gives a slope within a few MB per hour of zero; over the 80 seconds of the
-short profile it gives up to about 150 MB per hour either way, so its limit is four times
-that. A run with `--inject leak`, which keeps every round's tables, measured 16,700 MB per
-hour.
+The limits come from the noise. Between two quiet points the resident size moves by 10 to
+20 MB without any trend, as the allocator returns freed pages to the system late and in
+pieces. Over the 30 minutes the long profile fits, the first long run's slope, with its leak
+(below), was 17 MB per hour, and the slope of its last 15 minutes was 1; 24 is above what the
+noise gives and below what a leak of the size found gives now that a round writes more. Over
+windows of 80 seconds, which is what the short profile fits, the slopes of that run ranged
+from -790 to +1,200 MB per hour, so the short limit is above the largest. A run with
+`--inject leak`, which keeps every round's tables, measured 16,700 MB per hour.
+
+The warm-up of the long profile is long because resident memory is: in the first long run it
+rose in steps from 150 to about 195 MB over the first 13 minutes before it levelled.
 
 Open file descriptors and threads of the process are sampled with it: the median of the last
 third of the run may be at most 8 above the median of the first third after the warm-up. A
@@ -199,9 +205,17 @@ exit with code 0 within 15 seconds.
 
 ## Reading a failure
 
-The summary names each violation; the JSON file has the same with full detail, and one record
-per round (`rounds`: time, resident size, processor time, file descriptors, threads, barrier
-time, cycle count and longest cycle gap, load average).
+The summary names each violation; the JSON file has the same with full detail, and one line
+per round under `rounds` (`columns` names the values of a row: time, work time, barrier
+time, cycle count and longest cycle gap, processor time of the round, resident size, peak
+resident size, threads, file descriptors, processor time so far, subscriber updates, load
+average).
+
+To find which part of a round a trend comes from, leave parts out: `--skip` takes any of
+`write`, `check`, `script`, `churn`, `abandon`, and with `--round-seconds 0.05` the parts that
+stay run many times as often, so a leak per round shows in minutes. `--skip
+check,script,churn,abandon` leaves the writes, and is how the leak below was found to be in
+the long-lived graph and not in what comes and goes.
 
 | violation | what it means | where to look |
 | --- | --- | --- |
@@ -222,6 +236,18 @@ time, cycle count and longest cycle gap, load average).
 A check that is known to fail can be listed in `KNOWN_FAILURES` of `bench/soak.py` with the
 place its reproduction is written down; it is then reported as a known failure and does not
 fail the run, and every other check stays enforced. The list is empty.
+
+## What it has found
+
+**A sort by a rising column leaked 12 bytes per row** (fixed with task 12.3). The first long
+run failed the memory invariant. With `--skip` the growth was in the writes alone, 7.8 KB a
+round; with one chain at a time it was in every chain that starts with `sort("Ts")`, where
+`Ts` rises with every write, and in no other. The incremental sort put rows that sort last
+after the last row and grew its key space for them, and never used the keys of the rows that
+had left again, so the arrays it indexes by row key grew with every row there ever was
+(`crates/oxhaven-engine/src/ops/sort/gapped.rs`, test
+`rows_appended_while_others_leave_keep_the_key_space_in_proportion`). The measurements are
+in `tasks/12.3-soak-test.md`.
 
 ## In CI
 
