@@ -404,6 +404,63 @@ fn shortest_digits(value: f64) -> (Vec<u8>, i32) {
     (digits, exponent.parse().unwrap_or(0))
 }
 
+/// For a positive `value` below `1e-300` whose shortest decimal has one digit, at
+/// `10^exponent`: the decimal of at most two significant digits closest to it, and the
+/// power of ten of its first digit. Java's `Double.toString` chooses among those, since
+/// JDK 19, when one digit is enough; above `1e-300` a double's precision leaves only the
+/// one-digit decimal itself among them. No two of them are equally close: half way
+/// between two is a decimal no double below `1e-300` equals.
+///
+/// Behavior: java.lang.Double#toString(double), as specified since JDK 19
+fn closest_of_two_digits(value: f64, exponent: i32) -> (Vec<u8>, i32) {
+    let bits = value.to_bits();
+    let (biased, fraction) = ((bits >> 52) as i64, bits & ((1 << 52) - 1));
+    // value = significand * 2^-shift
+    let (significand, shift) = match biased {
+        0 => (fraction, 1074),
+        _ => (fraction | 1 << 52, 1075 - biased),
+    };
+    // floor(value * 10^power) and whether the fraction is above a half, from
+    // significand * 10^power held in 64-bit limbs, least significant first
+    let scaled = |power: i32| -> (u64, bool) {
+        let mut limbs = vec![significand];
+        for _ in 0..power {
+            let mut carry = 0u128;
+            for limb in limbs.iter_mut() {
+                let product = u128::from(*limb) * 10 + carry;
+                *limb = product as u64;
+                carry = product >> 64;
+            }
+            if carry > 0 {
+                limbs.push(carry as u64);
+            }
+        }
+        let bit = |at: i64| (limbs[(at / 64) as usize] >> (at % 64)) & 1;
+        let whole = (shift..shift + 8)
+            .filter(|at| (at / 64) < limbs.len() as i64)
+            .map(|at| bit(at) << (at - shift))
+            .sum::<u64>();
+        (whole, bit(shift - 1) == 1)
+    };
+    // the power of ten of the value's first digit, one below the decimal's when that was
+    // rounded up to a power of ten
+    let mut first = exponent;
+    let (mut whole, mut above_half) = scaled(1 - first);
+    if whole < 10 {
+        first -= 1;
+        (whole, above_half) = scaled(1 - first);
+    }
+    let two = whole + u64::from(above_half);
+    if two == 100 {
+        return (vec![b'1'], first + 1);
+    }
+    let mut digits = vec![b'0' + (two / 10) as u8, b'0' + (two % 10) as u8];
+    if digits[1] == b'0' {
+        digits.pop();
+    }
+    (digits, first)
+}
+
 /// The digits written without an exponent: `12.5`, `0.001`, `1200`.
 fn plain(digits: &[u8], exponent: i32) -> String {
     let mut out = String::new();
@@ -436,13 +493,9 @@ pub(crate) fn java_double_to_string(value: f64) -> String {
     if size == 0.0 {
         return format!("{sign}0.0");
     }
-    let (digits, exponent) = shortest_digits(size);
+    let (mut digits, mut exponent) = shortest_digits(size);
     if digits.len() == 1 && size < 1e-300 {
-        // Java chooses among the decimals of two digits there, which can be a different one.
-        unported!(
-            "java.lang.Double#toString",
-            "a subnormal value with one significant digit"
-        );
+        (digits, exponent) = closest_of_two_digits(size, exponent);
     }
     if (1e-3..1e7).contains(&size) {
         let mut text = plain(&digits, exponent);
@@ -1233,9 +1286,7 @@ mod tests {
         for line in include_str!("java_doubles.txt").lines() {
             let fields: Vec<&str> = line.split(' ').collect();
             let value = f64::from_bits(u64::from_str_radix(fields[0], 16).unwrap());
-            if !(value != 0.0 && value.abs() < 1e-300) {
-                assert_eq!(print_double(value), fields[1], "{line}");
-            }
+            assert_eq!(print_double(value), fields[1], "{line}");
             match decimal_format(value) {
                 Some(text) => {
                     assert_eq!(text, unescape(fields[2]), "{line}");
@@ -1245,6 +1296,22 @@ mod tests {
             }
         }
         assert!(formatted > 300, "{formatted} formatted, {skipped} skipped");
+    }
+
+    /// `java_tiny_doubles.txt` holds the bits and JDK 21's `Double.toString` of positive
+    /// doubles below `1e-300`: every subnormal up to 300 times the smallest, others at
+    /// random, and those next to each decimal of one digit.
+    #[test]
+    fn doubles_below_1e_300_print_as_the_jdk_prints_them() {
+        let mut lines = 0;
+        for line in include_str!("java_tiny_doubles.txt").lines() {
+            let (bits, text) = line.split_once(' ').unwrap();
+            let value = f64::from_bits(u64::from_str_radix(bits, 16).unwrap());
+            assert_eq!(java_double_to_string(value), text, "{line}");
+            assert_eq!(java_double_to_string(-value), format!("-{text}"), "{line}");
+            lines += 1;
+        }
+        assert!(lines > 800);
     }
 
     #[test]
