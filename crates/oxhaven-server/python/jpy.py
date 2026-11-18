@@ -4,8 +4,9 @@ The reference's Python reaches Java through jpy: `jpy.get_type` hands a script a
 and the script calls its constructor, its static methods and its fields. This server has no
 Java classes. The module is here so that a package which imports `jpy` and holds Java types
 loads, as `deephaven.plot.express` does; every use of a type is refused by the name of the
-Java class and, where the use names one, of its member. No Java class is implemented behind
-it. Decided by the owner on 2026-11-16 (`docs/CONSOLE.md`, "The jpy module").
+Java class and, where the use names one, of its member. Decided by the owner on 2026-11-16
+(`docs/CONSOLE.md`, "The jpy module"). The exceptions are the static methods in
+`_BACKED`, which this server carries out (task 11.1).
 
 The names are those of jpy 2.2.0, and what a call answers without Java was observed there,
 inside the reference server and in a Python process without a Java VM.
@@ -67,6 +68,19 @@ class JException(Exception):
     Java exception is raised here, so nothing raises it; code that catches it runs."""
 
 
+def _backed(java_class: str, name: str):
+    """The function that carries out a static method of a Java class, or None.
+
+    Two methods of `io.deephaven.time.DateTimeUtils`, the ones `deephaven.plot.express`
+    calls for a figure with a business calendar (`deephaven._calendar.date_time_utils`).
+    """
+    if java_class == "io.deephaven.time.DateTimeUtils":
+        from deephaven import _calendar
+
+        return _calendar.date_time_utils.get(name)
+    return None
+
+
 class _JavaClass(type):
     """The class of the types `get_type` hands out. A type has a name and nothing else:
     whatever would reach the Java class is refused.
@@ -80,6 +94,9 @@ class _JavaClass(type):
         # no Java member, and the code that asks expects an AttributeError
         if name.startswith("__") and name.endswith("__"):
             raise AttributeError(f"type object '{cls.jclassname}' has no attribute '{name}'")
+        backed = _backed(cls.jclassname, name)
+        if backed is not None:
+            return backed
         raise _not_ported(f"{cls.jclassname}#{name}")
 
     def __call__(cls, *args, **kwargs):

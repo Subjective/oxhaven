@@ -11,7 +11,7 @@ from typing import Optional, Sequence
 
 import numpy as np
 
-from . import _engine, dtypes
+from . import _engine, _java_time, dtypes
 from .column import ColumnDefinition, InputColumn
 from .dherror import DHError
 from .dtypes import BusinessCalendar, DType
@@ -126,8 +126,34 @@ def to_table(np_array: np.ndarray, cols: Sequence[str]) -> Table:
 
 
 def to_np_busdaycalendar(cal: BusinessCalendar, include_partial: bool = True) -> np.busdaycalendar:
-    """Refuses every calendar: the engine has no business calendars
-    (`io.deephaven.time.calendar.BusinessCalendar`), so nothing here can be one."""
+    """Creates a numpy business day calendar from a Java BusinessCalendar.
+
+    Partial holidays in the business calendar are interepreted as full holidays in the numpy business day calendar.
+
+    Args:
+        cal (BusinessCalendar): the Java BusinessCalendar
+        include_partial (bool): whether to include partial holidays in the numpy business day calendar, default is True
+
+    Returns:
+        a numpy busdaycalendar
+
+    Raise:
+        DHError
+    """
     if not cal:
         raise DHError(message="cal must not be None")
-    raise DHError(message="cal must be a Java BusinessCalendar")
+    elif not isinstance(cal, BusinessCalendar.j_type):
+        raise DHError(message="cal must be a Java BusinessCalendar")
+
+    try:
+        weekend = cal.weekendDays()
+        weekmask = "".join("0" if weekend.contains(day) else "1" for day in _java_time.DayOfWeek.values())
+        holidays = cal.holidays()
+        dates = [
+            np.datetime64(str(date), "D")
+            for date in holidays.keySet().toArray()
+            if holidays.get(date).businessNanos() == 0 or include_partial
+        ]
+        return np.busdaycalendar(weekmask=weekmask, holidays=dates)
+    except Exception as e:
+        raise DHError(e, "failed to create a numpy busdaycalendar from a Java BusinessCalendar.") from e

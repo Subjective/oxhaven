@@ -378,6 +378,22 @@ class LocalDate(_Value):
     def to_epoch_day(self) -> int:
         return _epoch_day(self.year, self.month, self.day)
 
+    def getYear(self) -> int:
+        return self.year
+
+    def getMonthValue(self) -> int:
+        return self.month
+
+    def getDayOfMonth(self) -> int:
+        return self.day
+
+    def getDayOfWeek(self) -> "DayOfWeek":
+        # 1970-01-01 was a Thursday, day 4
+        return DayOfWeek.of((self.to_epoch_day() + 3) % 7 + 1)
+
+    def toEpochDay(self) -> int:
+        return self.to_epoch_day()
+
     def __str__(self):
         return f"{_year_text(self.year)}-{self.month:02d}-{self.day:02d}"
 
@@ -409,6 +425,21 @@ class LocalTime(_Value):
         seconds, nano = divmod(self.nano_of_day, NANOS_PER_SECOND)
         return seconds // 3600, seconds // 60 % 60, seconds % 60, nano
 
+    def getHour(self) -> int:
+        return self.components()[0]
+
+    def getMinute(self) -> int:
+        return self.components()[1]
+
+    def getSecond(self) -> int:
+        return self.components()[2]
+
+    def getNano(self) -> int:
+        return self.components()[3]
+
+    def toNanoOfDay(self) -> int:
+        return self.nano_of_day
+
     def __str__(self):
         return _time_text(self.nano_of_day, False)
 
@@ -420,6 +451,59 @@ def _check(field: str, value: int, least: int, most: int) -> None:
             f"java.time.DateTimeException: Invalid value for {field} "
             f"(valid values {least} - {most}): {value}"
         )
+
+
+_DAY_NAMES = ("MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY")
+
+
+class DayOfWeek(_Value):
+    """A day of the week, Monday 1 to Sunday 7. Behavior: `java.time.DayOfWeek`"""
+
+    __slots__ = ("value",)
+    _java_name = "java.time.DayOfWeek"
+
+    def __init__(self, value: int):
+        self.value = value
+
+    @classmethod
+    def of(cls, value: int) -> "DayOfWeek":
+        if not 1 <= value <= 7:
+            raise JavaError(f"java.time.DateTimeException: Invalid value for DayOfWeek: {value}")
+        return _DAYS[value - 1]
+
+    @classmethod
+    def valueOf(cls, name: str) -> "DayOfWeek":
+        if name not in _DAY_NAMES:
+            raise JavaError(f"java.lang.IllegalArgumentException: No enum constant java.time.DayOfWeek.{name}")
+        return _DAYS[_DAY_NAMES.index(name)]
+
+    @classmethod
+    def values(cls) -> list:
+        return list(_DAYS)
+
+    def getValue(self) -> int:
+        return self.value
+
+    def ordinal(self) -> int:
+        return self.value - 1
+
+    def name(self) -> str:
+        return _DAY_NAMES[self.value - 1]
+
+    def compareTo(self, other: "DayOfWeek") -> int:
+        return self.value - other.value
+
+    def equals(self, other) -> bool:
+        return self == other
+
+    def __str__(self):
+        return self.name()
+
+
+_DAYS = tuple(DayOfWeek(value) for value in range(1, 8))
+for _day in _DAYS:
+    setattr(DayOfWeek, _DAY_NAMES[_day.value - 1], _day)
+del _day
 
 
 # ------------------------------------------------------------------------------- instants
