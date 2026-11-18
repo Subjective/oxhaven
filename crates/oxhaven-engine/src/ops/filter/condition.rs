@@ -1295,6 +1295,18 @@ mod tests {
             spec(literal(Literal::Double(3.0))),
             Ok(range_spec("A", RangeOp::Greater, "3"))
         );
+        // Doubles that Java's formatter does not print with their shortest digits: from
+        // 2^53, half a gap from a short decimal, and a tie at the sixteenth fraction digit.
+        for (value, text) in [
+            (9_007_199_254_740_992.0, "9007199254740992"),
+            (1e23, "99999999999999990000000"),
+            (0.12345678901234565, "0.1234567890123456"),
+        ] {
+            assert_eq!(
+                spec(literal(Literal::Double(value))),
+                Ok(range_spec("A", RangeOp::Greater, text))
+            );
+        }
         assert_eq!(
             spec(literal(Literal::Bool(false))),
             Ok(range_spec("A", RangeOp::Greater, "false"))

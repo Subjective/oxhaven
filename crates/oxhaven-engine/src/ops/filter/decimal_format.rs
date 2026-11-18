@@ -580,7 +580,10 @@ mod tests {
     #[test]
     fn a_last_digit_half_way_goes_to_the_even_digit() {
         // 2174429028029277.25, 576558572665954.75 and 886107453436175.25, exactly.
-        assert_eq!(decimal_format(2174429028029277.25), "2174429028029277.2");
+        assert_eq!(
+            decimal_format(double(0x431e_e686_d738_4d75)),
+            "2174429028029277.2"
+        );
         assert_eq!(
             decimal_format(double(0x4300_6304_0753_e316)),
             "576558572665954.8"
