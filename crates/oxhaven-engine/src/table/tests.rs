@@ -1612,6 +1612,92 @@ fn an_operator_follows_an_input_table() {
     assert_eq!(longs_of(&*result, 0), [Some(10)]);
 }
 
+/// Seen on Deephaven 42.9: without key columns the table holds the last row added, and a
+/// delete of one row without columns removes it.
+#[test]
+fn keyed_input_table_without_key_columns_holds_the_last_row() {
+    use arrow::record_batch::RecordBatchOptions;
+    let (_stepper, graph) = graph();
+    let table = keyed_input_table(graph.clone(), sym_qty(), &[], None).unwrap();
+    let checker = ConsistencyChecker::attach(table.clone());
+    let recorder = Recorder::attach(table.clone());
+    let input = table.input_table().unwrap();
+    assert!(input.key_columns().is_empty());
+
+    input
+        .add(sym_qty_batch(["a", "b", "c"], [0, 10, 20]))
+        .unwrap();
+    assert_eq!(recorder.events(), [Ok(adds([0]))]);
+    assert_eq!(longs_of(&*table, 1), [Some(20)]);
+    checker.assert_consistent();
+
+    input.add(sym_qty_batch(["d", "e"], [70, 80])).unwrap();
+    assert_eq!(
+        recorder.events()[1].as_ref().unwrap().modified,
+        RowSet::from_keys([0])
+    );
+    assert_eq!(strings_of(&*table, 0), [Some("e".to_string())]);
+    checker.assert_consistent();
+
+    let no_columns = RecordBatch::try_new_with_options(
+        Arc::new(Schema::empty()),
+        vec![],
+        &RecordBatchOptions::new().with_row_count(Some(1)),
+    )
+    .unwrap();
+    input.delete(no_columns).unwrap();
+    assert_eq!(recorder.events()[2], Ok(removes([0])));
+    assert!(keys_of(&*table).is_empty());
+    checker.assert_consistent();
+}
+
+/// Seen on Deephaven 42.9: a vector key column keys by the elements, and a null vector is
+/// a key of its own.
+#[test]
+fn keyed_input_table_keys_by_the_elements_of_a_vector() {
+    use arrow::array::Int32Array;
+    let vector = ColumnType::vector(ColumnType::Int);
+    let vectors = |cells: &[Option<i32>]| -> ArrayRef {
+        let elements: Vec<i32> = cells.iter().flatten().copied().collect();
+        oxhaven_testkit::list_of(
+            &vector,
+            cells.iter().map(|cell| cell.map(|_| 1)),
+            Arc::new(Int32Array::from(elements)),
+        )
+    };
+    let definition = definition(&[("X", vector.clone()), ("B", ColumnType::Long)]);
+    let (_stepper, graph) = graph();
+    let table = keyed_input_table(graph.clone(), definition, &["X"], None).unwrap();
+    let checker = ConsistencyChecker::attach(table.clone());
+    let input = table.input_table().unwrap();
+
+    input
+        .add(batch(&[
+            ("X", vectors(&[Some(1), Some(2), Some(1), None, Some(1)])),
+            ("B", longs([0, 10, 20, 30, 40])),
+        ]))
+        .unwrap();
+    assert_eq!(longs_of(&*table, 1), [Some(40), Some(10), Some(30)]);
+    checker.assert_consistent();
+
+    input.delete(batch(&[("X", vectors(&[Some(1)]))])).unwrap();
+    assert_eq!(longs_of(&*table, 1), [Some(10), Some(30)]);
+    input.delete(batch(&[("X", vectors(&[None]))])).unwrap();
+    assert_eq!(longs_of(&*table, 1), [Some(10)]);
+    checker.assert_consistent();
+}
+
+/// Java keys a vector of doubles by the class of the vector object (owner item 7.6).
+#[test]
+#[should_panic(
+    expected = "unported: io.deephaven.engine.table.impl.util.KeyedArrayBackedInputTable#makeKeySource"
+)]
+fn keyed_input_table_keyed_by_a_vector_of_doubles_is_unported() {
+    let definition = definition(&[("X", ColumnType::vector(ColumnType::Double))]);
+    let (_stepper, graph) = graph();
+    let _ = keyed_input_table(graph, definition, &["X"], None);
+}
+
 // ---------------------------------------------------------------------------------------
 // Time tables
 // ---------------------------------------------------------------------------------------
