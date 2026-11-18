@@ -39,6 +39,8 @@ fn insignificant_digits(power: i32) -> u32 {
 
 /// Behavior: jdk.internal.math.FloatingDecimal.BinaryToASCIIBuffer#estimateDecExp, whose
 /// floating point estimate of the decimal exponent the digits depend on.
+// Java's literals, which are not the nearest doubles to log10(2) and its kin.
+#[allow(clippy::approx_constant)]
 fn estimate_decimal_exponent(fraction: u64, binary_exponent: i32) -> i32 {
     let d2 = f64::from_bits((1023u64 << 52) | (fraction & ((1 << 52) - 1)));
     let d = (d2 - 1.5) * 0.289_529_654
@@ -173,7 +175,7 @@ pub(super) fn java_digits(value: f64) -> JavaDigits {
         } else {
             digits.push(b'0'.wrapping_add(q as u8));
         }
-        if decimal_exponent < -3 || decimal_exponent >= 8 {
+        if !(-3..8).contains(&decimal_exponent) {
             is_low = false;
             is_high = false;
         }
@@ -208,7 +210,7 @@ pub(super) fn java_digits(value: f64) -> JavaDigits {
         } else {
             digits.push(b'0' + q);
         }
-        if decimal_exponent < -3 || decimal_exponent >= 8 {
+        if !(-3..8).contains(&decimal_exponent) {
             is_low = false;
             is_high = false;
         }
