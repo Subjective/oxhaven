@@ -1367,3 +1367,7 @@ Josh asked how the Python console calls that need Java objects would be fixed, t
 ## 2026-11-18 06:35 UTC: task 10.10 reported, pull request 168; task 11.4 started
 
 Task 10.10 formats every double literal of a structured filter as Java does, from rules found by observation: no mismatch on 14 million doubles against JDK 21. Its statement of sources names only JDK output, public documentation and Steele and White; the module's structure (own natural-number type, three rules) was checked before opening the pull request. The replay gate did not run locally for lack of disk, so the pull request's checks are the first run. Task 11.4 (update_by refusals not covered by an open owner question) runs on Opus beside task 11.1.
+
+## 2026-11-18 06:38 UTC: task 11.1 reported, pull request 169
+
+Calendars work in the Python console for calendar files; about 400 expressions compared with Deephaven. The three calendars Deephaven ships are under the Deephaven Community License, so the agent copied nothing and wrote owner question 7.9; Josh is asked by decision card. PARITY.md A10 still says every Java class is refused by jpy; two DateTimeUtils methods are now carried out, as Josh approved, and the wording needs a follow-up change.
