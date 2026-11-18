@@ -30,8 +30,11 @@ every field given there fits:
 - `steps`: `first` for step 0 only, `later` for the steps after it.
 - `requires`: `reference_inconsistent`. The mismatch is the finding's only if the reference
   itself, asked for the same table again from the inputs as they are after that step, answers
-  differently from what it kept up to date incrementally (`runner.run_fresh`). The harness
-  checks this by running the scenario once more; a target that cannot be asked never fits.
+  differently from what it kept up to date incrementally (`runner.run_fresh`), and the
+  actual side holds for that table what the reference answers from scratch
+  (`rules.differs_from_fresh`): a result that is neither of the reference's two answers is
+  a difference. The harness checks this by running the scenario once more; a target that
+  cannot be asked never fits.
 
 A table defined from one with a known mismatch shows it again (a wrong value passed on, a
 refusal of everything downstream). Such a mismatch belongs to the same finding if the table

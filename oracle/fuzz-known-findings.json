@@ -4,7 +4,7 @@
   {
    "id": "aj-reference-history",
    "class": "reference-defect",
-   "reason": "aj on refreshing tables: after a step, what Java kept up to date differs from what Java answers when the same join is made again from the same rows (runlog/journal.md, 'As-of join: Java's ticking result differs from its own static result': a NaN left stamp joined to a newly added NaN right row under the rule >, and chains of aj whose left table depends on the right one keeping a match that is gone). Oxhaven gives the answer Java gives from scratch and agrees with itself. Counted only when Java's two answers do differ for the scenario at hand. Recorded seeds: --ops aj 39, 257, 1319, 1774, 2619, 2, 465, 540, 675, 1371, 1427, 1735, 2110, 2669, 2873.",
+   "reason": "aj on refreshing tables: after a step, what Java kept up to date differs from what Java answers when the same join is made again from the same rows (runlog/journal.md, 'As-of join: Java's ticking result differs from its own static result': a NaN left stamp joined to a newly added NaN right row under the rule >; for the chains of aj named there see aj-reference-failure). Oxhaven gives the answer Java gives from scratch and agrees with itself. Counted only when Java's two answers do differ for the scenario at hand and Oxhaven's is the one from scratch. Recorded seeds: --ops aj 39, 257, 1319, 1774, 2619.",
    "match": {"kind": "value", "operation": "aj", "steps": "later",
              "requires": "reference_inconsistent"}
   },
@@ -13,6 +13,13 @@
    "class": "reference-defect",
    "reason": "The same as aj-reference-history, for a table with more differing cells than the comparison lists one by one: the 'truncated' note that ends such a list (recorded seed: --ops aj 675).",
    "match": {"kind": "truncated", "operation": "aj", "steps": "later",
+             "requires": "reference_inconsistent"}
+  },
+  {
+   "id": "aj-reference-failure",
+   "class": "reference-defect",
+   "reason": "The chains of aj of aj-reference-history (PARITY.md, A13; tasks/12.1-fuzzer-coverage.md, F1): an aj with exact match columns whose left table is static and whose right table is a refreshing as-of result. When the right table reports a change that touches neither a match column nor the stamp, Java fails the join in that cycle (ArrayIndexOutOfBoundsException in RightIncrementalHashedAsOfJoinStateManager#addToSequentialBuilder) and serves the rows it had, which earlier runs compared as a match that is gone; since a failed table is compared by its failure alone (PARITY.md, A11) the seeds show as a failure on Java only. Made again from the same rows, Java's join succeeds, and Oxhaven gives that answer. Counted only when Java does answer from scratch for the scenario at hand and Oxhaven's result is that answer. Recorded seeds: --ops aj 2, 465, 540, 675, 1371, 1427, 1735, 2110, 2669, 2873.",
+   "match": {"kind": "failure_expected", "operation": "aj", "steps": "later",
              "requires": "reference_inconsistent"}
   },
   {
