@@ -15,7 +15,10 @@
 //!
 //! The keys stay within `0..len`, at least three quarters full after a whole layout, so
 //! the row redirection keeps its flat array and a read through it stays a slice copy per
-//! range of keys.
+//! range of keys. Rows that sort after every other are appended after the last row; when
+//! that would take the key space past twice the room the rows need, because rows before
+//! them have left, the whole result is laid out again instead, so `len` follows the number
+//! of rows and not the number of rows there ever were.
 
 use super::keys::{KeyEncoder, SortKeys};
 use super::sorted::sorted_keys;
@@ -158,6 +161,21 @@ impl Layout {
         let count = group.len();
         // Free keys after the row before: the group goes there and nothing moves.
         if at.is_none_or(|at| at - start >= count) {
+            // Unless the group goes after the last row, past the end of a key space that
+            // is mostly free keys: rows that sort last keep arriving while others leave, as
+            // in a sort by a time, and the keys those left are before the last row, where
+            // no such group asks for one. The whole result is then laid out again, so
+            // that the key space stays in proportion to the rows.
+            let room = (self.rows.size() as usize + count).div_ceil(INITIAL_FILL) * LEAF;
+            if at.is_none() && start + count > self.parents.len().max(2 * room) {
+                let len = self.parents.len();
+                self.lay_out(redirection, changes, 0, len, None, room / LEAF, group);
+                self.parents.truncate(room);
+                self.parents.shrink_to_fit();
+                self.key_at.truncate(room);
+                self.key_at.shrink_to_fit();
+                return;
+            }
             let len = (start + count)
                 .next_multiple_of(LEAF)
                 .max(self.parents.len());
@@ -198,7 +216,15 @@ impl Layout {
             }
             width *= 2;
         };
-        self.lay_out(redirection, changes, start, end, at, group);
+        self.lay_out(
+            redirection,
+            changes,
+            start,
+            end,
+            Some(at),
+            (end - start) / LEAF,
+            group,
+        );
     }
 
     /// Writes one row at a free key.
@@ -223,16 +249,19 @@ impl Layout {
         }
     }
 
-    /// Lays the rows with keys in `start..end`, a whole number of leaves, out again with
-    /// `group` before the row at `at`: the same number of rows in each leaf, give or take
-    /// one, from the start of the leaf.
+    /// Lays the rows with keys in `start..end`, a whole number of leaves, out again in
+    /// the first `leaves` leaves of that range, with `group` before the row at `at`, or
+    /// after every row where that is `None`: the same number of rows in each leaf, give or
+    /// take one, from the start of the leaf.
+    #[allow(clippy::too_many_arguments)]
     fn lay_out(
         &mut self,
         redirection: &WritableRowRedirection,
         changes: &mut Changes,
         start: usize,
         end: usize,
-        at: usize,
+        at: Option<usize>,
+        leaves: usize,
         group: Vec<Placed>,
     ) {
         let old = self
@@ -241,7 +270,7 @@ impl Layout {
         let mut placed: Vec<Placed> = Vec::with_capacity(old.size() as usize + group.len());
         let mut group = Some(group);
         for slot in old.iter().map(|key| key as usize) {
-            if slot == at {
+            if Some(slot) == at {
                 placed.extend(group.take().expect("one row at a key"));
             }
             let origin = if changes.fresh.remove(&slot) {
@@ -251,13 +280,15 @@ impl Layout {
             };
             placed.push((self.parents[slot], self.key_at[slot], origin));
         }
+        if at.is_none() {
+            placed.extend(group.take().expect("the group is placed once"));
+        }
         debug_assert!(
             group.is_none(),
             "the row the group goes before is in the window"
         );
         let before = self.parents[start..end].to_vec();
         self.parents[start..end].fill(NULL_ROW_KEY);
-        let leaves = (end - start) / LEAF;
         let total = placed.len();
         let mut ranges = Vec::with_capacity(leaves);
         let mut placed = placed.into_iter();
