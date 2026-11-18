@@ -109,65 +109,49 @@ pub(super) fn java_trim(text: &str) -> &str {
     text.trim_matches(|c: char| c <= ' ')
 }
 
-/// Behavior: java.lang.Character#toUpperCase(char) and #toLowerCase(char) for one UTF-16 unit:
-/// the single-character mapping, or the unit itself where the mapping is not one character.
-fn simple_case(unit: u16, upper: bool) -> u16 {
-    let Some(c) = char::from_u32(u32::from(unit)) else {
-        return unit;
+/// The simple upper case (`upper`) or lower case mapping of a code point, or the code point
+/// itself where it has none.
+///
+/// Behavior: java.lang.Character#toUpperCase(int) and java.lang.Character#toLowerCase(int)
+/// of JDK 21
+fn java_simple_case(code_point: u32, upper: bool) -> u32 {
+    use super::jdk_case::RUNS;
+    let at = RUNS.partition_point(|run| run.0 <= code_point);
+    let Some(&(first, last, to_upper, to_lower, pairs)) = at.checked_sub(1).map(|at| &RUNS[at])
+    else {
+        return code_point;
     };
-    if !upper && c == '\u{130}' {
-        return u16::from(b'i');
+    if code_point > last {
+        return code_point;
     }
-    let mut mapped = [c; 3];
-    let mut count = 0;
-    let mut push = |m: char| {
-        if count < 3 {
-            mapped[count] = m;
-        }
-        count += 1;
-    };
-    if upper {
-        c.to_uppercase().for_each(&mut push);
-    } else {
-        c.to_lowercase().for_each(&mut push);
+    if pairs {
+        let capital = code_point - (code_point - first) % 2;
+        return if upper { capital } else { capital + 1 };
     }
-    match (count, u16::try_from(u32::from(mapped[0]))) {
-        (1, Ok(unit)) => unit,
-        _ => unit,
-    }
+    let delta = if upper { to_upper } else { to_lower };
+    code_point.wrapping_add_signed(delta)
 }
 
-/// Behavior: java.lang.String#equalsIgnoreCase, which compares UTF-16 units: equal, or equal
-/// after `Character.toUpperCase`, or equal after `toLowerCase` of that.
+/// Behavior: java.lang.String#equalsIgnoreCase of JDK 21: strings of as many UTF-16 units,
+/// whose characters in turn are equal, or equal after `Character.toUpperCase`, or after
+/// `toLowerCase` of that. A supplementary character is mapped as a whole (since JDK 16);
+/// no simple mapping crosses between it and the Basic Multilingual Plane, so it never
+/// equals a character there.
 pub(super) fn java_equals_ignore_case(a: &str, b: &str) -> bool {
     if a == b {
         return true;
     }
-    if a.is_ascii() && b.is_ascii() {
-        return a.eq_ignore_ascii_case(b);
+    if a.encode_utf16().count() != b.encode_utf16().count() {
+        return false;
     }
-    // A supplementary character is two units, which have no case of their own. Whether
-    // Java maps such a character as a whole depends on the JDK, so only those without a
-    // case mapping are compared here.
-    let cased = |c: char| !c.to_uppercase().eq([c]) || !c.to_lowercase().eq([c]);
-    if a.chars()
-        .chain(b.chars())
-        .any(|c| u32::from(c) > 0xFFFF && cased(c))
-    {
-        unported!(
-            "java.lang.String#equalsIgnoreCase",
-            "strings with supplementary characters that have a case mapping"
-        );
-    }
-    let unit_equal = |x: u16, y: u16| {
+    a.chars().zip(b.chars()).all(|(x, y)| {
+        let (x, y) = (u32::from(x), u32::from(y));
         if x == y {
             return true;
         }
-        let (x, y) = (simple_case(x, true), simple_case(y, true));
-        x == y || simple_case(x, false) == simple_case(y, false)
-    };
-    let (a, b): (Vec<u16>, Vec<u16>) = (a.encode_utf16().collect(), b.encode_utf16().collect());
-    a.len() == b.len() && a.iter().zip(&b).all(|(&x, &y)| unit_equal(x, y))
+        let (x, y) = (java_simple_case(x, true), java_simple_case(y, true));
+        x == y || java_simple_case(x, false) == java_simple_case(y, false)
+    })
 }
 
 /// Behavior: java.lang.Long#parseLong(String), and with a narrower range
@@ -178,16 +162,15 @@ pub(super) fn parse_java_integer(text: &str, min: i64, max: i64) -> Result<i64, 
     if digits.is_empty() {
         return Err(bad());
     }
-    if let Some(c) = digits.chars().find(|c| !c.is_ascii() && c.is_numeric()) {
-        unported!("java.lang.Character#digit", "the non-ASCII digit {c:?}");
-    }
-    if !digits.bytes().all(|b| b.is_ascii_digit()) {
-        return Err(bad());
-    }
+    let digits: Vec<u8> = digits
+        .chars()
+        .map(decimal_digit)
+        .collect::<Option<_>>()
+        .ok_or_else(bad)?;
     let negative = text.starts_with('-');
     let mut value: i128 = 0;
-    for b in digits.bytes() {
-        value = value * 10 + i128::from(b - b'0');
+    for digit in digits {
+        value = value * 10 + i128::from(digit);
         if value > i128::from(u64::MAX) {
             return Err(bad());
         }
@@ -199,28 +182,40 @@ pub(super) fn parse_java_integer(text: &str, min: i64, max: i64) -> Result<i64, 
     Ok(value as i64)
 }
 
-/// Checks `text` against the grammar of `java.lang.Double#valueOf(String)` and returns the
-/// part Rust's float parser reads to the same value, or `Ok(None)` for `NaN`.
+/// What `java.lang.Double#valueOf(String)` reads in a text.
+enum JavaFloat {
+    NaN,
+    /// Decimal text that Rust's float parsers read to the value Java reads.
+    Decimal(String),
+    /// The value of a hexadecimal text, already rounded to the type.
+    Exact(f64),
+}
+
+/// Checks `text` against the grammar of `java.lang.Double#valueOf(String)`; a hexadecimal
+/// number is rounded to `precision` significant bits, with the smallest normal exponent
+/// `min_exponent` (53 and -1022 for a `double`, 24 and -126 for a `float`).
 ///
-/// Behavior: jdk.internal.math.FloatingDecimal#readJavaFormatString
-fn java_float_text(text: &str) -> Result<Option<String>, String> {
-    let bad = || format!("For input string: \"{text}\"");
+/// Behavior: jdk.internal.math.FloatingDecimal#readJavaFormatString, which reports the text
+/// trimmed of the characters up to a space
+fn java_float_text(text: &str, precision: u32, min_exponent: i64) -> Result<JavaFloat, String> {
     let trimmed = java_trim(text);
+    let bad = || format!("For input string: \"{trimmed}\"");
+    if trimmed.is_empty() {
+        return Err("empty String".to_string());
+    }
     let (sign, body) = match trimmed.strip_prefix(['+', '-']) {
         Some(body) => (&trimmed[..1], body),
         None => ("", trimmed),
     };
     if body == "NaN" {
-        return Ok(None);
+        return Ok(JavaFloat::NaN);
     }
     if body == "Infinity" {
-        return Ok(Some(format!("{sign}inf")));
+        return Ok(JavaFloat::Decimal(format!("{sign}inf")));
     }
-    if body.starts_with("0x") || body.starts_with("0X") {
-        unported!(
-            "jdk.internal.math.FloatingDecimal#parseHexString",
-            "the hexadecimal floating point literal {text}"
-        );
+    if let Some(hex) = body.strip_prefix("0x").or_else(|| body.strip_prefix("0X")) {
+        let value = java_hex_float(hex, precision, min_exponent).ok_or_else(bad)?;
+        return Ok(JavaFloat::Exact(if sign == "-" { -value } else { value }));
     }
     let bytes = body.as_bytes();
     let digits = |from: usize| {
@@ -257,26 +252,109 @@ fn java_float_text(text: &str) -> Result<Option<String>, String> {
     if at != bytes.len() {
         return Err(bad());
     }
-    Ok(Some(format!("{sign}{number}")))
+    Ok(JavaFloat::Decimal(format!("{sign}{number}")))
+}
+
+/// The magnitude of a hexadecimal floating point number, the text after its `0x`, rounded to
+/// the nearest number of `precision` significant bits, ties to even, where numbers below
+/// `2^min_exponent` keep fewer bits; `None` if the text is not one.
+///
+/// Behavior: jdk.internal.math.FloatingDecimal#parseHexString: ASCII hexadecimal digits
+/// with at most one point and at least one digit, `p` or `P`, a signed decimal exponent of
+/// two, and one of the suffixes `f`, `F`, `d` and `D` at most. An exponent that is no `int`
+/// gives an infinity or a zero.
+fn java_hex_float(text: &str, precision: u32, min_exponent: i64) -> Option<f64> {
+    let marker = text.find(['p', 'P'])?;
+    let (mantissa, exponent) = (&text[..marker], &text[marker + 1..]);
+    let exponent = exponent
+        .strip_suffix(['f', 'F', 'd', 'D'])
+        .unwrap_or(exponent);
+    let (whole, fraction) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+    let unsigned = exponent.strip_prefix(['+', '-']).unwrap_or(exponent);
+    let hex = |part: &str| part.bytes().all(|b| b.is_ascii_hexdigit());
+    if !hex(whole)
+        || !hex(fraction)
+        || whole.len() + fraction.len() == 0
+        || unsigned.is_empty()
+        || !unsigned.bytes().all(|b| b.is_ascii_digit())
+    {
+        return None;
+    }
+    let negative_exponent = exponent.starts_with('-');
+    let digits = format!("{whole}{fraction}");
+    let digits = digits.trim_start_matches('0');
+    if digits.is_empty() {
+        return Some(0.0);
+    }
+    let Ok(written) = unsigned.parse::<i32>() else {
+        return Some(if negative_exponent {
+            0.0
+        } else {
+            f64::INFINITY
+        });
+    };
+    let written = i64::from(written) * if negative_exponent { -1 } else { 1 };
+    // The leading thirty digits, more bits than either type keeps, and whether a digit
+    // after them is not zero: the value is a little more than significand * 2^scale then.
+    let leading = &digits[..digits.len().min(30)];
+    let significand = u128::from_str_radix(leading, 16).ok()?;
+    let sticky = digits[leading.len()..].bytes().any(|b| b != b'0');
+    let scale = written - 4 * fraction.len() as i64 + 4 * (digits.len() - leading.len()) as i64;
+    let bits = i64::from(128 - significand.leading_zeros());
+    let precision = i64::from(precision);
+    // The weight of the last bit kept, and how many bits of the significand are below it.
+    let unit = (scale + bits - precision).max(min_exponent - precision + 1);
+    let dropped = unit - scale;
+    if dropped <= 0 {
+        return Some(times_power_of_two(significand as f64, scale));
+    }
+    if dropped > bits {
+        // below half of the unit
+        return Some(0.0);
+    }
+    let mantissa = significand.checked_shr(dropped as u32).unwrap_or(0);
+    let rest = if dropped >= 128 {
+        significand
+    } else {
+        significand & ((1 << dropped) - 1)
+    };
+    let half = 1u128 << (dropped - 1);
+    let up = rest > half || (rest == half && (sticky || mantissa & 1 == 1));
+    Some(times_power_of_two((mantissa + u128::from(up)) as f64, unit))
+}
+
+/// `value * 2^exponent`: exact where the result is a double, for a whole `value` that a
+/// double holds exactly.
+fn times_power_of_two(mut value: f64, exponent: i64) -> f64 {
+    let mut exponent = exponent.clamp(-4000, 4000);
+    while exponent != 0 && value != 0.0 && value.is_finite() {
+        let step = exponent.clamp(-1000, 1000);
+        value *= 2f64.powi(step as i32);
+        exponent -= step;
+    }
+    value
 }
 
 /// Behavior: java.lang.Double#parseDouble
 pub(super) fn parse_java_double(text: &str) -> Result<f64, String> {
-    match java_float_text(text)? {
-        None => Ok(f64::NAN),
-        Some(number) => number
+    match java_float_text(text, 53, -1022)? {
+        JavaFloat::NaN => Ok(f64::NAN),
+        JavaFloat::Exact(value) => Ok(value),
+        JavaFloat::Decimal(number) => number
             .parse()
-            .map_err(|_| format!("For input string: \"{text}\"")),
+            .map_err(|_| format!("For input string: \"{}\"", java_trim(text))),
     }
 }
 
 /// Behavior: java.lang.Float#parseFloat
 pub(super) fn parse_java_float(text: &str) -> Result<f32, String> {
-    match java_float_text(text)? {
-        None => Ok(f32::NAN),
-        Some(number) => number
+    match java_float_text(text, 24, -126)? {
+        JavaFloat::NaN => Ok(f32::NAN),
+        // exact: the value has a float's bits, or is infinite
+        JavaFloat::Exact(value) => Ok(value as f32),
+        JavaFloat::Decimal(number) => number
             .parse()
-            .map_err(|_| format!("For input string: \"{text}\"")),
+            .map_err(|_| format!("For input string: \"{}\"", java_trim(text))),
     }
 }
 
@@ -690,16 +768,28 @@ pub(super) fn convert_value(
 // java.math.BigInteger and java.math.BigDecimal
 // ---------------------------------------------------------------------------------------
 
-/// The decimal digit `c` stands for. A non-ASCII digit, which Java reads by
-/// `Character#digit`, is not ported.
+/// The first code point of each run of ten decimal digits, zero to nine, that JDK 21 reads
+/// in a `char`: those of the Unicode 15.0 category `Nd` in the Basic Multilingual Plane.
+/// A digit outside it is two `char`s, neither of which is a digit. Listed from
+/// `Character.digit((char) c, 10)` of every `c`.
+const DIGIT_ZEROS: [u32; 37] = [
+    0x0030, 0x0660, 0x06F0, 0x07C0, 0x0966, 0x09E6, 0x0A66, 0x0AE6, 0x0B66, 0x0BE6, 0x0C66, 0x0CE6,
+    0x0D66, 0x0DE6, 0x0E50, 0x0ED0, 0x0F20, 0x1040, 0x1090, 0x17E0, 0x1810, 0x1946, 0x19D0, 0x1A80,
+    0x1A90, 0x1B50, 0x1BB0, 0x1C40, 0x1C50, 0xA620, 0xA8D0, 0xA900, 0xA9D0, 0xA9F0, 0xAA50, 0xABF0,
+    0xFF10,
+];
+
+/// The decimal digit `c` stands for.
+///
+/// Behavior: java.lang.Character#digit(char, int) in radix 10, which `Long#parseLong`,
+/// `Integer#parseInt`, `BigInteger(String)` and `BigDecimal(String)` read digits with
 fn decimal_digit(c: char) -> Option<u8> {
-    if c.is_ascii_digit() {
-        return Some(c as u8 - b'0');
-    }
-    if !c.is_ascii() && c.is_numeric() {
-        unported!("java.lang.Character#digit", "the non-ASCII digit {c:?}");
-    }
-    None
+    let c = u32::from(c);
+    let at = DIGIT_ZEROS
+        .partition_point(|zero| *zero <= c)
+        .checked_sub(1)?;
+    let value = c - DIGIT_ZEROS[at];
+    (value < 10).then_some(value as u8)
 }
 
 /// The two's complement bytes, most significant first and as few as hold the sign, of the
@@ -986,6 +1076,25 @@ mod tests {
         }
     }
 
+    /// What `X in ...` on a `BigDecimal` column and `Y in ...` on a `BigInteger` column kept
+    /// on Deephaven 42.9 (cells 150, 1.5, 12 and 12, -5).
+    #[test]
+    fn big_numbers_read_every_decimal_digit_java_reads() {
+        use oxhaven_column::java_values::big_integer_cell;
+        let decimal = |unscaled: i128, scale: i32| Ok((scale, big_integer_cell(unscaled)));
+        assert_eq!(parse_big_decimal("\u{661}\u{665}\u{660}"), decimal(150, 0));
+        assert_eq!(parse_big_decimal("\u{661}.\u{665}"), decimal(15, 1));
+        assert_eq!(parse_big_decimal("\u{661}.\u{665}e\u{661}"), decimal(15, 0));
+        assert_eq!(parse_big_decimal("\u{661}\u{662}"), decimal(12, 0));
+        assert_eq!(
+            parse_big_integer("\u{661}\u{662}"),
+            Ok(big_integer_cell(12))
+        );
+        assert_eq!(parse_big_integer("-\u{665}"), Ok(big_integer_cell(-5)));
+        assert!(parse_big_integer("\u{1d7cf}").is_err());
+        assert!(parse_big_decimal("\u{b2}").is_err());
+    }
+
     #[test]
     fn big_numbers_compare_by_value() {
         use std::cmp::Ordering;
@@ -1060,6 +1169,97 @@ mod tests {
             assert!(parse_java_double(bad).is_err(), "{bad}");
         }
         assert_eq!(parse_java_float("0.1f"), Ok(0.1f32));
+    }
+
+    /// `java_hex.txt` holds, for each text, what JDK 21's `Double.parseDouble` and
+    /// `Float.parseFloat` return (the bits) or the message they throw.
+    #[test]
+    fn hexadecimal_floats_follow_the_jdk() {
+        let mut lines = 0;
+        for line in include_str!("java_hex.txt").lines() {
+            let fields: Vec<&str> = line.split('\t').collect();
+            let [text, double, float] = fields[..] else {
+                panic!("{line:?}");
+            };
+            let expect = |field: &str| match field.strip_prefix("ERR:") {
+                Some(message) => Err(message.to_string()),
+                None => Ok(u64::from_str_radix(field, 16).unwrap()),
+            };
+            assert_eq!(
+                parse_java_double(text).map(f64::to_bits),
+                expect(double),
+                "{text:?}"
+            );
+            assert_eq!(
+                parse_java_float(text).map(|v| u64::from(v.to_bits())),
+                expect(float),
+                "{text:?}"
+            );
+            lines += 1;
+        }
+        assert!(lines > 250);
+        assert_eq!(parse_java_double(" "), Err("empty String".to_string()));
+    }
+
+    /// `java_case.txt` lists, for every code point that JDK 21's `Character.toUpperCase(int)`
+    /// or `Character.toLowerCase(int)` maps to another, the code point and both mappings.
+    #[test]
+    fn simple_case_mappings_are_those_of_jdk_21() {
+        let mut listed = std::collections::HashSet::new();
+        for line in include_str!("java_case.txt").lines() {
+            let [cp, upper, lower] = <[u32; 3]>::try_from(
+                line.split(' ')
+                    .map(|x| u32::from_str_radix(x, 16).unwrap())
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap();
+            assert_eq!(java_simple_case(cp, true), upper, "{line}");
+            assert_eq!(java_simple_case(cp, false), lower, "{line}");
+            listed.insert(cp);
+        }
+        assert_eq!(listed.len(), 2879);
+        for cp in (0..=0x10FFFF).filter(|cp| !listed.contains(cp)) {
+            assert_eq!(java_simple_case(cp, true), cp, "{cp:x}");
+            assert_eq!(java_simple_case(cp, false), cp, "{cp:x}");
+        }
+    }
+
+    /// What JDK 21's `String#equalsIgnoreCase` answered for each pair.
+    #[test]
+    fn equals_ignore_case_follows_jdk_21() {
+        for (a, b, equal) in [
+            ("\u{10400}", "\u{10428}", true),
+            ("\u{10400}a", "\u{10428}A", true),
+            ("\u{104B0}", "\u{104D8}", true),
+            ("\u{1E900}", "\u{1E922}", true),
+            ("\u{10D50}", "\u{10D70}", false),
+            ("\u{19B}", "\u{A7DC}", false),
+            ("\u{1C89}", "\u{1C8A}", false),
+            ("\u{1F80}", "\u{1F88}", true),
+            ("\u{130}", "i", true),
+            ("\u{130}", "I", true),
+            ("stra\u{DF}e", "STRASSE", false),
+            ("\u{10400}", "ab", false),
+            ("\u{17F}", "S", true),
+            ("\u{1C5}", "\u{1C6}", true),
+            ("\u{1C4}", "\u{1C5}", true),
+            ("\u{3C2}", "\u{3A3}", true),
+            ("\u{1E9E}", "\u{DF}", true),
+            ("\u{2126}", "\u{3C9}", true),
+            ("\u{212A}", "k", true),
+            ("\u{16E40}", "\u{16E60}", true),
+            ("\u{10C80}", "\u{10CC0}", true),
+            ("\u{118A0}", "\u{118C0}", true),
+            ("\u{10570}", "\u{10597}", true),
+            ("\u{B5}", "\u{39C}", true),
+            ("\u{FF}", "\u{178}", true),
+            ("\u{1D400}", "\u{1D41A}", false),
+            ("\u{10401}\u{10402}", "\u{10429}\u{1042A}", true),
+            ("x\u{10400}y", "X\u{10428}Y", true),
+            ("\u{10400}", "\u{10401}", false),
+        ] {
+            assert_eq!(java_equals_ignore_case(a, b), equal, "{a:?} {b:?}");
+        }
     }
 
     #[test]
