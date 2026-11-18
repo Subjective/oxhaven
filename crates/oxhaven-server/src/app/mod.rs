@@ -45,6 +45,7 @@ pub use fields::{Application, ApplicationError, Applications, FieldUpdates};
 pub use grpc::ApplicationGrpc;
 pub use resolver::{application_field_ticket, ApplicationTicketResolver, APPLICATION_TICKET_ROUTE};
 pub use scope::{
-    item_function, item_function_parts, scope_ticket, FormulaValue, Scope, ScopeHolder,
-    ScopeTicketResolver, ScopedCompiler, SCOPE_DESCRIPTOR_ROUTE, SCOPE_TICKET_ROUTE,
+    array_function, array_function_variable, item_function, item_function_parts, scope_ticket,
+    FormulaValue, Scope, ScopeHolder, ScopeTicketResolver, ScopedCompiler, SCOPE_DESCRIPTOR_ROUTE,
+    SCOPE_TICKET_ROUTE,
 };

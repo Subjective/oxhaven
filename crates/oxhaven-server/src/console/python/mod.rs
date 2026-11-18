@@ -47,6 +47,8 @@ mod hierarchical;
 mod input;
 pub mod interrupt;
 #[cfg(test)]
+mod jpy_array_tests;
+#[cfg(test)]
 mod jpy_tests;
 mod kafka;
 mod listener;
@@ -626,6 +628,9 @@ fn formula_value(value: &Bound<'_, PyAny>) -> FormulaValue {
     if let Some(instant) = java_instant(value) {
         return instant;
     }
+    if let Some(class) = java_array_class(value) {
+        return FormulaValue::Array(class);
+    }
     // Behavior: `PythonScopeJpyImpl#convert`, which makes a `PyListWrapper` of what
     // `PyObject#isList` is true for and a `PyDictWrapper` of what `#isDict` is
     if value.is_instance_of::<PyList>() {
@@ -639,6 +644,21 @@ fn formula_value(value: &Bound<'_, PyAny>) -> FormulaValue {
         Ok(name) => format!("a Python {name}"),
         Err(_) => "a Python object".to_string(),
     })
+}
+
+/// The name of the class of a Java array of the module `jpy` (`python/jpy.py`), as a
+/// column type is named (`long[]`); `None` for any other value.
+fn java_array_class(value: &Bound<'_, PyAny>) -> Option<String> {
+    let py = value.py();
+    let array = py.import("jpy").ok()?.getattr("_JavaArray").ok()?;
+    if !value.is_instance(&array).ok()? {
+        return None;
+    }
+    let jvm_name = value.get_type().getattr("jclassname").ok()?;
+    py.import("deephaven.dtypes")
+        .and_then(|dtypes| dtypes.call_method1("_canonical_name", (jvm_name,)))
+        .and_then(|name| name.extract())
+        .ok()
 }
 
 /// The value of a variable that holds the package's `java.time.Instant`

@@ -70,6 +70,15 @@ pub enum FormulaValue {
     /// which give a `org.jpy.PyObject`, and the casts of one in
     /// `QueryLanguageParser#visit(CastExpr)`
     Items(String),
+    /// A Java array, as the module `jpy` of the console makes one (`jpy.array`,
+    /// `deephaven.dtypes.array`), by the name of its class (`long[]`). A [`ScopedCompiler`]
+    /// that reads items compiles it as a call without arguments of the function
+    /// [`array_function`] names, which gives each row the array the variable holds when the
+    /// formula is compiled; another one refuses it as for [`FormulaValue::Other`].
+    ///
+    /// Behavior: `QueryLanguageParser`, for a variable whose value is a Java array: an
+    /// expression of the array's class
+    Array(String),
     /// A value of a kind formulas cannot hold here, with words for it, such as
     /// `a Python tuple`.
     Other(String),
@@ -87,6 +96,17 @@ const ITEM_CASTS: [(ColumnType, &str); 4] = [
 /// cast named `cast` in Java gives. No formula can call a function of such a name.
 pub fn item_function(cast: &str, variable: &str) -> String {
     format!("({cast}) {variable}[]")
+}
+
+/// The name of the function that gives the array the variable `variable` holds. No
+/// formula can call a function of such a name.
+pub fn array_function(variable: &str) -> String {
+    format!("(array) {variable}")
+}
+
+/// The variable of a name [`array_function`] made.
+pub fn array_function_variable(function: &str) -> Option<&str> {
+    function.strip_prefix("(array) ")
 }
 
 /// The cast and the variable of a name [`item_function`] made.
@@ -451,8 +471,9 @@ impl ScopedCompiler {
         }
     }
 
-    /// The compiler, reading the items of a [`FormulaValue::Items`]: `inner` has the
-    /// functions [`item_function`] names.
+    /// The compiler, reading the items of a [`FormulaValue::Items`] and the arrays of a
+    /// [`FormulaValue::Array`]: `inner` has the functions [`item_function`] and
+    /// [`array_function`] name.
     pub fn reading_items(mut self) -> Self {
         self.items = true;
         self
@@ -519,6 +540,7 @@ impl FormulaValue {
             | FormulaValue::String(_)
             | FormulaValue::Instant(_)
             | FormulaValue::Items(_)
+            | FormulaValue::Array(_)
             | FormulaValue::Other(_) => None,
         }
     }
@@ -535,6 +557,7 @@ impl FormulaValue {
             FormulaValue::String(_) => "java.lang.String",
             FormulaValue::Instant(_) => "java.time.Instant",
             FormulaValue::Items(what) | FormulaValue::Other(what) => what,
+            FormulaValue::Array(class) => class,
         }
     }
 
@@ -551,6 +574,7 @@ impl FormulaValue {
             FormulaValue::Boolean(_)
             | FormulaValue::String(_)
             | FormulaValue::Items(_)
+            | FormulaValue::Array(_)
             | FormulaValue::Other(_) => false,
         }
     }
@@ -615,6 +639,15 @@ impl Substitution<'_> {
             FormulaValue::Double(value) => Expr::Literal(Literal::Double(*value)),
             FormulaValue::String(value) => Expr::Literal(Literal::String(value.clone())),
             FormulaValue::Instant(nanos) => Expr::Literal(Literal::Instant(*nanos)),
+            FormulaValue::Array(_) if self.items => Expr::Call {
+                function: array_function(name),
+                arguments: Vec::new(),
+            },
+            FormulaValue::Array(class) => {
+                return Err(unsupported(format!(
+                    "query scope variable {name}, which holds a Java {class}"
+                )))
+            }
             FormulaValue::Items(what) | FormulaValue::Other(what) => {
                 return Err(unsupported(format!(
                     "query scope variable {name}, which holds {what}"
@@ -771,6 +804,7 @@ impl Substitution<'_> {
                         FormulaValue::String(_)
                             | FormulaValue::Instant(_)
                             | FormulaValue::Items(_)
+                            | FormulaValue::Array(_)
                             | FormulaValue::Other(_)
                     ) {
                         return Err(unsupported(format!(
