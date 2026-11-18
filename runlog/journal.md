@@ -1463,3 +1463,7 @@ Seven green checks on head 1cfd9c77 in the run the label started; that run is th
 ## 2026-11-18 15:57 UTC: task 12.3 reported, pull request 180
 
 The soak test is a Python driver beside the benchmark. Its first 45-minute run failed the memory invariant: a sort by a rising column over a table that also loses rows grew its key space by one key per appended row (12 bytes a row, about 1 GB a day at 1,000 rows a second). Fixed in the same branch with a unit test; the run after the fix is flat (-9.0 MB/h against +54.3 before). Open, not investigated: processor time per round rose 7 to 8% over 30 minutes (limit 20%), and memory takes 9 to 13 minutes to level. Follow-ups worth a small task each: a server call reporting live exports and sessions, and a two-hour run. Protected paths untouched; the oracle-replay job gains about two minutes and nightly a job of about an hour.
+
+## 2026-11-18 16:10 UTC: pull request 180 merged; the approved gap-closing list is done
+
+Seven green checks on head 91d81c99; oracle-replay took 11 min 11 s with the short soak step and a cold build. Main is at fa0fd060. Everything Josh approved on 2026-11-18 05:39 UTC is merged: pull requests 168 to 180. What remains needs his answers (owner questions 7.1 to 7.21, the calendar card) or his go-ahead for larger pieces (big-number arithmetic, vectors of vectors, a backtracking regex dependency, performance).
