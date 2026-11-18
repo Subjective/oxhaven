@@ -1325,3 +1325,7 @@ Owner questions 10 and 11 of 10.8 go to review-items-2.md as 7.6 and 7.7.
 ## 2026-11-18 01:53 UTC: task 9.11 started
 
 The machine is quiet (no other agent builds), so the benchmark rerun that removes the two-processor caveat runs now. No other builder is started until it has measured.
+
+## 2026-11-18 02:01 UTC: pull requests 163 and 164 merged
+
+Seven green checks each (164 on the run after the label). Main is at ca839513. The refusal passes 10.1 to 10.8 are done for every operator family; what remains refused is listed in the task files and waits mostly on owner answers (review-items-2.md 7.1 to 7.8).
