@@ -176,7 +176,7 @@ pub(super) fn incomparable(column_type: &ColumnType) -> Option<String> {
         vector if groupable_vector(vector) => return None,
         // A `BigDecimal` orders by `compareTo` (`3` and `3.000` tie) but Java removes
         // duplicate right stamps by `equals`, so which of tied right stamps of two scales
-        // a left row matches follows the binary search (owner item 7.17). Vectors of
+        // a left row matches follows the binary search (owner item 7.18). Vectors of
         // `float` or `double` likewise (7.6); arrays, tables and objects are compared by
         // identity or fail (2.2, 2.3).
         other => unported!(

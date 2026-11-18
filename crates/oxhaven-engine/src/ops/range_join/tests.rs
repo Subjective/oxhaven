@@ -1109,7 +1109,7 @@ fn range_columns_of_other_comparable_classes_are_compared_by_compare_to() {
 }
 
 /// Seen on Deephaven 42.9: right values `1 3.0 3 5` and the bounds `3 <= D <= 9` give the
-/// rows of `3` and `5` but not of `3.0` (owner item 7.17).
+/// rows of `3` and `5` but not of `3.0` (owner item 7.18).
 #[test]
 #[should_panic(
     expected = "unported: io.deephaven.engine.table.impl.rangejoin.RangeSearchKernelObject#eq"

@@ -132,7 +132,7 @@ pub(super) fn match_columns(
         }
         // Java orders `BigDecimal` range values by `compareTo` but takes a left bound for
         // equal to a right value by `equals`: seen, right values `1 3.0 3 5` and the
-        // bounds `3 <= D <= 9` match `3 5` and not `3.0` (owner item 7.17).
+        // bounds `3 <= D <= 9` match `3 5` and not `3.0` (owner item 7.18).
         ColumnType::BigDecimal => unported!(
             "io.deephaven.engine.table.impl.rangejoin.RangeSearchKernelObject#eq",
             "a range join on BigDecimal values, which Java compares by compareTo and equals"

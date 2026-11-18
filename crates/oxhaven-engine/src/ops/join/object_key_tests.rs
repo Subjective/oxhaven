@@ -398,7 +398,7 @@ fn vector_stamps_order_element_by_element() {
 
 /// Seen on Deephaven 42.9: right stamps `3.0 3 3.000 3.00 3 3.0 3.000` and left stamps
 /// `3`, `3.00`, `3.0000` give `raj` the rows 1, 0, 0: which of tied stamps of two scales
-/// a left row matches follows Java's binary search (owner item 7.17).
+/// a left row matches follows Java's binary search (owner item 7.18).
 #[test]
 #[should_panic(expected = "unported: io.deephaven.engine.table.impl.AsOfJoinHelper#asOfJoin")]
 fn big_decimal_stamps_are_unported() {
