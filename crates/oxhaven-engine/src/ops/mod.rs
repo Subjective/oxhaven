@@ -2,6 +2,7 @@
 
 pub mod agg;
 pub mod asof;
+pub mod columns_to_rows;
 #[cfg(test)]
 mod copied_tests;
 pub mod crossjoin;
