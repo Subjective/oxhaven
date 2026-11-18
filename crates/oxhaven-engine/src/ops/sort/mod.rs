@@ -23,6 +23,7 @@ pub(crate) mod testing;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use keys::big_number_key;
 pub(crate) use sorted::{check_sort_columns, sorted_rows};
 
 use crate::ops::merge::{pivoted, positional};

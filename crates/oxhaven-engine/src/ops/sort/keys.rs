@@ -720,7 +720,7 @@ fn encoded_type(name: &str, column_type: &ColumnType) -> Result<DataType, SortEr
 /// larger magnitude comes first.
 ///
 /// Behavior: `java.math.BigDecimal#compareTo`, `java.math.BigInteger#compareTo`
-fn big_number_key(scale: i32, unscaled: &[u8]) -> Vec<u8> {
+pub(crate) fn big_number_key(scale: i32, unscaled: &[u8]) -> Vec<u8> {
     let text = java_values::big_integer_text(unscaled);
     let (negative, digits) = match text.strip_prefix('-') {
         Some(digits) => (true, digits),

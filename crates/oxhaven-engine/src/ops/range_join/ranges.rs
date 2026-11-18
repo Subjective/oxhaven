@@ -4,6 +4,7 @@ use super::search::{bucket_ranges, RangeValue, Runs, Utf16};
 use super::{RangeJoinError, RangeJoinMatch};
 use crate::ops::join::keys::{Key, KeyColumns};
 use crate::ops::join::JoinMatch;
+use crate::ops::key_table::is_ported_key;
 use arrow::array::{
     Array, ArrayRef, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array,
     Int8Array, StringArray, TimestampNanosecondArray, UInt16Array,
@@ -73,6 +74,18 @@ pub(super) fn match_columns(
     }
     if !issues.is_empty() {
         return Err(RangeJoinError::InvalidExactMatches(issues));
+    }
+    if let Some(&l) = left_exact
+        .iter()
+        .find(|&&l| !is_ported_key(&left_columns[l].column_type))
+    {
+        unported!(
+            "io.deephaven.engine.table.impl.by.typed.TypedHasherFactory#make",
+            "an exact match column of type {:?}: Java keys vectors of float or double by \
+             the class of the vector objects (-0.0 and 0.0), and arrays and vectors of \
+             arrays by the identity of the arrays",
+            left_columns[l].column_type
+        );
     }
 
     let start = left_column(range.left_start());

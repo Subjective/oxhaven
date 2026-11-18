@@ -21,6 +21,7 @@ use super::{select_distinct, DistinctError};
 use crate::ops::filter::{filtered_update, shift_failure, where_attributes};
 use crate::ops::join::keys::{Cell, Key, KeyColumns};
 use crate::ops::join::JoinMatch;
+use crate::ops::key_table::{is_ported_key, same_object_vector_class};
 use crate::table::{QueryTable, TableSpec};
 use crate::update::modified_pre_shift;
 use oxhaven_contracts::rowset::RowSet;
@@ -96,7 +97,7 @@ fn failure(message: impl Into<String>) -> TableFailure {
 }
 
 /// The primitive type a key column is compared as.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 enum KeyClass {
     Byte,
     Char,
@@ -120,6 +121,9 @@ enum KeyClass {
     ZoneId,
     ZonedDateTime,
     Period,
+    /// A `BigDecimal`, a `BigInteger` or a vector, compared by `equals`: a `BigDecimal` by
+    /// value and scale, a vector by its elements. The column type is the class.
+    Object(ColumnType),
 }
 
 /// Behavior: io.deephaven.engine.table.impl.sources.ReinterpretUtils#maybeConvertToPrimitive,
@@ -146,8 +150,11 @@ fn key_class(column_type: &ColumnType) -> KeyClass {
         ColumnType::ZoneId => KeyClass::ZoneId,
         ColumnType::ZonedDateTime => KeyClass::ZonedDateTime,
         ColumnType::Period => KeyClass::Period,
-        // `BigDecimal#equals` tells `1.0` from `1.00`; a vector is equal by its elements,
-        // an array only to itself
+        // seen on Deephaven 42.9: `BigDecimal#equals` tells `3` from `3.000`, a vector is
+        // equal by its elements, a null vector to a null one, an empty one to an empty one
+        ColumnType::BigDecimal | ColumnType::BigInteger => KeyClass::Object(column_type.clone()),
+        vector if is_ported_key(vector) => KeyClass::Object(vector.clone()),
+        // a vector of float or double (owner item 7.6) or of arrays, an array (7.7)
         other => unported!(
             "io.deephaven.engine.table.impl.select.DynamicWhereFilter#beginOperation",
             "a key column of type {other:?}"
@@ -455,6 +462,15 @@ pub(super) fn dynamic_where(
     for (pair, (&left_index, &set_index)) in on.iter().zip(left_keys.iter().zip(&set_keys)) {
         let left_type = &left.definition().columns()[left_index].column_type;
         let right_type = &set.definition().columns()[set_index].column_type;
+        if left_type != right_type && same_object_vector_class(left_type, right_type) {
+            unported!(
+                "io.deephaven.engine.table.impl.select.DynamicWhereFilter#beginOperation",
+                "key columns {} and {} of the vector types {left_type:?} and {right_type:?}: \
+                 Java takes the pair (one class, ObjectVector)",
+                pair.left,
+                pair.right
+            );
+        }
         if key_class(left_type) != key_class(right_type) {
             return Err(WhereInError::MismatchedTypes {
                 left: pair.left.clone(),
