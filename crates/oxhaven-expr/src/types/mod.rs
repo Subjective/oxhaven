@@ -125,6 +125,20 @@ pub(crate) enum CompareDomain {
     /// `==` or `!=` of two values of one class held as an Arrow struct (`Period`,
     /// `ZonedDateTime`), equal when every field is.
     Fields,
+    /// A `BigDecimal` or `BigInteger` with a number, a `char` or another big number:
+    /// compared by value, with null below every value and NaN equal to nothing.
+    Big { left: BigOperand, right: BigOperand },
+}
+
+/// What one side of a [`CompareDomain::Big`] comparison holds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum BigOperand {
+    /// A column of `BigDecimal` cells.
+    Decimal,
+    /// A column of `BigInteger` cells.
+    Integer,
+    /// A primitive number or `char`.
+    Primitive,
 }
 
 /// The type an arithmetic operator computes in and returns.
@@ -973,6 +987,12 @@ impl Checker<'_> {
             }
         }
 
+        if let Family::Compare(compare) = family {
+            if let Some(result) = self.big_comparison(op, compare, left, right)? {
+                return Ok(result);
+            }
+        }
+
         let null_left = is_null_literal(left);
         let null_right = is_null_literal(right);
         if null_left || null_right {
@@ -1037,6 +1057,97 @@ impl Checker<'_> {
             Family::Compare(compare) => comparison(compare, left, right),
             Family::Logical(_) => unreachable!("handled above"),
         }
+    }
+
+    /// Which big number `expr` is, if it names a `BigDecimal` or `BigInteger` column.
+    fn big_column(&self, expr: &Expr) -> Option<BigOperand> {
+        let Expr::Column(name) = expr else {
+            return None;
+        };
+        let index = self.definition.index_of(name)?;
+        match self.definition.columns()[index].column_type {
+            ColumnType::BigDecimal => Some(BigOperand::Decimal),
+            ColumnType::BigInteger => Some(BigOperand::Integer),
+            _ => None,
+        }
+    }
+
+    /// A comparison with a `BigDecimal` or `BigInteger` column on at least one side, or
+    /// `None` when neither side is one or the other side is the `null` literal of `==` or
+    /// `!=`, which is `isNull`.
+    ///
+    /// Beside a number, a `char` or another big number, the comparison is by value
+    /// ([`CompareDomain::Big`]). Beside a `String` or a `Boolean` it is `eq(Object,
+    /// Object)`, true only for two nulls, or `compareTo(Comparable, Comparable)`, which
+    /// fails where two values that are not null meet. An ordering against `null` finds
+    /// two methods, and javac refuses it.
+    ///
+    /// Seen on Java 42.9 (`BD`, `BI` big number columns, `D` double, `F` float, `L` long,
+    /// `C` char): `BD == 0.1` is true for `0.10`, `BD == F` false for `0.1f`'s exact value
+    /// (Java compares the text `0.10000000149011612`), `BD != D` true where `D` is NaN,
+    /// `BI == L` true where both are null, `BD < NULL_INT` false everywhere, `BD == S`
+    /// false everywhere, `BD < S` fails, `BI < null` and `null >= BD` do not compile
+    /// ("reference to less is ambiguous").
+    ///
+    /// Behavior: `QueryLanguageFunctionUtils#eq`, `#less`, `#lessEquals`, `#greater`,
+    /// `#greaterEquals` and `#compareTo` of `BigDecimal` and `BigInteger` with each other
+    /// and with the primitive types, as `QueryLanguageParser#getMethod` resolves them
+    fn big_comparison(
+        &mut self,
+        op: BinaryOp,
+        compare: CompareOp,
+        left: &Expr,
+        right: &Expr,
+    ) -> Result<Option<Typed>, FormulaError> {
+        let (left_big, right_big) = (self.big_column(left), self.big_column(right));
+        if left_big.is_none() && right_big.is_none() {
+            return Ok(None);
+        }
+        if is_null_literal(left) || is_null_literal(right) {
+            if compare.is_equality() {
+                return Ok(None);
+            }
+            return Err(type_error(format!(
+                "reference to {} is ambiguous for a big number and null",
+                symbol(op)
+            )));
+        }
+        let mut side = |expr: &Expr, big: Option<BigOperand>| match big {
+            Some(_) => self
+                .object_column(expr)
+                .ok_or_else(|| unsupported("a big number column")),
+            None => self.check(expr),
+        };
+        let (left, right) = (side(left, left_big)?, side(right, right_big)?);
+        let operand = |side: &Typed, big: Option<BigOperand>| {
+            big.or_else(|| Numeric::of(&side.column_type).map(|_| BigOperand::Primitive))
+        };
+        let domain = match (operand(&left, left_big), operand(&right, right_big)) {
+            (Some(left), Some(right)) => CompareDomain::Big { left, right },
+            _ => {
+                let other = if left_big.is_some() { &right } else { &left };
+                if !matches!(other.column_type, ColumnType::String | ColumnType::Boolean) {
+                    return Err(unsupported(format!(
+                        "comparison of a big number with a value of type {}",
+                        java_name(&other.column_type)
+                    )));
+                }
+                let primitive = [false, false];
+                match compare.is_equality() {
+                    true => CompareDomain::Unrelated { primitive },
+                    false => CompareDomain::UnrelatedOrder { primitive },
+                }
+            }
+        };
+        Ok(Some(typed(
+            ColumnType::Boolean,
+            Node::Compare {
+                op: compare,
+                domain,
+                left: Box::new(left),
+                right: Box::new(right),
+            },
+        )))
     }
 
     /// The duration or period that `expr` is, when it is one.
@@ -1664,6 +1775,11 @@ impl Checker<'_> {
         };
         let operand = if self.untyped_vectors(operand) {
             self.with_size_only(|checker| checker.check(operand))?
+        } else if self.big_column(operand).is_some() {
+            // Seen on Java 42.9: `BI == null` is true where `BI` is null, `BD != null`
+            // where `BD` is not.
+            self.object_column(operand)
+                .ok_or_else(|| unsupported("a big number column"))?
         } else {
             self.check(operand)?
         };

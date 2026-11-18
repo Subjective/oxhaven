@@ -1,6 +1,7 @@
 //! Comparison operators. The handling of null and NaN is written once, in [`decide`]; the
 //! comparison domains differ only in how two present values are ordered.
 
+use super::big::{self, BigValue};
 use super::failure;
 use super::numeric::convert;
 use crate::types::{CompareDomain, CompareOp};
@@ -24,6 +25,11 @@ impl Comparand for &str {}
 impl Comparand for f64 {
     fn is_nan(self) -> bool {
         f64::is_nan(self)
+    }
+}
+impl Comparand for &BigValue {
+    fn is_nan(self) -> bool {
+        matches!(self, BigValue::NaN)
     }
 }
 
@@ -239,6 +245,24 @@ pub(crate) fn compare(
             BooleanArray::from(values)
         }
         CompareDomain::Fields => fields_equal(op, left, right),
+        CompareDomain::Big {
+            left: left_operand,
+            right: right_operand,
+        } => {
+            let left = big::values(left_operand, left)?;
+            let right = big::values(right_operand, right)?;
+            let values = left
+                .iter()
+                .zip(&right)
+                .map(|(a, b)| {
+                    decide(op, a.as_ref(), b.as_ref(), |a, b| match (a, b) {
+                        (BigValue::Number(a), BigValue::Number(b)) => a.compare(b),
+                        _ => unreachable!("decide does not order NaN"),
+                    })
+                })
+                .collect::<Vec<bool>>();
+            BooleanArray::from(values)
+        }
     })
 }
 

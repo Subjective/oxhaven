@@ -209,8 +209,9 @@ fn resolve_condition(
 /// formula compiles; otherwise the original problem is the error.
 ///
 /// The formula of a filter on a `BigInteger` or `BigDecimal` `column`, which Java compiles
-/// (`Y == 1.5`, `Y > 1 - 2`), may read the column in a way the formula compiler does not
-/// have yet: that is refused as not ported, and not as an error.
+/// (`Y == 1.5`, `Y > 1 - 2`, `Y < D`), compares the column by value. A formula that reads
+/// the column in a way the formula compiler does not have yet (arithmetic of a big number,
+/// `Y > X + Y`) is refused as not ported, and not as an error.
 fn or_failover(
     simple: Result<Resolved, String>,
     failover: Option<&String>,
@@ -296,14 +297,19 @@ fn resolve_range(
     // Behavior: RangeFilter#init makes a filter for the primitives, `Instant`, the local
     // dates and times, `ZonedDateTime`, the big numbers, `String` and `Boolean`; any other
     // type, a duration and a day of the week among them, is refused (and the caller falls
-    // back to the filter's formula).
-    let class = match column.column_type {
+    // back to the filter's formula). So is a vector, an array and an `Object` column, whose
+    // only literal is `null` and the `Object` convertor's numbers and strings: seen on
+    // Java 42.9, `V < null` of a vector column fails as a formula ("boolean required",
+    // the formula being `lessArray`), and `O > 2` of an `Object` column fails to compile.
+    let class = match &column.column_type {
         ColumnType::Duration => Some("Duration"),
         ColumnType::DayOfWeek => Some("DayOfWeek"),
         ColumnType::Period => Some("Period"),
         ColumnType::ZoneId => Some("ZoneId"),
         ColumnType::Table(TableClass::QueryTable) => Some("QueryTable"),
         ColumnType::Table(_) => Some("Table"),
+        ColumnType::Object(_) => Some("Object"),
+        other if other.list_element().is_some() => Some("a vector or an array"),
         _ => None,
     };
     if let Some(class) = class {
@@ -831,10 +837,8 @@ fn in_range(cells: &Cells, op: RangeOp, pivot: &Key) -> Result<Vec<bool>, TableF
                 .map(|value| keep(compare_big(value, &pivot)))
                 .collect()
         }
-        Cells::Object(_) => oxhaven_contracts::unported!(
-            "io.deephaven.engine.table.impl.select.RangeFilter#init",
-            "a range filter of a vector or array column"
-        ),
+        // `resolve_range` makes no range filter of these.
+        Cells::Object(_) => return Err(failure("a range filter of a column of objects")),
     })
 }
 
