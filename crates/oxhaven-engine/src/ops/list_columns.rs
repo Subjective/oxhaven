@@ -21,7 +21,7 @@ use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
 use oxhaven_expr::Compiler;
 use oxhaven_testkit::{
-    definition, ints, list_of, strings, test_seeds, ConsistencyChecker, RandomUpdates,
+    definition, ints, list_of, longs, strings, test_seeds, ConsistencyChecker, RandomUpdates,
     ScriptedTable, TableSnapshot,
 };
 use std::sync::Arc;
@@ -192,14 +192,16 @@ fn sort_by_a_list_column_is_not_ported() {
     let _ = sort(&listed(), &[SortColumn::ascending("V")]);
 }
 
+/// Each vector is its own group here: `[1, 2]`, null and `[]`.
 #[test]
-#[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.by.typed.TypedHasherFactory#make: \
-                a group key column of type Vector(Int)"
-)]
-fn aggregation_by_a_list_key_is_not_ported() {
+fn aggregation_by_a_vector_key_groups_by_the_vectors() {
     let sum = Aggregation::columns(AggSpec::Sum, [Pair::of("K")]);
-    let _ = aggregate(&listed(), &[sum], false, &["V"]);
+    let result = aggregate(&listed(), &[sum], false, &["V"]).unwrap();
+    let columns = TableSnapshot::current(&*result).unwrap().columns;
+    let vector = ColumnType::vector(ColumnType::Int);
+    let keys = list_of(&vector, [Some(2), None, Some(0)], ints([1, 2]));
+    assert_eq!(columns[0].to_data(), keys.to_data());
+    assert_eq!(columns[1].to_data(), longs([1, 2, 3]).to_data());
 }
 
 #[test]
@@ -384,21 +386,42 @@ fn panic_of(f: impl FnOnce() + std::panic::UnwindSafe) -> String {
     }
 }
 
-/// The distinct values of a vector column would be a vector of vectors, and an array is
-/// not a `Comparable` in Java, which fails when it first compares two of them.
+/// The distinct values of a vector of doubles are kept by an order that cannot tell
+/// `[-0.0]` from `[0.0]`, and an array is not a `Comparable` in Java, which fails when it
+/// first compares two of them.
 #[test]
 fn aggregations_of_a_list_column_that_are_not_ported() {
     let distinct = AggSpec::Distinct {
         include_nulls: false,
     };
-    let aggregation = Aggregation::columns(distinct, [Pair::of("V")]);
+    let doubles = ColumnType::vector(ColumnType::Double);
+    let table: Arc<dyn Table> = in_memory_table(
+        definition(&[("D", doubles.clone())]),
+        &[RecordBatch::try_new(
+            Arc::new(Schema::new(vec![Field::new(
+                "D",
+                doubles.arrow_type(),
+                true,
+            )])),
+            vec![list_of(
+                &doubles,
+                [Some(1)],
+                Arc::new(arrow::array::Float64Array::from(vec![0.5])),
+            )],
+        )
+        .unwrap()],
+    )
+    .unwrap();
+    let aggregation = Aggregation::columns(distinct, [Pair::of("D")]);
+    let table = std::panic::AssertUnwindSafe(table);
     let message = panic_of(move || {
-        let _ = aggregate(&listed(), &[aggregation], false, &["G"]);
+        let table = table;
+        let _ = aggregate(&table.0, &[aggregation], false, &[]);
     });
     assert_eq!(
         message,
         "unported: io.deephaven.engine.table.impl.by.AggregationProcessor: \
-         makeDistinctOperator for a column of type Vector(Int)"
+         makeDistinctOperator for a column of type Vector(Double)"
     );
 
     let array = ColumnType::array(ColumnType::Int);

@@ -4,9 +4,9 @@
 //! into one of the shapes of [`Values`], and single values are carried as [`Scalar`]s.
 
 use arrow::array::{
-    Array, ArrayRef, AsArray, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array,
-    Int64Array, Int8Array, ListArray, StringArray, StructArray, TimestampNanosecondArray,
-    UInt16Array,
+    Array, ArrayRef, AsArray, BinaryArray, BooleanArray, Float32Array, Float64Array, Int16Array,
+    Int32Array, Int64Array, Int8Array, ListArray, StringArray, StructArray,
+    TimestampNanosecondArray, UInt16Array,
 };
 use arrow::buffer::{NullBuffer, OffsetBuffer};
 use arrow::datatypes::{DataType, Float64Type, Int32Type, Int64Type};
@@ -34,7 +34,7 @@ pub enum Shape {
     Str,
     /// A vector or an array, of elements of any shape.
     List,
-    /// `ZonedDateTime` and `Period`, held cell by cell.
+    /// `ZonedDateTime`, `Period`, `BigDecimal` and `BigInteger`, held cell by cell.
     Cells,
 }
 
@@ -46,7 +46,10 @@ impl Shape {
             ColumnType::Boolean => Shape::Bool,
             // A `ZoneId` is held as its id.
             ColumnType::String | ColumnType::ZoneId => Shape::Str,
-            ColumnType::ZonedDateTime | ColumnType::Period => Shape::Cells,
+            ColumnType::ZonedDateTime
+            | ColumnType::Period
+            | ColumnType::BigDecimal
+            | ColumnType::BigInteger => Shape::Cells,
             _ => Shape::Long,
         }
     }
@@ -59,8 +62,9 @@ pub enum Values {
     Doubles(Float64Array),
     Bools(BooleanArray),
     Strings(StringArray),
-    /// The cells of a vector, array, `ZonedDateTime` or `Period` column: a
-    /// [`Scalar::List`], [`Scalar::Zoned`] or [`Scalar::Period`] each, or a null.
+    /// The cells of a vector, array, `ZonedDateTime`, `Period`, `BigDecimal` or `BigInteger`
+    /// column: a [`Scalar::List`], [`Scalar::Zoned`], [`Scalar::Period`] or [`Scalar::Big`]
+    /// each, or a null.
     Cells(Vec<Scalar>),
 }
 
@@ -120,6 +124,7 @@ impl Values {
             Shape::Cells if *column_type == ColumnType::ZonedDateTime => {
                 Values::Cells(zoned_cells(array)?)
             }
+            Shape::Cells if *column_type != ColumnType::Period => Values::Cells(big_cells(array)?),
             Shape::Cells => Values::Cells(period_cells(array)?),
         })
     }
@@ -410,6 +415,11 @@ pub enum Scalar {
         months: i32,
         days: i32,
     },
+    /// A `BigDecimal` or a `BigInteger`, as its column holds it
+    /// (`oxhaven_contracts::schema::ColumnType::BigDecimal`). It is only carried from a row
+    /// to a result: no operator that orders, compares or computes with values is made for
+    /// these columns, so [`Scalar::compare`] never meets one.
+    Big(Arc<[u8]>),
 }
 
 /// Java's ordering of two values of one type of which either may be null: a null is less
@@ -459,6 +469,8 @@ impl Scalar {
                 },
             ) => a == b && x == y,
             (Scalar::Period { .. }, Scalar::Period { .. }) => self.period() == other.period(),
+            // The scale is part of the value: `1.0` and `1.00` read differently.
+            (Scalar::Big(a), Scalar::Big(b)) => a == b,
             _ => false,
         }
     }
@@ -512,6 +524,9 @@ impl Scalar {
             // Java has no order of periods; this one keeps two that differ apart in a
             // multiset until the operator fails (`periods::PeriodGuard`).
             (Scalar::Period { .. }, Scalar::Period { .. }) => self.period().cmp(&other.period()),
+            (Scalar::Big(_), _) | (_, Scalar::Big(_)) => {
+                unreachable!("no operator that orders values is made for BigDecimal or BigInteger")
+            }
             _ => Ordering::Equal,
         }
     }
@@ -565,6 +580,17 @@ fn zoned_cells(array: &ArrayRef) -> Result<Vec<Scalar>, TableFailure> {
         .collect()
 }
 
+/// The cells of a chunk of a `BigDecimal` or `BigInteger` column, as they are stored.
+fn big_cells(array: &ArrayRef) -> Result<Vec<Scalar>, TableFailure> {
+    let cells = array
+        .as_binary_opt::<i32>()
+        .ok_or_else(|| failure("a BigDecimal or BigInteger column must hold a binary array"))?;
+    Ok(cells
+        .iter()
+        .map(|cell| cell.map_or(Scalar::Null, |bytes| Scalar::Big(bytes.into())))
+        .collect())
+}
+
 /// The cells of a chunk of a `Period` column.
 fn period_cells(array: &ArrayRef) -> Result<Vec<Scalar>, TableFailure> {
     let cells = array
@@ -594,8 +620,8 @@ fn period_cells(array: &ArrayRef) -> Result<Vec<Scalar>, TableFailure> {
 
 /// Whether `Values::decode` holds the values of `column_type`: the integers, `char` and the
 /// instants, dates, times of day, dates and times, durations and days of the week as
-/// numbers, the floating point numbers, `Boolean`, `String`, `ZoneId`, `ZonedDateTime`
-/// and `Period`, and lists of these. A `BigDecimal` and a `BigInteger` are not held.
+/// numbers, the floating point numbers, `Boolean`, `String`, `ZoneId`, `ZonedDateTime`,
+/// `Period`, `BigDecimal` and `BigInteger`, and lists of these.
 fn decodes(column_type: &ColumnType) -> bool {
     match column_type.list_element() {
         Some(element) => decodes(element),
@@ -619,6 +645,8 @@ fn decodes(column_type: &ColumnType) -> bool {
                 | ColumnType::ZoneId
                 | ColumnType::ZonedDateTime
                 | ColumnType::Period
+                | ColumnType::BigDecimal
+                | ColumnType::BigInteger
         ),
     }
 }
@@ -747,6 +775,14 @@ pub fn build<'a>(column_type: &ColumnType, values: impl Iterator<Item = &'a Scal
             };
             Arc::new(StructArray::new(fields, columns, Some(valid.into())))
         }
+        ColumnType::BigDecimal | ColumnType::BigInteger => Arc::new(
+            values
+                .map(|s| match s {
+                    Scalar::Big(cell) => Some(&**cell),
+                    _ => None,
+                })
+                .collect::<BinaryArray>(),
+        ),
         // A column type `Values::decode` refuses: no operator reads one.
         _ => arrow::array::new_null_array(&column_type.arrow_type(), values.count()),
     }
@@ -852,17 +888,53 @@ mod tests {
         assert!(at(1).same(&at(1)));
     }
 
+    /// Behavior: the first and the last of a `BigDecimal` or `BigInteger` column are its
+    /// values, scale included (`1.0` and `1.00` read differently).
+    #[test]
+    fn big_decimals_and_big_integers_are_kept_as_they_are() {
+        use oxhaven_column::java_values::{big_decimal_cell, big_integer_cell};
+        let decimals: ArrayRef = Arc::new(BinaryArray::from(vec![
+            Some(&big_decimal_cell(1, &[10])[..]),
+            None,
+            Some(&big_decimal_cell(2, &[100])[..]),
+        ]));
+        let integers: ArrayRef = Arc::new(BinaryArray::from(vec![
+            None,
+            Some(&big_integer_cell(-129)[..]),
+        ]));
+        for (column_type, array) in [
+            (ColumnType::BigDecimal, decimals),
+            (ColumnType::BigInteger, integers),
+        ] {
+            assert_eq!(
+                round_trip(&column_type, Arc::clone(&array)).as_ref(),
+                array.as_ref(),
+                "{column_type:?}"
+            );
+        }
+        let decimals = Values::decode(
+            &ColumnType::BigDecimal,
+            &round_trip(
+                &ColumnType::BigDecimal,
+                Arc::new(BinaryArray::from(vec![
+                    &big_decimal_cell(1, &[10])[..],
+                    &big_decimal_cell(2, &[100])[..],
+                ])),
+            ),
+        )
+        .expect("decodes");
+        assert!(!decimals.scalar(0).same(&decimals.scalar(1)));
+        assert!(decimals.scalar(1).same(&decimals.scalar(1)));
+    }
+
     /// A type the operators do not hold is a failure, not a column of nulls.
     #[test]
-    fn a_big_decimal_is_refused() {
-        let big = arrow::array::new_null_array(&ColumnType::BigDecimal.arrow_type(), 2);
-        let Err(failure) = Values::decode(&ColumnType::BigDecimal, &big) else {
-            panic!("a big decimal decoded");
+    fn a_column_of_tables_is_refused() {
+        let column_type = ColumnType::Table(oxhaven_contracts::schema::TableClass::Table);
+        let tables = arrow::array::new_null_array(&column_type.arrow_type(), 2);
+        let Err(failure) = Values::decode(&column_type, &tables) else {
+            panic!("a column of tables decoded");
         };
-        assert!(
-            failure.message.contains("BigDecimal"),
-            "{}",
-            failure.message
-        );
+        assert!(failure.message.contains("Table"), "{}", failure.message);
     }
 }
