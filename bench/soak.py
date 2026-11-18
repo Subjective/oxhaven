@@ -981,6 +981,10 @@ def watchdog(run: Run, server: Server, limit: float, write_result: Callable[[str
             os._exit(1)
 
 
+# The parts of a round that --skip leaves out, to find which one a trend comes from.
+SKIPPABLE = {"write", "check", "script", "churn", "abandon"}
+
+
 def scan_log(path: str) -> list[str]:
     """Lines of the server's log that report an error or a panic."""
     with open(path, "rb") as f:
@@ -1012,6 +1016,10 @@ def run_soak(args: argparse.Namespace) -> int:
             "binary": os.path.basename(os.path.dirname(os.path.abspath(args.binary))),
         },
     }
+    skip = set(filter(None, args.skip.split(",")))
+    if skip - SKIPPABLE:
+        sys.exit(f"--skip: unknown part {sorted(skip - SKIPPABLE)}; the parts are {sorted(SKIPPABLE)}")
+    result["meta"]["skip"] = sorted(skip)
     rounds: list[dict] = []
     state: dict[str, Any] = {"subscriber": {"updates": 0, "max_gap": 0.0, "max_lag": 0.0}}
 
@@ -1058,16 +1066,20 @@ def run_soak(args: argparse.Namespace) -> int:
                 except Exception as e:  # noqa: BLE001 - every failed request is a violation
                     run.violate("requests", f"{name} failed", failure(e))
 
-            step("write", world.write)
-            step("check pipelines", lambda: world.check_pipelines(args.inject == "mismatch" and n == 3))
-            step("check blink input", world.check_events)
-            step("check replica", lambda: subscriber.check_replica(world))
-            step("check time tables", world.check_time)
-            if console:
-                step("check rollup", world.check_rollup)
+            if "write" not in skip:
+                step("write", world.write)
+            if "check" not in skip:
+                step("check pipelines", lambda: world.check_pipelines(args.inject == "mismatch" and n == 3))
+                step("check blink input", world.check_events)
+                step("check replica", lambda: subscriber.check_replica(world))
+                step("check time tables", world.check_time)
+                if console:
+                    step("check rollup", world.check_rollup)
+            if console and "script" not in skip:
                 step("console script", lambda: world.console_round(n))
-            step("churn", lambda: churn_round(run, server.url, world, churn_rng, n, leak))
-            if n % 8 == 0:
+            if "churn" not in skip:
+                step("churn", lambda: churn_round(run, server.url, world, churn_rng, n, leak))
+            if n % 8 == 0 and "abandon" not in skip:
                 step("abandon a session", abandoned.abandon)
             abandoned.forget_expired()
             if args.inject == "stall" and n == 3:
@@ -1147,7 +1159,8 @@ def print_summary(result: dict) -> None:
     print()
     print(f"soak {result['status']}: profile {meta['profile']}, {meta.get('seconds', 0):.0f}s "
           f"({meta['warmup_s']:.0f}s warm-up), seed {meta['seed']}, cycle {meta['cycle_ms']}ms, "
-          f"console {'yes' if meta.get('console') else 'no'}, {meta['cpus']} cpus, "
+          f"console {'yes' if meta.get('console') else 'no'}, "
+          f"{'without ' + ', '.join(meta['skip']) + ', ' if meta.get('skip') else ''}{meta['cpus']} cpus, "
           f"load {meta['loadavg_start'][0]:.1f} -> {meta.get('loadavg_end', [0])[0]:.1f}")
     if s.get("rss_mb"):
         r, c, sb, b, cy = s["rss_mb"], s["cpu"], s["subscriber"], s["barrier_s"], s.get("cycles")
@@ -1257,6 +1270,8 @@ def main(argv: list[str]) -> int:
     r.add_argument("--inject", choices=["leak", "mismatch", "stall"],
                    help="break one thing on purpose, to see the run fail: keep every round's tables, "
                         "recompute one check from the wrong rows, or stop making progress")
+    r.add_argument("--skip", default="", help="comma-separated parts of a round to leave out, to find where a trend "
+                   "comes from: write, check, script, churn, abandon")
     r.add_argument("--out", required=True)
     rp = sub.add_parser("report")
     rp.add_argument("file")
