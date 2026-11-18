@@ -738,6 +738,40 @@ fn make_operator(
         }
         _ => {}
     }
+    // Java computes these of a `BigDecimal` or `BigInteger` column with arbitrary precision
+    // (observed: the sum of `1.0`, `1.00` and `2.5` is `4.50`, their average `1.50`), and
+    // orders or compares the values by `compareTo` in some operators and by `equals` in
+    // others (observed: the distinct values of `3` and `3.000` are both, their minimum the
+    // first seen). None of this is ported; first, last, group and the formulas are.
+    let big = |column_type: &ColumnType| {
+        matches!(column_type, ColumnType::BigDecimal | ColumnType::BigInteger)
+    };
+    let sort_columns: &[String] = match spec {
+        AggSpec::SortedFirst { columns } | AggSpec::SortedLast { columns } => columns,
+        _ => &[],
+    };
+    let big_sort = sort_columns.iter().find_map(|name| {
+        let sort_type = &definition.columns()[definition.index_of(name)?].column_type;
+        big(sort_type).then_some(sort_type)
+    });
+    let reads_big = big(input_type)
+        && !matches!(
+            spec,
+            AggSpec::First
+                | AggSpec::Last
+                | AggSpec::Group
+                | AggSpec::Formula { .. }
+                | AggSpec::SortedFirst { .. }
+                | AggSpec::SortedLast { .. }
+                | AggSpec::WeightedAvg { .. }
+                | AggSpec::WeightedSum { .. }
+        );
+    if let Some(column_type) = big_sort.or(reads_big.then_some(input_type)) {
+        unported!(
+            "io.deephaven.engine.table.impl.by.AggregationProcessor",
+            "{spec:?} of a column of type {column_type:?}"
+        );
+    }
     let op: Box<dyn AggOperator> = match spec {
         AggSpec::Formula { .. } => unreachable!("a formula is planned by each_formula"),
         AggSpec::Group => {
