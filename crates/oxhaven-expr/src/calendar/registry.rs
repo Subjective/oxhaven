@@ -1,19 +1,41 @@
 //! The calendars of the process, by name, and the name of the default one.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use super::{read_calendar_file, BusinessCalendar, CalendarError, CalendarZone};
+use super::{parse_calendar, read_calendar_file, BusinessCalendar, CalendarError, CalendarZone};
 
 /// The name of the default calendar before one is set: Deephaven's `Calendar.default`
 /// property, `UTC` in the configuration it ships (`dh-defaults.prop`).
 pub const DEFAULT_CALENDAR_NAME: &str = "UTC";
 
-/// The calendars Deephaven 42.9 loads at start (`Calendar.importPath`). Their files are
-/// under the Deephaven Community License, not Apache-2.0 or MIT, so this server does not
-/// ship them (`tasks/11.1-console-calendars.md`, owner question): their names are known,
-/// and asking for one of them is refused as not ported.
-pub const SHIPPED_CALENDAR_NAMES: [&str; 3] = ["USBANK_EXAMPLE", "USNYSE_EXAMPLE", "UTC"];
+/// The calendars the collection starts with, by name and file text: those of the names
+/// Deephaven 42.9 loads at start (`Calendar.importPath`), written for Oxhaven from public
+/// rules by `shipped/generate.py`. Deephaven's own files are under the Deephaven Community
+/// License and are not used; `tasks/12.5-shipped-calendars.md` lists where these differ
+/// from them.
+pub const SHIPPED_CALENDARS: [(&str, &str); 3] = [
+    ("UTC", include_str!("shipped/UTC.calendar")),
+    (
+        "USNYSE_EXAMPLE",
+        include_str!("shipped/USNYSE_EXAMPLE.calendar"),
+    ),
+    (
+        "USBANK_EXAMPLE",
+        include_str!("shipped/USBANK_EXAMPLE.calendar"),
+    ),
+];
+
+/// A calendar the collection starts with, read anew, with the zone aliases Deephaven
+/// ships; none for another name.
+pub fn shipped_calendar(name: &str) -> Option<BusinessCalendar> {
+    SHIPPED_CALENDARS
+        .iter()
+        .find(|(shipped, _)| *shipped == name)
+        .map(|(_, text)| {
+            parse_calendar(text, &CalendarZone::parse).expect("a shipped calendar reads")
+        })
+}
 
 /// The collection of calendars.
 ///
@@ -23,8 +45,6 @@ pub struct Calendars {
     default_name: Option<String>,
     /// By the upper case of their names.
     calendars: BTreeMap<String, Arc<BusinessCalendar>>,
-    /// The calendars Deephaven ships that are in Deephaven's collection and not in this one.
-    not_shipped: BTreeSet<String>,
 }
 
 static CALENDARS: Mutex<Option<Calendars>> = Mutex::new(None);
@@ -60,15 +80,20 @@ impl Default for Calendars {
 }
 
 impl Calendars {
-    /// The collection Deephaven starts with, without the calendars it ships.
+    /// The collection Deephaven starts with: the calendars of [`SHIPPED_CALENDARS`], read
+    /// once, with `UTC` the default.
+    ///
+    /// Behavior: `io.deephaven.time.calendar.Calendars#calendarsFromConfiguration`, which
+    /// the server reads when it starts, so the zone aliases are the ones Deephaven ships
     pub fn new() -> Self {
+        let calendars = SHIPPED_CALENDARS
+            .iter()
+            .filter_map(|(name, _)| shipped_calendar(name))
+            .map(|calendar| (calendar.name().to_uppercase(), Arc::new(calendar)))
+            .collect();
         Self {
             default_name: Some(DEFAULT_CALENDAR_NAME.to_string()),
-            calendars: BTreeMap::new(),
-            not_shipped: SHIPPED_CALENDAR_NAMES
-                .iter()
-                .map(|name| name.to_string())
-                .collect(),
+            calendars,
         }
     }
 
@@ -78,7 +103,6 @@ impl Calendars {
     /// Behavior: `io.deephaven.time.calendar.Calendars#removeCalendar`
     pub fn remove(&mut self, name: &str) {
         self.calendars.remove(name);
-        self.not_shipped.remove(name);
     }
 
     /// Adds a calendar under the upper case of its name. The same calendar again is no
@@ -100,13 +124,10 @@ impl Calendars {
                 format!("Invalid name for calendar: name='{name}'"),
             ));
         }
-        let taken = match self.calendars.get(&name) {
-            Some(present) if Arc::ptr_eq(present, &calendar) => return Ok(()),
-            Some(_) => true,
-            // a calendar this server cannot hand out is never this one
-            None => self.not_shipped.contains(&name),
-        };
-        if taken {
+        if let Some(present) = self.calendars.get(&name) {
+            if Arc::ptr_eq(present, &calendar) {
+                return Ok(());
+            }
             return Err(CalendarError::java(
                 "java.lang.IllegalArgumentException",
                 format!("Multiple calendars have the same name: name='{name}'"),
@@ -156,23 +177,15 @@ impl Calendars {
     ///
     /// Behavior: `io.deephaven.time.calendar.Calendars#calendar(String)`
     pub fn get(&self, name: &str) -> Result<Arc<BusinessCalendar>, CalendarError> {
-        let key = name.to_uppercase();
-        if let Some(calendar) = self.calendars.get(&key) {
-            return Ok(calendar.clone());
-        }
-        if self.not_shipped.contains(&key) {
-            return Err(CalendarError::unported(
-                "io.deephaven.time.calendar.Calendars#calendar",
-                format!(
-                    "the calendar {key}, which Deephaven ships and this server does not \
-                     (its file is not under Apache-2.0 or MIT)"
-                ),
-            ));
-        }
-        Err(CalendarError::java(
-            "java.lang.IllegalArgumentException",
-            format!("No such calendar: {name}"),
-        ))
+        self.calendars
+            .get(&name.to_uppercase())
+            .cloned()
+            .ok_or_else(|| {
+                CalendarError::java(
+                    "java.lang.IllegalArgumentException",
+                    format!("No such calendar: {name}"),
+                )
+            })
     }
 
     /// The default calendar; none when no default name is set.
@@ -185,11 +198,10 @@ impl Calendars {
             .transpose()
     }
 
-    /// The names of the calendars, in order; those Deephaven ships among them.
+    /// The names of the calendars, in order.
     ///
     /// Behavior: `io.deephaven.time.calendar.Calendars#calendarNames`
     pub fn names(&self) -> Vec<String> {
-        let names: BTreeSet<&String> = self.calendars.keys().chain(&self.not_shipped).collect();
-        names.into_iter().cloned().collect()
+        self.calendars.keys().cloned().collect()
     }
 }

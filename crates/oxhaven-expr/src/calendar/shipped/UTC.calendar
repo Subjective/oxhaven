@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Written for Oxhaven by generate.py in this directory, from the public rules cited
+  there. Not derived from Deephaven's calendar files. Licensed as the rest of
+  Oxhaven.
+  Every day is a whole business day: no weekend and no holidays.
+-->
+<calendar>
+  <name>UTC</name>
+  <description>UTC</description>
+  <timeZone>UTC</timeZone>
+  <firstValidDate>1900-01-01</firstValidDate>
+  <lastValidDate>2100-12-31</lastValidDate>
+  <default>
+    <businessTime><open>00:00</open><close>23:59:59.999999999</close><includeClose>true</includeClose></businessTime>
+  </default>
+</calendar>
