@@ -542,16 +542,10 @@ fn a_join_on_a_list_column_is_not_ported() {
 }
 
 #[test]
-#[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.updateby.UpdateBy#updateBy: \
-                a bucket or input column of type Vector(Int)"
-)]
-fn update_by_with_a_list_bucket_column_is_not_ported() {
-    let _ = update_by(
-        &listed(),
-        &[UpdateByOperation::new(UpdateBySpec::CumSum, &["K"])],
-        &["V"],
-    );
+fn update_by_buckets_by_a_vector_column() {
+    let sum = [UpdateByOperation::new(UpdateBySpec::CumSum, &["K"])];
+    let result = update_by(&listed(), &sum, &["V"]).unwrap();
+    assert_eq!(cells(&*result, 0), ["1", "2", "3"]);
 }
 
 #[test]

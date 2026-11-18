@@ -100,7 +100,9 @@ impl Em {
         let values: Vec<Option<f64>> = match Values::read(values, input)? {
             Values::Int(v) => v.into_iter().map(|v| v.map(|v| v as f64)).collect(),
             Values::Float(v) => v,
-            Values::Text(_) => return Err(failure("no exponential operator for this column type")),
+            Values::Text(_) | Values::Lists(_) => {
+                return Err(failure("no exponential operator for this column type"))
+            }
         };
         let alpha = (-1.0 / self.units).exp();
         let one_minus_alpha = 1.0 - alpha;
@@ -246,7 +248,9 @@ impl Em {
         let values: Vec<Option<f64>> = match Values::read(values, input)? {
             Values::Int(v) => v.into_iter().map(|v| v.map(|v| v as f64)).collect(),
             Values::Float(v) => v,
-            Values::Text(_) => return Err(failure("no exponential operator for this column type")),
+            Values::Text(_) | Values::Lists(_) => {
+                return Err(failure("no exponential operator for this column type"))
+            }
         };
         let tick_alpha = (-1.0 / self.units).exp();
         let (mut state, mut last_stamp) = match seed {

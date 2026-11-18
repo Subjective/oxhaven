@@ -185,6 +185,21 @@ impl Builder<'_> {
         }
     }
 
+    /// The type of `expression` if it is a window, or a condition each of whose sides is
+    /// a window or such a condition, all of one type.
+    fn windows_of_type(&self, expression: &Expr) -> Option<&ColumnType> {
+        match expression {
+            Expr::Column(name) => self.window(name).map(|input| &self.inputs[input].1),
+            Expr::Ternary {
+                if_true, if_false, ..
+            } => {
+                let column_type = self.windows_of_type(if_true)?;
+                (self.windows_of_type(if_false)? == column_type).then_some(column_type)
+            }
+            _ => None,
+        }
+    }
+
     /// Whether the result of `expression` may be a slice of a window. Java copies a
     /// result that is the window itself, and stores any other vector as it is.
     ///
@@ -352,6 +367,15 @@ impl Builder<'_> {
                 method,
                 arguments,
             } if matches!(method.as_str(), "get" | "[]") && arguments.len() == 1 => {
+                // Java evaluates the condition, then the position, then reads the window
+                // the condition chose; every window of a formula has the same rows, so the
+                // read is the one of that window.
+                if matches!(**receiver, Expr::Ternary { .. })
+                    && self.windows_of_type(receiver).is_some()
+                {
+                    let read = distribute(receiver, method, &arguments[0]);
+                    return self.walk(&read, gate);
+                }
                 let Some((receiver, view)) = self.view(receiver, gate)? else {
                     if self.may_be_window(receiver) {
                         unported!(
@@ -489,6 +513,27 @@ impl Builder<'_> {
             function: function.to_owned(),
             arguments: walked,
         })
+    }
+}
+
+/// `receiver.method(position)` with the read moved into each side of the conditions
+/// `receiver` is made of: `(c ? x : y)[i]` is `c ? x[i] : y[i]`.
+fn distribute(receiver: &Expr, method: &str, position: &Expr) -> Expr {
+    match receiver {
+        Expr::Ternary {
+            condition,
+            if_true,
+            if_false,
+        } => Expr::Ternary {
+            condition: condition.clone(),
+            if_true: Box::new(distribute(if_true, method, position)),
+            if_false: Box::new(distribute(if_false, method, position)),
+        },
+        window => Expr::MethodCall {
+            receiver: Box::new(window.clone()),
+            method: method.to_owned(),
+            arguments: vec![position.clone()],
+        },
     }
 }
 
