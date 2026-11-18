@@ -1459,3 +1459,7 @@ The fuzzer has a third generator: chains of as-of joins, vector columns in updat
 ## 2026-11-18 14:45 UTC: pull request 179 merged
 
 Seven green checks on head 1cfd9c77 in the run the label started; that run is the first of clippy, the cargo tests and the replay on the final tree. Main is at 0d4ec975.
+
+## 2026-11-18 15:57 UTC: task 12.3 reported, pull request 180
+
+The soak test is a Python driver beside the benchmark. Its first 45-minute run failed the memory invariant: a sort by a rising column over a table that also loses rows grew its key space by one key per appended row (12 bytes a row, about 1 GB a day at 1,000 rows a second). Fixed in the same branch with a unit test; the run after the fix is flat (-9.0 MB/h against +54.3 before). Open, not investigated: processor time per round rose 7 to 8% over 30 minutes (limit 20%), and memory takes 9 to 13 minutes to level. Follow-ups worth a small task each: a server call reporting live exports and sessions, and a two-hour run. Protected paths untouched; the oracle-replay job gains about two minutes and nightly a job of about an hour.
