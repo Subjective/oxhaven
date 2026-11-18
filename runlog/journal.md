@@ -1471,3 +1471,7 @@ Seven green checks on head 91d81c99; oracle-replay took 11 min 11 s with the sho
 ## 2026-11-18 16:15 UTC: Josh answered the calendar card; tasks 12.4 and 12.5 running
 
 Josh chose "Write all three ourselves" for Deephaven's built-in business calendars (owner question 7.9). Task 12.5 writes them from public facts; Deephaven's files (Deephaven Community License) are read only for what a user can observe and are not copied. Task 12.4 is the two-hour soak run that settles what 12.3 left open.
+
+## 2026-11-18 17:05 UTC: task 12.5 reported, pull request 181
+
+The three shipped calendars are written by a script from cited public rules. Deephaven's names are UTC, USNYSE_EXAMPLE and USBANK_EXAMPLE. UTC matches Deephaven on every date. On twelve dates the exchange and bank calendars follow the public record where Deephaven's files differ (missing early closes 1999 to 2001, Juneteenth 2022, the 2025 day of mourning, Christmas Eve hours 2024 and 2025, Thanksgiving 2019 in the bank calendar, one bank holiday before the valid range). These are owner question 7.22 and listed in docs/CONSOLE.md; PARITY.md is not changed. The comparison is in unit tests against values recorded from Deephaven, since the task could not change oracle/.
