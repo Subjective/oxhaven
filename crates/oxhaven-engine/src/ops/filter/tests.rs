@@ -326,6 +326,44 @@ fn a_case_insensitive_match_maps_supplementary_characters_as_jdk_21_does() {
     assert_eq!(kept(&t, &[&format!("S icase not in {five}")]), [3, 4, 6, 7]);
 }
 
+/// Every expectation was observed on Deephaven 42.9 with the same rows.
+#[test]
+fn instant_literals_in_a_named_zone_or_at_an_offset_are_read() {
+    const SECOND: i64 = 1_000_000_000;
+    // 2023-11-14 at these times, UTC
+    let at = |hour: i64, minute: i64, millis: i64| {
+        1_699_920_000 * SECOND + (hour * 3600 + minute * 60) * SECOND + millis * 1_000_000
+    };
+    let p = Int32Array::from((0..9).collect::<Vec<i32>>());
+    let t = TimestampNanosecondArray::from(vec![
+        at(15, 0, 0),
+        at(15, 0, 30_000),
+        at(15, 0, 59_999),
+        at(15, 1, 0),
+        at(1, 0, 30_500),
+        at(1, 0, 30_600),
+        at(10, 0, 0),
+        at(9, 0, 0),
+        at(1, 0, 31_000),
+    ])
+    .with_timezone("UTC");
+    let t = static_table(vec![
+        ("P", ColumnType::Int, Arc::new(p)),
+        ("T", ColumnType::Instant, Arc::new(t)),
+    ]);
+    assert_eq!(kept(&t, &["T in '2023-11-14T10:00:30.5 JP'"]), [4]);
+    assert_eq!(
+        kept(&t, &["T > '2023-11-14T10:00 America/New_York'"]),
+        [1, 2, 3]
+    );
+    assert_eq!(
+        kept(&t, &["T in '2023-11-14T10:00:00-05:00[America/New_York]'"]),
+        [0]
+    );
+    assert_eq!(kept(&t, &["T in '2023-11-14T10:00+01:00'"]), [7]);
+    refused(&t, &["T == '2023-11-14T10:00 NY'"]);
+}
+
 #[test]
 fn integer_filters_treat_the_sentinel_as_null() {
     let t = ints_table();
