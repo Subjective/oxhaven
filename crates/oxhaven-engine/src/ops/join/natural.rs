@@ -24,13 +24,14 @@
 
 use super::keys::{key_text, Key, KeyColumns};
 use super::{JoinAddition, JoinError, JoinMatch, NaturalJoinType};
-use crate::ops::key_table::{KeyTable, NO_SLOT};
+use crate::ops::key_table::{is_ported_key, same_object_vector_class, KeyTable, NO_SLOT};
 use crate::table::{reads_through, MergedOperator, QueryTable, TableSpec};
 use crate::update::{modified_pre_shift, ModifiedColumnTransformer};
 use oxhaven_column::{Clock, RedirectedSource, RowRedirection, WritableRowRedirection};
 use oxhaven_contracts::rowset::{RowKey, RowSet, NULL_ROW_KEY};
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, Table, TableAttributes, TableFailure};
+use oxhaven_contracts::unported;
 use oxhaven_contracts::update::{ModifiedColumnSet, TableUpdate};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -257,6 +258,24 @@ impl Plan {
         for ((pair, &l), &r) in on.iter().zip(&left_keys).zip(&right_keys) {
             let left_type = &left_definition.columns()[l].column_type;
             let right_type = &right_definition.columns()[r].column_type;
+            if left_type != right_type && same_object_vector_class(left_type, right_type) {
+                unported!(
+                    "io.deephaven.engine.table.impl.BucketingContext#BucketingContext",
+                    "match columns {} and {} of the vector types {left_type:?} and \
+                     {right_type:?}: Java takes the pair (one class, ObjectVector) and \
+                     compares vectors of two element types by Objects#deepEquals",
+                    pair.left,
+                    pair.right
+                );
+            }
+            if left_type == right_type && !is_ported_key(left_type) {
+                unported!(
+                    "io.deephaven.engine.table.impl.by.typed.TypedHasherFactory#makeNaturalJoin",
+                    "a match column of type {left_type:?}: Java keys vectors of float or \
+                     double by the class of the vector objects (-0.0 and 0.0), and arrays \
+                     and vectors of arrays by the identity of the arrays"
+                );
+            }
             if left_type != right_type {
                 return Err(JoinError::MismatchedTypes {
                     left: pair.left.clone(),

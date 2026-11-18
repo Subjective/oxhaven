@@ -15,6 +15,8 @@ pub(crate) mod natural;
 #[cfg(test)]
 mod corpus;
 #[cfg(test)]
+mod object_key_tests;
+#[cfg(test)]
 mod random;
 #[cfg(test)]
 mod tests;

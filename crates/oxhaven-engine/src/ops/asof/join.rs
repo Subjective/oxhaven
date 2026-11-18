@@ -28,7 +28,7 @@
 use super::stamps::{self, primitive, Stamp, StampValue, Word};
 use super::{AsOfJoinError, AsOfMatch, JoinAddition, JoinMatch};
 use crate::ops::join::keys::{Cell, Key, KeyColumns};
-use crate::ops::key_table::{KeyTable, NO_SLOT};
+use crate::ops::key_table::{is_ported_key, same_object_vector_class, KeyTable, NO_SLOT};
 use crate::table::{reads_through, MergedOperator, QueryTable, TableSpec};
 use crate::update::{modified_pre_shift, ModifiedColumnTransformer};
 use arrow::datatypes::DataType;
@@ -36,6 +36,7 @@ use oxhaven_column::{Clock, RedirectedSource, RowRedirection, WritableRowRedirec
 use oxhaven_contracts::rowset::{RowKey, RowSet, NULL_ROW_KEY};
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, Table, TableFailure};
+use oxhaven_contracts::unported;
 use oxhaven_contracts::update::{ModifiedColumnSet, TableUpdate};
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Bound;
@@ -407,6 +408,21 @@ impl Plan {
         for ((pair, &l), &r) in exact.iter().zip(&left_keys).zip(&right_keys) {
             let left_type = type_of(left_definition, l);
             let right_type = type_of(right_definition, r);
+            if left_type != right_type && same_object_vector_class(&left_type, &right_type) {
+                unported!(
+                    "io.deephaven.engine.table.impl.BucketingContext#BucketingContext",
+                    "exact match columns of the vector types {left_type:?} and \
+                     {right_type:?}: Java takes the pair (one class, ObjectVector)"
+                );
+            }
+            if !is_ported_key(&left_type) {
+                unported!(
+                    "io.deephaven.engine.table.impl.by.typed.TypedHasherFactory#make",
+                    "an exact match column of type {left_type:?}: Java keys vectors of float \
+                     or double by the class of the vector objects (-0.0 and 0.0), and arrays \
+                     and vectors of arrays by the identity of the arrays"
+                );
+            }
             if primitive(&left_type) != primitive(&right_type) && key_mismatch.is_none() {
                 key_mismatch = Some(AsOfJoinError::KeyTypes {
                     left: pair.left.clone(),

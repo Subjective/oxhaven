@@ -2,12 +2,14 @@
 
 use super::{MultiJoinError, MultiJoinInput};
 use crate::ops::join::keys::{Cell, Key, KeyColumns};
+use crate::ops::key_table::{is_ported_key, same_object_vector_class};
 use crate::update::ModifiedColumnTransformer;
 use arrow::array::{Array, ArrayRef, BooleanArray, Int8Array};
 use arrow::compute::cast;
 use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::{Table, TableFailure};
+use oxhaven_contracts::unported;
 use oxhaven_contracts::update::ModifiedColumnSet;
 use std::sync::Arc;
 
@@ -139,12 +141,29 @@ impl Plan {
                 .map(|source| type_of(table, *source))
                 .collect();
             let this_primitives: Vec<ColumnType> = this_types.iter().map(primitive).collect();
+            for (first, this) in first_types.iter().zip(&this_types) {
+                if first != this && same_object_vector_class(first, this) {
+                    unported!(
+                        "io.deephaven.engine.table.impl.MultiJoinTableImpl#MultiJoinTableImpl",
+                        "key columns of the vector types {first:?} and {this:?}: Java takes \
+                         the pair (one class, ObjectVector)"
+                    );
+                }
+            }
             if !same_set(&first_primitives, &this_primitives) {
                 return Err(MultiJoinError::KeyTypeMismatch {
                     table,
                     first: first_primitives,
                     this: this_primitives,
                 });
+            }
+            if let Some(this) = this_types.iter().find(|this| !is_ported_key(this)) {
+                unported!(
+                    "io.deephaven.engine.table.impl.by.typed.TypedHasherFactory#make",
+                    "a key column of type {this:?}: Java keys vectors of float or double by \
+                     the class of the vector objects (-0.0 and 0.0), and arrays and vectors \
+                     of arrays by the identity of the arrays"
+                );
             }
             let input = &inputs[table];
             let definition = input.table.definition();
