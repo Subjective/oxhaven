@@ -44,6 +44,10 @@ struct State {
     stored: u64,
     /// The place of each row key's value; keys past the end read as null.
     places: Vec<Place>,
+    /// While `places` is empty: the number of leading row keys whose values are batch 1
+    /// in key order, as a column written once from key 0 on is. The first other write
+    /// makes them places.
+    dense: usize,
     /// The updating step whose writes `prev` and `prev_len` describe, if any.
     prev_step: Option<u64>,
     /// The length of `places` before the first write of `prev_step`: a key at or past it
@@ -65,6 +69,7 @@ impl SlotSource {
                 batches: vec![null],
                 stored: 0,
                 places: Vec::new(),
+                dense: 0,
                 prev_step: None,
                 prev_len: 0,
                 prev: HashMap::with_hasher(ahash::RandomState::with_seeds(1, 2, 3, 4)),
@@ -80,6 +85,30 @@ impl SlotSource {
             } => Some(step),
             _ => None,
         }
+    }
+
+    /// Writes `values` at the row keys `first`, `first + 1`, and so on. A column that
+    /// was never written and is written from key 0 on, outside a cycle, keeps the values
+    /// as they are, without a place per key.
+    pub fn fill_from(&self, first: usize, values: &ArrayRef) -> Result<(), TableFailure> {
+        if first == 0 && self.updating_step().is_none() && !values.is_empty() {
+            let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
+            let unwritten = state.batches.len() == 1 && state.places.is_empty();
+            if unwritten
+                && state.prev_step.is_none()
+                && values.data_type() == &self.column_type.arrow_type()
+                && u32::try_from(values.len()).is_ok()
+            {
+                state.batches.push(values.clone());
+                state.stored = values.len() as u64;
+                state.dense = values.len();
+                return Ok(());
+            }
+        }
+        let keys: Vec<RowKey> = (first..first + values.len())
+            .map(|key| key as RowKey)
+            .collect();
+        self.fill_by_keys(&keys, values)
     }
 
     /// Writes `values` at `keys`, in the order given; when a key repeats, its last value
@@ -111,6 +140,10 @@ impl SlotSource {
         }
         let step = self.updating_step();
         let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
+        if state.dense > 0 {
+            state.places = (0..state.dense as u32).map(|index| (1, index)).collect();
+            state.dense = 0;
+        }
         if step != state.prev_step {
             state.prev.clear();
             state.prev_step = step;
@@ -159,10 +192,13 @@ impl SlotSource {
                         return place;
                     }
                 }
-                usize::try_from(key)
-                    .ok()
-                    .and_then(|key| state.places.get(key).copied())
-                    .unwrap_or(NULL_PLACE)
+                let Ok(key) = usize::try_from(key) else {
+                    return NULL_PLACE;
+                };
+                if key < state.dense {
+                    return (1, key as u32);
+                }
+                state.places.get(key).copied().unwrap_or(NULL_PLACE)
             })
             .collect();
         gather(&state.batches, &places)
@@ -284,6 +320,19 @@ impl ResultColumn {
         match self {
             ResultColumn::Slots(source) => source.fill_by_keys(keys, values),
             ResultColumn::Tables(source) => source.fill_by_keys(keys, values),
+        }
+    }
+
+    /// Writes `values` at the row keys `first`, `first + 1`, and so on.
+    pub fn fill_from(&self, first: usize, values: &ArrayRef) -> Result<(), TableFailure> {
+        match self {
+            ResultColumn::Slots(source) => source.fill_from(first, values),
+            ResultColumn::Tables(source) => {
+                let keys: Vec<RowKey> = (first..first + values.len())
+                    .map(|key| key as RowKey)
+                    .collect();
+                source.fill_by_keys(&keys, values)
+            }
         }
     }
 

@@ -575,9 +575,14 @@ mod tests {
                 let mut distinct = slots.clone();
                 distinct.sort_unstable();
                 distinct.dedup();
+                let groups: Vec<u32> = slots
+                    .iter()
+                    .map(|slot| distinct.binary_search(slot).expect("a slot") as u32)
+                    .collect();
                 let rows = Rows {
                     slots: &slots,
                     distinct: &distinct,
+                    groups: &groups,
                     row_keys: &row_keys,
                     values: None,
                 };

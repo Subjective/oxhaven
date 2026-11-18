@@ -82,88 +82,80 @@ fn sum_longs(run: &Run<'_>, absolute: bool) -> (i64, i64) {
     })
 }
 
-/// What the rows of one chunk brought each slot of an integer-shaped column, while the
-/// rows are taken in row order: the wrapping sum of the non-null values and how many there
-/// are, as [`sum_longs`] gives them for a slot's rows together.
+/// What the rows of one chunk brought each of its slots of an integer-shaped column,
+/// while the rows are taken in row order: the wrapping sum of the non-null values and how
+/// many there are, as [`sum_longs`] gives them for a slot's rows together.
 #[derive(Default)]
 struct LongPartials {
-    /// Per slot; `(0, 0)` between chunks.
+    /// By [`Rows::groups`]: one entry for each slot of the chunk at hand.
     partial: Vec<(i64, i64)>,
 }
 
 impl LongPartials {
-    /// Adds each row's value to what the chunk brought its slot. `slots` is the number
-    /// of slots of the operator.
-    fn take(&mut self, rows: &Rows<'_>, slots: usize, absolute: bool) {
+    /// What `rows` bring each of `rows.distinct`, in that order.
+    fn of(&mut self, rows: &Rows<'_>, absolute: bool) -> &[(i64, i64)] {
         let Some(Values::Longs(array)) = rows.values else {
             panic!("the operator's input is not an integer-shaped column");
         };
-        if self.partial.len() < slots {
-            self.partial.resize(slots, (0, 0));
-        }
+        self.partial.clear();
+        self.partial.resize(rows.distinct.len(), (0, 0));
         let partial = &mut self.partial[..];
-        let mut step = |slot: usize, value: i64| {
+        let mut step = |group: u32, value: i64| {
             let value = if absolute {
                 value.wrapping_abs()
             } else {
                 value
             };
-            let (sum, count) = &mut partial[slot];
+            let (sum, count) = &mut partial[group as usize];
             *sum = sum.wrapping_add(value);
             *count += 1;
         };
-        let values = rows.slots.iter().zip(array.values().iter());
+        let values = rows.groups.iter().zip(array.values().iter());
         match array.nulls().filter(|nulls| nulls.null_count() > 0) {
-            None => values.for_each(|(&slot, &value)| step(slot, value)),
+            None => values.for_each(|(&group, &value)| step(group, value)),
             Some(nulls) => {
-                for ((&slot, &value), valid) in values.zip(nulls.iter()) {
+                for ((&group, &value), valid) in values.zip(nulls.iter()) {
                     if valid {
-                        step(slot, value);
+                        step(group, value);
                     }
                 }
             }
         }
-    }
-
-    /// What the chunk brought `slot`, which then has nothing.
-    #[inline]
-    fn flush(&mut self, slot: usize) -> (i64, i64) {
-        std::mem::take(&mut self.partial[slot])
+        &self.partial
     }
 }
 
-/// [`LongPartials`] for a floating point column: a [`FloatRun`] per slot, with the
-/// values added in row order from zero as [`FloatRun::of`] adds a slot's rows together.
+/// [`LongPartials`] for a floating point column: a [`FloatRun`] per slot of the chunk,
+/// with the values added in row order from zero as [`FloatRun::of`] adds a slot's rows
+/// together.
 #[derive(Default)]
 struct FloatPartials {
     partial: Vec<FloatRun>,
 }
 
 impl FloatPartials {
-    fn take(&mut self, rows: &Rows<'_>, slots: usize, absolute: bool) {
+    fn of(&mut self, rows: &Rows<'_>, absolute: bool) -> &[FloatRun] {
         let Some(Values::Doubles(array)) = rows.values else {
             panic!("the operator's input is not a floating point column");
         };
-        if self.partial.len() < slots {
-            self.partial.resize(slots, FloatRun::default());
-        }
+        self.partial.clear();
+        self.partial
+            .resize(rows.distinct.len(), FloatRun::default());
         let partial = &mut self.partial[..];
-        let values = rows.slots.iter().zip(array.values().iter());
+        let values = rows.groups.iter().zip(array.values().iter());
         match array.nulls().filter(|nulls| nulls.null_count() > 0) {
-            None => values.for_each(|(&slot, &value)| partial[slot].take(value, absolute)),
+            None => {
+                values.for_each(|(&group, &value)| partial[group as usize].take(value, absolute))
+            }
             Some(nulls) => {
-                for ((&slot, &value), valid) in values.zip(nulls.iter()) {
+                for ((&group, &value), valid) in values.zip(nulls.iter()) {
                     if valid {
-                        partial[slot].take(value, absolute);
+                        partial[group as usize].take(value, absolute);
                     }
                 }
             }
         }
-    }
-
-    #[inline]
-    fn flush(&mut self, slot: usize) -> FloatRun {
-        std::mem::take(&mut self.partial[slot])
+        &self.partial
     }
 }
 
@@ -279,11 +271,12 @@ impl AggOperator for LongSum {
     }
 
     fn add_rows(&mut self, rows: &Rows<'_>, marks: &mut Marks) {
-        self.partials.take(rows, self.result.len(), self.absolute);
-        for &slot in rows.distinct {
-            let (sum, non_null) = self.partials.flush(slot);
+        let mut partials = std::mem::take(&mut self.partials);
+        let brought = partials.of(rows, self.absolute);
+        for (&slot, &(sum, non_null)) in rows.distinct.iter().zip(brought) {
             marks.note(slot, self.update(slot, sum, non_null));
         }
+        self.partials = partials;
     }
 
     fn remove(&mut self, slot: usize, run: &Run<'_>) -> Effect {
@@ -521,6 +514,9 @@ impl FloatRun {
 #[derive(Default)]
 struct FloatCounts {
     normal: Vec<i64>,
+    /// The counts of NaN and of the infinities, which are kept (a slot each, as
+    /// `normal`) only from the first such value on: most columns have none, and three
+    /// more counts per group are then never touched. Empty until then.
     nan: Vec<i64>,
     positive_infinity: Vec<i64>,
     negative_infinity: Vec<i64>,
@@ -529,6 +525,12 @@ struct FloatCounts {
 impl FloatCounts {
     fn ensure_slots(&mut self, slots: usize) {
         grow(&mut self.normal, slots, 0);
+        if !self.nan.is_empty() {
+            self.grow_non_normal(slots);
+        }
+    }
+
+    fn grow_non_normal(&mut self, slots: usize) {
         grow(&mut self.nan, slots, 0);
         grow(&mut self.positive_infinity, slots, 0);
         grow(&mut self.negative_infinity, slots, 0);
@@ -536,6 +538,12 @@ impl FloatCounts {
 
     /// Adds `sign` times the counts of `run`, except the normal count.
     fn update_non_normal(&mut self, slot: usize, run: &FloatRun, sign: i64) {
+        if !run.has_non_normal() {
+            return;
+        }
+        if self.nan.is_empty() {
+            self.grow_non_normal(self.normal.len());
+        }
         self.nan[slot] += sign * run.nan;
         self.positive_infinity[slot] += sign * run.positive_infinity;
         self.negative_infinity[slot] += sign * run.negative_infinity;
@@ -543,6 +551,9 @@ impl FloatCounts {
 
     /// The result that NaN and infinite values force, if they do.
     fn forced(&self, slot: usize, positive_first: bool) -> Option<f64> {
+        if self.nan.is_empty() {
+            return None;
+        }
         let positive = self.positive_infinity[slot] > 0;
         let negative = self.negative_infinity[slot] > 0;
         if self.nan[slot] > 0 || (positive && negative) {
@@ -672,11 +683,12 @@ impl AggOperator for FloatSum {
     }
 
     fn add_rows(&mut self, rows: &Rows<'_>, marks: &mut Marks) {
-        self.partials.take(rows, self.result.len(), self.absolute);
-        for &slot in rows.distinct {
-            let chunk = self.partials.flush(slot);
+        let mut partials = std::mem::take(&mut self.partials);
+        let brought = partials.of(rows, self.absolute);
+        for (&slot, &chunk) in rows.distinct.iter().zip(brought) {
             marks.note(slot, self.add_run(slot, chunk));
         }
+        self.partials = partials;
     }
 
     /// Behavior: DoubleChunkedSumOperator#removeChunk
@@ -829,11 +841,12 @@ impl AggOperator for LongAvg {
     }
 
     fn add_rows(&mut self, rows: &Rows<'_>, marks: &mut Marks) {
-        self.partials.take(rows, self.result.len(), false);
-        for &slot in rows.distinct {
-            let (sum, non_null) = self.partials.flush(slot);
+        let mut partials = std::mem::take(&mut self.partials);
+        let brought = partials.of(rows, false);
+        for (&slot, &(sum, non_null)) in rows.distinct.iter().zip(brought) {
             marks.note(slot, self.add_sum(slot, sum, non_null));
         }
+        self.partials = partials;
     }
 
     /// Behavior: IntChunkedAvgOperator#removeChunk
@@ -922,11 +935,12 @@ impl AggOperator for FloatAvg {
     }
 
     fn add_rows(&mut self, rows: &Rows<'_>, marks: &mut Marks) {
-        self.partials.take(rows, self.result.len(), false);
-        for &slot in rows.distinct {
-            let chunk = self.partials.flush(slot);
+        let mut partials = std::mem::take(&mut self.partials);
+        let brought = partials.of(rows, false);
+        for (&slot, &chunk) in rows.distinct.iter().zip(brought) {
             marks.note(slot, self.add_run(slot, chunk));
         }
+        self.partials = partials;
     }
 
     /// Behavior: DoubleChunkedAvgOperator#removeChunk

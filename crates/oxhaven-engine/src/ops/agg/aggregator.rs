@@ -23,6 +23,9 @@ use std::sync::Arc;
 /// Behavior: io.deephaven.engine.table.impl.by.ChunkedOperatorAggregationHelper#CHUNK_SIZE
 const CHUNK_SIZE: u64 = 4096;
 
+/// What `Aggregator::chunk_index` holds for a slot that the chunk at hand has not met.
+const NOT_IN_CHUNK: u32 = u32::MAX;
+
 /// One operator and the columns of the parent it reads.
 pub(super) struct Planned {
     pub op: Box<dyn AggOperator>,
@@ -217,10 +220,16 @@ pub(super) struct Aggregator {
     /// brought together once at the end, instead of a row set insertion per run of each
     /// chunk.
     initial_slots: Option<Vec<u32>>,
-    /// For [`Aggregator::add_rows`]: whether a slot has been met in the chunk at hand,
-    /// and the slots met. Both are empty between chunks.
-    in_chunk: Vec<bool>,
+    /// For [`Aggregator::add_rows`]: where each slot met in the chunk at hand is in
+    /// `distinct`, the slots met, and where each row's slot is. Between chunks no slot
+    /// has a place (`NOT_IN_CHUNK`) and the other two are empty.
+    chunk_index: Vec<u32>,
     distinct: Vec<usize>,
+    chunk_groups: Vec<u32>,
+    /// While [`Aggregator::initial`] adds the parent's rows: the key columns of the rows
+    /// that made a slot, a chunk after another, which are written to the result's key
+    /// columns once at the end instead of a piece per chunk.
+    initial_keys: Option<Vec<Vec<ArrayRef>>>,
     /// Where the result has each key column and each operator's column.
     layout: Layout,
     preserve_empty: bool,
@@ -284,8 +293,10 @@ impl Aggregator {
             row_counts: Vec::new(),
             group_rows,
             initial_slots: None,
-            in_chunk: Vec::new(),
+            chunk_index: Vec::new(),
             distinct: Vec::new(),
+            chunk_groups: Vec::new(),
+            initial_keys: None,
             layout,
             preserve_empty,
             blink,
@@ -355,9 +366,13 @@ impl Aggregator {
         for column in &mut self.ops {
             column.marks.note_recompute_only(true);
         }
+        let slots_before = self.slots;
+        self.initial_keys = Some(Vec::new());
         let added = self.process(&rows, false, true);
         let initial_slots = self.initial_slots.take();
+        let initial_keys = self.initial_keys.take();
         added?;
+        self.write_keys(slots_before, initial_keys.unwrap_or_default())?;
         // The rows of each group, for the operators that read them: as flat arrays here,
         // and as row sets afterwards only where a later cycle can ask for them.
         let flat = initial_slots.map(|slots| FlatGroups::new(&self.row_counts, &slots, &rows));
@@ -382,17 +397,41 @@ impl Aggregator {
         self.recompute(flat.as_ref())?;
         drop(flat);
         let all: Vec<usize> = (0..self.slots).collect();
-        self.write(&all, None)?;
+        for column in &self.ops {
+            column.result.fill_from(0, &column.plan.op.results(&all))?;
+        }
         self.forget_keys_of_absent_groups()?;
         for column in &mut self.ops {
             column.marks.note_recompute_only(false);
         }
         self.end_cycle();
+        if all.iter().all(|&slot| self.present(slot)) {
+            return Ok(RowSet::flat(self.slots as u64));
+        }
         Ok(RowSet::from_keys(
             all.into_iter()
                 .filter(|&slot| self.present(slot))
                 .map(|slot| slot as RowKey),
         ))
+    }
+
+    /// Writes the key columns of the slots from `first` on, which `pieces` hold a chunk
+    /// after another.
+    fn write_keys(&mut self, first: usize, pieces: Vec<Vec<ArrayRef>>) -> Result<(), TableFailure> {
+        let Some(keys) = &self.keys else {
+            return Ok(());
+        };
+        if pieces.is_empty() {
+            return Ok(());
+        }
+        for (index, result) in keys.results.iter().enumerate() {
+            let column: Vec<&dyn arrow::array::Array> =
+                pieces.iter().map(|piece| piece[index].as_ref()).collect();
+            let values =
+                arrow::compute::concat(&column).map_err(|error| failure(error.to_string()))?;
+            result.fill_from(first, &values)?;
+        }
+        Ok(())
     }
 
     /// Whether some group has no rows.
@@ -451,7 +490,7 @@ impl Aggregator {
         self.row_counts.resize(slots, 0);
         self.seen.resize(slots, false);
         self.before.resize(slots, 0);
-        self.in_chunk.resize(slots, false);
+        self.chunk_index.resize(slots, NOT_IN_CHUNK);
         if let Some(group_rows) = &mut self.group_rows {
             group_rows.resize(slots, RowSet::empty());
         }
@@ -492,14 +531,27 @@ impl Aggregator {
         let (slots, created) = keys.table.find_or_create(arrays)?;
         if !created.is_empty() {
             let slot_count = keys.table.len();
-            let new_slots: Vec<RowKey> = (slot_count - created.len()..slot_count)
-                .map(|slot| slot as RowKey)
-                .collect();
+            let new_slots: Vec<RowKey> = match self.initial_keys {
+                Some(_) => Vec::new(),
+                None => (slot_count - created.len()..slot_count)
+                    .map(|slot| slot as RowKey)
+                    .collect(),
+            };
             let positions: UInt64Array = created.iter().map(|&p| p as u64).collect();
-            for (array, result) in arrays.iter().zip(&keys.results) {
-                let first_seen = arrow::compute::take(array, &positions, None)
-                    .map_err(|error| failure(error.to_string()))?;
-                result.fill_by_keys(&new_slots, &first_seen)?;
+            let first_seen = arrays
+                .iter()
+                .map(|array| {
+                    arrow::compute::take(array, &positions, None)
+                        .map_err(|error| failure(error.to_string()))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            match &mut self.initial_keys {
+                Some(later) => later.push(first_seen),
+                None => {
+                    for (first_seen, result) in first_seen.iter().zip(&keys.results) {
+                        result.fill_by_keys(&new_slots, first_seen)?;
+                    }
+                }
             }
             self.ensure_slots(slot_count);
         }
@@ -642,12 +694,17 @@ impl Aggregator {
     ) -> Result<(), TableFailure> {
         let decoded = self.decode(rows, false, |_| true)?;
         let mut distinct = std::mem::take(&mut self.distinct);
+        let mut groups = std::mem::take(&mut self.chunk_groups);
+        groups.clear();
         for &slot in slots {
-            if !self.in_chunk[slot] {
-                self.in_chunk[slot] = true;
+            let mut index = self.chunk_index[slot];
+            if index == NOT_IN_CHUNK {
+                index = distinct.len() as u32;
+                self.chunk_index[slot] = index;
                 distinct.push(slot);
                 self.touch(slot);
             }
+            groups.push(index);
             self.row_counts[slot] += 1;
         }
         for column in &mut self.ops {
@@ -655,15 +712,17 @@ impl Aggregator {
             let chunk = Rows {
                 slots,
                 distinct: &distinct,
+                groups: &groups,
                 row_keys,
                 values: values_of(&decoded, column.plan.input),
             };
             column.plan.op.add_rows(&chunk, &mut column.marks);
         }
         for slot in distinct.drain(..) {
-            self.in_chunk[slot] = false;
+            self.chunk_index[slot] = NOT_IN_CHUNK;
         }
         self.distinct = distinct;
+        self.chunk_groups = groups;
         self.check_operators()
     }
 

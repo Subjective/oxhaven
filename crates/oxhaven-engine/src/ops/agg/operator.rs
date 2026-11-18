@@ -198,6 +198,10 @@ pub struct Rows<'a> {
     pub slots: &'a [usize],
     /// Each of those slots once, in the order of its first row.
     pub distinct: &'a [usize],
+    /// Where each row's slot is in `distinct`: a number below `distinct.len()` that an
+    /// operator can keep what a chunk brought each slot by, in an array as small as the
+    /// chunk.
+    pub groups: &'a [u32],
     /// The row key of each row, increasing.
     pub row_keys: &'a [RowKey],
     /// The chunk of the operator's input column; `None` for an operator without one.
