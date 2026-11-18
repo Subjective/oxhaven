@@ -1383,3 +1383,7 @@ Seven green checks on head ac12d2c4. Main is at 603d29f8. Task 11.2 (Java arrays
 ## 2026-11-18 07:28 UTC: task 11.2 reported, pull request 170
 
 Java arrays and casts work in the console's jpy stand-in; about 800 expressions compared with jpy inside Deephaven. The agent stopped its gate for low disk (two build directories), so the pull request's checks are the first run of the workspace tests and the replay. A formula keeps a copy of an array where Deephaven reads the live one: owner question 7.10, recommendation to keep. A10's wording is brought up to date in the same pull request (label oracle-change).
+
+## 2026-11-18 07:33 UTC: task 11.4 reported, pull request 171; task 11.5 started
+
+update_by now serves vector minima and maxima, count-where over vector columns and condition reads in rolling formulas; every gate passed locally. Of 18 refusals, the rest wait on owner items or on vectors of vectors in the formula language. The agent filed owner question 7.10 (rolling min and max of float vectors follow Deephaven's buffer layout); the array question from task 11.2 is renumbered 7.11. Task 11.5 (aggregation refusals) runs on Opus beside task 11.3.
