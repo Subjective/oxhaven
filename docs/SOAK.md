@@ -110,9 +110,11 @@ Checked every round, so a result is compared about 1,300 times in a long run.
   (`docs/CONSOLE.md`, "Listeners, locks, liveness scopes and execution contexts"). One command
   takes static snapshots of the time-table chain's input and its result, of the two counts,
   and of the ring table and `tail(256)` of its source. The aggregation is recomputed from the
-  input's snapshot; the blink count must equal the other count; the ring table must equal the
-  tail; the tail's timestamps must be one period apart. Without a console these tables are
-  only read.
+  input's snapshot; the ring table must equal the tail; the tail's timestamps must be one
+  period apart; and the count over the blink table must stay exactly as far behind the other
+  count as it was at the first check. (It is behind by the rows the blink table showed before
+  its count existed: none when the two requests fall in one cycle, one on a slow server.)
+  Without a console these tables are only read.
 - **What the driver knows.** The blink input table's aggregation against the sums of every
   row ever added; the churn session's aggregation against its 60,000 rows; the static tables
   against values known in advance.

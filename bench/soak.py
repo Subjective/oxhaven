@@ -377,16 +377,21 @@ class World:
         self.write(initial=True)
         self.live = {p.name: p.build(self.inputs) for p in self.pipes}
         # Time tables: one that keeps its rows and one blink table, with the same first row
-        # and period, so that both have made the same number of rows in any one cycle.
+        # and period, so that both make the same number of rows in any one cycle. The count
+        # over the blink table counts the rows it has shown since the count was made; the
+        # rows it showed before that, in the cycles between the two requests, it never
+        # saw, so the two counts differ by a number that must never change.
         self.period_ns = cycle_ms * 1_000_000
         self.start_ns = time.time_ns()
         tt = self.s.time_table(period=self.period_ns, start_time=self.start_ns)
         tb = self.s.time_table(period=self.period_ns, start_time=self.start_ns, blink_table=True)
+        tb_count = tb.agg_by([agg.count_("N")], by=[])
+        self.blink_behind: int | None = None
         self.time = {
             "tt": tt,
             "tt_tail": tt.tail(600).update(["S = epochNanos(Timestamp) / 1000000", "M = S % 7"]),
             "tt_count": tt.agg_by([agg.count_("N")], by=[]),
-            "tb_count": tb.agg_by([agg.count_("N")], by=[]),
+            "tb_count": tb_count,
         }
         self.time["tt_agg"] = self.time_agg(self.time["tt_tail"])
         self.shared: dict[str, SharedTicket] = {}
@@ -493,13 +498,21 @@ class World:
         expected = self.time_agg(snap["tt_tail"])
         for name, got, want, keys in (
             ("time_tail_agg", snap["tt_agg"], expected, ["M"]),
-            ("blink_time_count", snap["tb_count"], snap["tt_count"], None),
             ("ring_table", snap["ring"], snap["ring_want"], None),
         ):
             diff = difference(self.fetch(got), self.fetch(want), keys)
             self.run.checked(name)
             if diff is not None:
                 self.run.violate("correctness", f"time table check {name}", diff)
+        blink = self.fetch(snap["tb_count"]).column("N").to_pylist()
+        kept = self.fetch(snap["tt_count"]).column("N").to_pylist()
+        behind = kept[0] - blink[0] if len(blink) == 1 and len(kept) == 1 else None
+        if self.blink_behind is None and behind is not None and behind >= 0:
+            self.blink_behind = behind
+        self.run.checked("blink_time_count")
+        if behind is None or behind != self.blink_behind:
+            self.run.violate("correctness", "time table check blink_time_count",
+                             {"blink": blink, "kept": kept, "behind_at_first_check": self.blink_behind})
         tail = self.fetch(snap["tt_tail"])
         self.run.checked("time_tail_rows")
         stamps = tail.column("S").to_pylist()
