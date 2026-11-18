@@ -22,6 +22,7 @@ recorded from the Java reference. The reference is pinned in [REFERENCE.md](REFE
 | `harness/fuzz_wide.py` | The generator of every operation and variant (`--variants all`, `--family`) |
 | `harness/fuzz_second.py` | The generator of the second parity pass (`--variants second`, its families) |
 | `harness/fuzz_times.py` | The generator for the date and time column types (`--family time_types`) |
+| `harness/fuzz_third.py` | The generator of the third parity pass (`--variants third`, its families) |
 | `harness/known.py`, `fuzz-known-findings.json` | Triaged differences that `fuzz` sets apart |
 | `harness/faults.py` | Fault injection, to prove the comparator sees differences |
 | `harness/smoke.py` | Client smoke checks per protocol area |
@@ -505,6 +506,26 @@ a `Period` column, which the rules cannot read, is compared through a view witho
 the orderings of a `ZoneId`, an as-of join on a `Period` or `ZoneId` stamp, the
 strict rules (`>`, `<`) of an as-of join whose right table is refreshing (a defect of the
 reference's ticking result), and a range filter of a `DayOfWeek` on a backtick literal.
+
+The variants `third` (`harness/fuzz_third.py`) are the generator of the second pass with
+what tasks 11.4 and 11.5 started serving, and with chains of as-of joins drawn on purpose;
+a generator of its own again, so the families above keep their scenarios. Its families
+(`fuzz.THIRD_FAMILIES`):
+
+- `asof_chains`: `aj` and `raj` whose left table, right table or both are results of
+  earlier as-of joins, over static and refreshing inputs, also matching on the stamp the
+  chain already carries.
+- `vectors`: vector columns (from `group_by`, the `group` aggregation and `rolling_group`)
+  offered to `update_by` (cumulative and rolling minimum and maximum, buckets, count-where
+  filters), to `agg_by` (group-by columns, `distinct`, count-where filters) and to
+  `select_distinct`.
+- `windows`: `rolling_formula_*` over a condition between a window and a slice of one, or
+  between two windows, with a parameter token and as a formula over several columns.
+- `all3`: all of these with `where` and `sort`.
+
+A table with a column of arrays of arrays (`distinct` of a vector column) is compared
+through an `ungroup` of that column. `fuzz_third.RESTRICTIONS` lists what it steps around,
+each entry for an open owner item or for a finding of `tasks/12.1-fuzzer-coverage.md`.
 Task 4.25 lifted the filters on a `LocalDateTime`, the range comparisons with null and the
 ordering aggregations of a `Period`; task 4.26 the as-of joins on the other six types. To
 shrink a seed of this family by
@@ -569,7 +590,10 @@ changes.
 An entry with `"requires": "reference_inconsistent"` is for a result where the reference
 disagrees with itself: what it kept up to date through the steps is not what it answers when
 the same operations are applied again to the inputs as they are then. `fuzz` checks that for
-the scenario at hand before it counts the mismatch as known. The same check is a command:
+the scenario at hand before it counts the mismatch as known, and also that the actual side
+holds what the reference answers from scratch (`PARITY.md`, A13, says which answer Oxhaven
+gives): a result that is neither of the reference's two answers is reported as a difference.
+The first check is a command:
 
 ```bash
 # For each ticking scenario: the tables one server kept up to date against the same tables
@@ -719,6 +743,9 @@ They need the recordings but no server.
 - `tests/test_fuzz_second.py`: the two older generators still build the scenarios they built
   (pinned digests); the second one is deterministic, valid, draws every operation and form it
   claims, and keeps its restrictions, each of which names a finding that is written up.
+- `tests/test_fuzz_third.py`: the generator of the third pass is deterministic (pinned
+  digests), valid, compares only tables the rules can read, draws every form it claims, and
+  keeps its restrictions, each of which names an owner item or a finding that is written up.
 - `tests/test_fuzz_times.py`: the generator of the date and time types is deterministic
   (a pinned digest), valid, compares only tables the rules can read, draws every operation,
   type and aggregation it claims, and keeps its restrictions, each of which names a finding

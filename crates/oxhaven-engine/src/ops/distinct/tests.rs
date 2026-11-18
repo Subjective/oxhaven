@@ -3,8 +3,8 @@ use crate::ops::sort::testing::{
     blink_table, cells, graph, keys, keys_of, scripted, static_table, Columns,
 };
 use arrow::array::{
-    ArrayRef, BooleanArray, Float32Array, Int16Array, Int64Array, Int8Array,
-    TimestampNanosecondArray, UInt16Array,
+    ArrayRef, BooleanArray, Float32Array, Int16Array, Int32Array, Int64Array, Int8Array,
+    StringArray, TimestampNanosecondArray, UInt16Array,
 };
 use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::rowset::RowKey;
@@ -12,7 +12,7 @@ use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{Table, TableFailure};
 use oxhaven_contracts::update::TableUpdate;
 use oxhaven_testkit::{
-    at_least_for, definition, doubles, ints, strings, test_seeds, ConsistencyChecker,
+    at_least_for, definition, doubles, ints, list_of, strings, test_seeds, ConsistencyChecker,
     RandomUpdates, Recorder, ScriptedTable, TableChange,
 };
 use std::collections::BTreeSet;
@@ -579,7 +579,28 @@ fn random_updates_match_the_model() {
         ("D", ColumnType::Double),
         ("Z", ColumnType::Boolean),
     ];
-    let key_sets: [&[&str]; 5] = [&["G"], &["S", "Z"], &["D"], &["Z", "G", "S"], &[]];
+    random_updates(
+        &types,
+        &[&["G"], &["S", "Z"], &["D"], &["Z", "G", "S"], &[]],
+    );
+}
+
+/// Behavior: io.deephaven.vector.IntVector#equals and ObjectVector#equals: vectors are
+/// one key when their elements are, whatever rows of the source they come from.
+#[test]
+fn random_updates_of_vector_keys_match_the_model() {
+    let types = [
+        ("G", ColumnType::Int),
+        ("V", ColumnType::vector(ColumnType::Boolean)),
+        ("W", ColumnType::vector(ColumnType::String)),
+        ("N", ColumnType::vector(ColumnType::Int)),
+    ];
+    random_updates(&types, &[&["V"], &["G", "V"], &["W"], &["N", "V"]]);
+}
+
+/// A `select_distinct` by each of `key_sets` of a table of `types` under random updates,
+/// against [`Model`].
+fn random_updates(types: &[(&str, ColumnType)], key_sets: &[&[&str]]) {
     let mut updates = 0;
     for seed in test_seeds(0..60) {
         let graph = graph();
@@ -590,14 +611,14 @@ fn random_updates_match_the_model() {
             .map(|(_, column_type)| random.values(column_type, size));
         let script = ScriptedTable::new(
             graph.clone(),
-            definition(&types),
+            definition(types),
             oxhaven_contracts::rowset::RowSet::from_keys((0..size as RowKey).map(|k| 3 * k + 1)),
             values.collect(),
         );
         let source: Arc<dyn Table> = script.table();
         let recorder = Recorder::attach(source.clone());
         let mut cases = Vec::new();
-        for by in key_sets {
+        for by in key_sets.iter().copied() {
             let result = distinct(&source, by);
             let checker = ConsistencyChecker::attach(result.clone());
             let by = by
@@ -677,4 +698,108 @@ fn zoned_date_times_and_periods_are_keys_by_every_field() {
     assert_eq!(distinct(&source, &["Z"]).row_set().size(), 3);
     assert_eq!(distinct(&source, &["P"]).row_set().size(), 3);
     assert_eq!(distinct(&source, &["Z", "P"]).row_set().size(), 3);
+}
+
+/// Behavior: io.deephaven.engine.table.impl.QueryTable#selectDistinct with
+/// io.deephaven.vector.IntVector#equals and ObjectVector#equals: the rows are those of
+/// Deephaven 42.9 for these tables. A null vector, an empty vector and a vector of one
+/// null are three keys.
+#[test]
+fn vectors_are_keys_by_their_contents() {
+    let ints_of = ColumnType::vector(ColumnType::Int);
+    let strings_of = ColumnType::vector(ColumnType::String);
+    let two = Some(2);
+    let one = Some(1);
+    let v = list_of(
+        &ints_of,
+        [two, None, None, None, two, None, one, None, two],
+        ints([1, 2, 1, 2, 7, 1, 2]),
+    );
+    let w_elements: ArrayRef = Arc::new(StringArray::from(vec![
+        Some("a"),
+        Some("b"),
+        None,
+        Some("a"),
+        Some("b"),
+        None,
+        Some("z"),
+        None,
+        Some("q"),
+        Some("a"),
+        Some("b"),
+    ]));
+    let w = list_of(
+        &strings_of,
+        [two, None, one, None, two, one, one, two, two],
+        w_elements,
+    );
+    let e_elements: ArrayRef = Arc::new(Int32Array::from(vec![1, 1, 2, 2]));
+    let e = list_of(
+        &ints_of,
+        [
+            Some(0),
+            one,
+            Some(0),
+            Some(0),
+            one,
+            Some(0),
+            Some(0),
+            one,
+            one,
+        ],
+        e_elements,
+    );
+    let source = static_table(&[
+        ("V", ints_of.clone(), v),
+        ("W", strings_of.clone(), w),
+        ("E", ints_of.clone(), e),
+        ("X", ColumnType::Int, ints(1..10)),
+    ]);
+    let result = distinct(&source, &["V"]);
+    assert_eq!(result.definition().columns()[0].column_type, ints_of);
+    assert_eq!(rows(&*result), ["[1, 2]", "null", "[7]"]);
+    assert_eq!(
+        rows(&*distinct(&source, &["W"])),
+        ["[a, b]", "null", "[null]", "[z]", "[null, q]"]
+    );
+    assert_eq!(
+        rows(&*distinct(&source, &["V", "W"])),
+        [
+            "[1, 2]|[a, b]",
+            "null|null",
+            "null|[null]",
+            "[7]|[z]",
+            "null|[null, q]"
+        ]
+    );
+    assert_eq!(distinct(&source, &["W", "X", "V"]).row_set().size(), 9);
+    assert_eq!(rows(&*distinct(&source, &["E"])), ["[]", "[1]", "[2]"]);
+}
+
+/// Java compares vectors of doubles by a rule that depends on the class of the vector, and
+/// arrays by identity (owner item 7.6 of the review items), so neither is a key yet.
+#[test]
+fn vectors_of_doubles_and_arrays_are_not_keys_yet() {
+    for column_type in [
+        ColumnType::vector(ColumnType::Double),
+        ColumnType::array(ColumnType::Int),
+    ] {
+        let elements = match column_type.list_element().unwrap() {
+            ColumnType::Double => doubles([1.0]),
+            _ => ints([1]),
+        };
+        let cells = list_of(&column_type, [Some(1)], elements);
+        let source = static_table(&[("V", column_type.clone(), cells)]);
+        let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = select_distinct(&source, &["V".to_string()]);
+        }));
+        let message = *refused.unwrap_err().downcast::<String>().unwrap();
+        assert!(
+            message.starts_with(
+                "unported: io.deephaven.engine.table.impl.by.typed.TypedHasherFactory#make: \
+                 a key column of type"
+            ),
+            "{message}"
+        );
+    }
 }

@@ -1,0 +1,17 @@
+{
+ "format": 1,
+ "name": "F3_ungroup_of_a_minimum_of_string_vectors",
+ "description": "Task 12.1, F3. The cumulative or rolling minimum or maximum of a column of vectors of strings. Java's result column is a vector without a component type, which a client receives as a list of strings as it does Oxhaven's typed column; after ungroup Java's column is java.lang.Object and Oxhaven's java.lang.String (sortable).",
+ "inputs": [
+  {"name": "t",
+   "columns": [{"name": "K", "type": "int32"}, {"name": "S", "type": "string"}],
+   "rows": [[1, "b"], [1, "a"], [2, "a"], [2, null], [3, "c"]]}
+ ],
+ "operations": [
+  {"name": "g", "op": "group_by", "source": "t", "by": ["K"]},
+  {"name": "u", "op": "update_by", "source": "g", "by": [], "ops": [{"op": "cum_min", "columns": ["M = S"]}, {"op": "rolling_max_tick", "columns": ["R = S"], "args": {"rev_ticks": 2}}]},
+  {"name": "um", "op": "ungroup", "source": "u", "columns": ["M"]},
+  {"name": "ur", "op": "ungroup", "source": "u", "columns": ["R"]}
+ ],
+ "results": [{"table": "u"}, {"table": "um"}, {"table": "ur"}]
+}

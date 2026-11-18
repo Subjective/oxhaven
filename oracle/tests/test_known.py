@@ -270,3 +270,73 @@ def test_compare_with_fresh_reports_what_the_server_kept_differently():
     assert {(m.step, m.table) for m in found} == {(1, "w")}
     kept.put(1, "w", two)
     assert rules.compare_with_fresh(scenario, kept, fresh) == []
+
+
+def _inconsistent_reference(tmp_path):
+    """A scenario of one `where`, the results of a reference that kept one row where it
+    answers two from scratch, and a triage with an entry for that."""
+    import argparse
+
+    scenario = sc.parse({
+        "format": 1, "name": "s",
+        "inputs": [{"name": "t", "ticking": {"key_columns": []},
+                    "columns": [{"name": "X", "type": "int32"}], "rows": [[1]]}],
+        "operations": [{"name": "w", "op": "where", "source": "t", "filters": ["X > 0"]}],
+        "results": [{"table": "w"}],
+        "steps": [{"actions": [{"action": "add", "table": "t", "rows": [[2]]}]}],
+    })
+    columns = scenario.inputs[0].columns
+    tables = {rows: sc.arrow_table(columns, [[value] for value in range(1, rows + 1)])
+              for rows in (1, 2, 3)}
+    kept, fresh = ResultSet("s"), ResultSet("s")
+    kept.put(0, "w", tables[1])
+    kept.put(1, "w", tables[1])
+    fresh.put(1, "w", tables[2])
+
+    class Reference:
+        def run_fresh(self, asked):
+            assert asked is scenario
+            return kept, fresh
+
+    path = tmp_path / "known.json"
+    path.write_text(json.dumps({"format": 1, "findings": [
+        {"id": "kept", "class": "reference-defect",
+         "reason": "the reference keeps a result it does not answer from scratch",
+         "match": {"kind": "row_count", "operation": "where", "steps": "later",
+                   "requires": "reference_inconsistent"}}]}))
+    triage = cli._Triage(argparse.Namespace(known=str(path), no_known=False), Reference())
+
+    def split(rows: int | None):
+        """The mismatches left and the findings fitted when the actual side holds `rows`
+        rows after the step; None compares without the actual side's results."""
+        compared = ResultSet("s")
+        compared.put(0, "w", tables[1])
+        compared.put(1, "w", tables[rows or 2])
+        found = rules.compare_scenario(scenario, kept, compared)
+        assert [m.kind for m in found] == ["row_count"]
+        actual = None if rows is None else compared
+        left, fitted = triage.split(scenario, found, actual=actual)
+        return len(left), [finding.id for finding in fitted]
+
+    return scenario, fresh, tables, split
+
+
+def test_an_inconsistent_reference_excuses_only_its_answer_from_scratch(tmp_path):
+    _, _, _, split = _inconsistent_reference(tmp_path)
+    # The actual side holds what the reference answers from scratch: the known finding.
+    assert split(2) == (0, ["kept"])
+    # It holds neither of the reference's two answers: a difference.
+    assert split(3) == (1, [])
+    # Without the actual side's results only the reference is asked.
+    assert split(None) == (0, ["kept"])
+
+
+def test_differs_from_fresh_names_what_the_actual_side_holds_differently(tmp_path):
+    scenario, fresh, tables, _ = _inconsistent_reference(tmp_path)
+    actual = ResultSet("s")
+    actual.put(1, "w", tables[2])
+    assert rules.differs_from_fresh(scenario, fresh, actual, [(1, "w")]) == set()
+    actual.put(1, "w", tables[3])
+    assert rules.differs_from_fresh(scenario, fresh, actual, [(1, "w")]) == {(1, "w")}
+    # A result that one side does not hold is not known to agree.
+    assert rules.differs_from_fresh(scenario, fresh, actual, [(0, "w")]) == {(0, "w")}

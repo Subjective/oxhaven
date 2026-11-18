@@ -1,0 +1,21 @@
+{
+ "format": 1,
+ "name": "F7_ungroup_after_aggregations_over_vectors",
+ "description": "Task 12.1, F7. Three ungroups that Java fails and Oxhaven serves. f5: a second ungroup of a column that the first took out of the distinct of a vector column (NullPointerException). u: ungroup with null fill of an aggregation grouped by a vector column, whose key vector has more elements than its group column: reading A8 fails (Assertion failed: asserted first <= last). p: ungroup with null fill where the shorter column is the vector of a distinct aggregation: reading D fails (ArrayIndexOutOfBoundsException in IntSegmentedSortedMultiset#get); this one needs no vector column and is not new with this task. Oxhaven answers f5 with the elements and u and p with nulls for the missing elements.",
+ "inputs": [
+  {"name": "f", "columns": [{"name": "R1", "type": "int32"}, {"name": "R2", "type": "int32"}], "rows": [[1, 2], [1, 3]]},
+  {"name": "r", "columns": [{"name": "K", "type": "int16"}, {"name": "R0", "type": "int32"}, {"name": "G", "type": "int32"}], "rows": [[2, 6, 1], [null, 6, 1], [5, 7, 1]]}
+ ],
+ "operations": [
+  {"name": "f1", "op": "group_by", "source": "f", "by": []},
+  {"name": "f2", "op": "agg_by", "source": "f1", "by": ["R1"], "aggs": [{"agg": "distinct", "columns": ["A3 = R2"]}]},
+  {"name": "f4", "op": "ungroup", "source": "f2", "columns": ["A3"]},
+  {"name": "f5", "op": "ungroup", "source": "f4", "columns": ["A3"]},
+  {"name": "o3", "op": "group_by", "source": "r", "by": ["R0"]},
+  {"name": "a", "op": "agg_by", "source": "o3", "by": ["K"], "aggs": [{"agg": "group", "columns": ["A8 = R0"]}]},
+  {"name": "u", "op": "ungroup", "source": "a", "null_fill": true},
+  {"name": "p1", "op": "agg_by", "source": "r", "by": ["G"], "aggs": [{"agg": "group", "columns": ["A = K"]}, {"agg": "distinct", "columns": ["D = R0"]}]},
+  {"name": "p", "op": "ungroup", "source": "p1", "null_fill": true}
+ ],
+ "results": [{"table": "f4"}, {"table": "f5"}, {"table": "a"}, {"table": "u"}, {"table": "p1"}, {"table": "p"}]
+}

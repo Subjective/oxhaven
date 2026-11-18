@@ -62,7 +62,7 @@ OPERATIONS = RECORDED_OPERATIONS | {
 SECOND_OPERATIONS = frozenset({
     "partition_merge", "partition_get", "ring_table", "keyed_transpose", "column_statistics",
 })
-VARIANTS = ("recorded", "all", "second", "times")
+VARIANTS = ("recorded", "all", "second", "times", "third")
 # Operation sets to fuzz one area at a time; `--family` on the command line.
 FAMILIES: dict[str, frozenset[str]] = {
     "update_by": frozenset({"update_by"}),
@@ -102,6 +102,16 @@ TIME_FAMILIES: dict[str, frozenset[str]] = {
     "time_types": frozenset({"sort", "where", "select_distinct", "agg_by", "natural_join",
                              "exact_join", "join", "aj", "view"}),
 }
+# The families of the third parity pass: `--family` with the variants "third"
+# (`fuzz_third._Third`), a generator of its own, so that a seed of the others stays what it
+# was: chains of as-of joins, vector columns where tasks 11.4 and 11.5 started serving them,
+# and rolling formulas over conditions between windows and slices.
+THIRD_FAMILIES: dict[str, frozenset[str]] = {
+    "asof_chains": frozenset({"aj", "raj"}),
+    "vectors": frozenset({"group_by", "update_by", "agg_by", "select_distinct", "ungroup"}),
+    "windows": frozenset({"update_by"}),
+}
+THIRD_FAMILIES["all3"] = frozenset().union(*THIRD_FAMILIES.values()) | {"where", "sort"}
 MAX_ROWS = 400  # a generated table is never expected to grow beyond this
 
 _STRINGS = ["", "a", "b", "A", "aa", "ab", "z", "é", "ß", "\U0001d11e"]
@@ -708,6 +718,10 @@ def generate(seed: int, ops: frozenset[str] | set[str],
         from .fuzz_times import _Times  # imported here: it imports this module
 
         gen = _Times(random.Random(f"oxhaven-fuzz-times:{seed}:{','.join(chosen)}"), chosen)
+    elif variants == "third":
+        from .fuzz_third import _Third  # imported here: it imports this module
+
+        gen = _Third(random.Random(f"oxhaven-fuzz-third:{seed}:{','.join(chosen)}"), chosen)
     elif variants == "second":
         from .fuzz_second import _Second  # imported here: it imports this module
 
@@ -728,8 +742,10 @@ def generate(seed: int, ops: frozenset[str] | set[str],
         if len(gen.operations) - made >= wanted:
             break
         gen.build(gen.rng.choice(chosen))
-    # `fuzz_times` compares a table with a column the rules cannot read through a view.
-    results = gen.results() if variants == "times" else [op["name"] for op in gen.operations]
+    # `fuzz_times` and `fuzz_third` compare a table with a column the rules cannot read
+    # through a view.
+    results = (gen.results() if variants in ("times", "third")
+               else [op["name"] for op in gen.operations])
     # When nothing fit (for example a join with no column of a common type) the scenario
     # compares its first input table as it is, so that it never uses an operation outside `ops`.
     doc: dict[str, Any] = {
