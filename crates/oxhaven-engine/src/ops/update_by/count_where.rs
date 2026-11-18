@@ -51,7 +51,11 @@ const CHUNK: usize = 4096;
 /// - without filters Java counts the flags a pooled chunk was left with.
 ///
 /// # Panics
-/// With `unported!` for those three, and for a filter of a vector or array column.
+/// With `unported!` for those three.
+///
+/// A filter of a vector or an array column counts the rows `where` keeps, and fails where
+/// `where` fails (a method of a null vector or array): Java runs the same filter, over the
+/// column of objects.
 ///
 /// Behavior: io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor#makeCountWhereOperator
 /// and io.deephaven.engine.table.impl.updateby.countwhere.CountWhereOperator.CountFilter#createCountFilters
@@ -120,17 +124,6 @@ pub(super) fn filters(
         unported!(
             "io.deephaven.engine.table.impl.updateby.countwhere.CountWhereOperator.Context#applyFilters",
             "a count-where without filters, which in Java counts the contents of an unset chunk"
-        );
-    }
-    if let Some(list) = filters
-        .columns()
-        .iter()
-        .map(|&column| &definition.columns()[column].column_type)
-        .find(|column_type| column_type.list_element().is_some())
-    {
-        unported!(
-            "io.deephaven.engine.table.impl.select.WhereFilter#filter",
-            "a count-where filter of a column of type {list:?}"
         );
     }
     let chunk_table = kept_inside.is_some() || shapes.iter().any(reinterpreted);

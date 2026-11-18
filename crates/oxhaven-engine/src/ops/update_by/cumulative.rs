@@ -53,6 +53,7 @@ impl Cumulative {
                 Byte | Char | Short | Int | Long | Instant | Float | Double | String | Boolean => {
                     Some(input.clone())
                 }
+                Vector(element) if super::orderable_vector(element) => Some(input.clone()),
                 _ => None,
             },
             Cumulative::ForwardFill => Some(input.clone()),
@@ -133,7 +134,12 @@ impl Cumulative {
                         .map_err(|e| failure(e.to_string()))?,
                     None => values.clone(),
                 };
-                let all = Values::read(&all, input)?;
+                // A fill reads only which cells are null.
+                let all = if self == Cumulative::ForwardFill {
+                    Values::read(&all, input)?
+                } else {
+                    Values::read_ordered(&all, input)?
+                };
                 let skip = usize::from(seed.is_some());
                 let mut current: Option<usize> = None;
                 let mut picked = Vec::with_capacity(values.len());

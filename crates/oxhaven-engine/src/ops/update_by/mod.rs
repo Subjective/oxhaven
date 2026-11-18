@@ -523,6 +523,23 @@ fn kernel_of(spec: &UpdateBySpec) -> Result<(Kernel, Window, Option<String>), Up
 /// `RollingAvgSpec`, `RollingMinMaxSpec`, `RollingCountSpec`, `RollingProductSpec`,
 /// `RollingStdSpec`, `RollingWAvgSpec`, `RollingGroupSpec`, `EmaSpec`, `EmsSpec`,
 /// `EmMinMaxSpec` and `EmStdSpec`
+/// Whether the minimum and maximum of a vector of `element`s are ported: vectors of the
+/// primitive types and of `String`, whose result column keeps its type in Java. Java makes
+/// the result of any other vector a column of `ObjectVector` without a component type, which
+/// a client receives as strings (owner question 3.3 of the second batch), and fails to order
+/// a vector of arrays when it compares two of them (2.2).
+///
+/// Behavior: io.deephaven.engine.table.impl.updateby.internal.BaseObjectUpdateByOperator,
+/// whose result column has the input's class and no component type; observed on Deephaven
+/// 42.9 for vectors of `String`, `Instant` and `Boolean`
+fn orderable_vector(element: &ColumnType) -> bool {
+    use ColumnType::*;
+    matches!(
+        element,
+        Byte | Char | Short | Int | Long | Float | Double | String
+    )
+}
+
 fn applicable(kernel: Kernel, input: &ColumnType) -> bool {
     use ColumnType::*;
     let numeric = matches!(input, Byte | Short | Int | Long | Float | Double);
@@ -706,18 +723,32 @@ impl Plan {
                 let input_type = declared[input].column_type.clone();
                 // Behavior: CumMinMaxSpec#applicableTo and RollingMinMaxSpec#applicableTo: a
                 // vector is `Comparable`, so Java orders vectors with `compareTo`
-                // (io.deephaven.vector.IntVector#compareTo and its siblings), which is not
-                // ported.
-                if matches!(
-                    kernel,
+                // (io.deephaven.vector.IntVector#compareTo and its siblings), which is ported
+                // for the vectors `orderable_vector` takes.
+                if let (
                     Kernel::Cumulative(Cumulative::Min | Cumulative::Max)
-                        | Kernel::Rolling(Rolling::Min | Rolling::Max)
-                ) && matches!(input_type, ColumnType::Vector(_))
+                    | Kernel::Rolling(Rolling::Min | Rolling::Max),
+                    ColumnType::Vector(element),
+                ) = (kernel, &input_type)
                 {
-                    oxhaven_contracts::unported!(
-                        "io.deephaven.engine.table.impl.updateby.minmax.ComparableCumMinMaxOperator",
-                        "minimum or maximum of vector column {input_name} of type {input_type:?}"
-                    );
+                    if !orderable_vector(element) {
+                        oxhaven_contracts::unported!(
+                            "io.deephaven.engine.table.impl.updateby.minmax.ComparableCumMinMaxOperator",
+                            "minimum or maximum of vector column {input_name} of type \
+                             {input_type:?}: Java gives the result column no component type \
+                             (a client receives strings), or fails when it compares two arrays"
+                        );
+                    }
+                    if matches!(kernel, Kernel::Rolling(_))
+                        && matches!(**element, ColumnType::Float | ColumnType::Double)
+                    {
+                        oxhaven_contracts::unported!(
+                            "io.deephaven.engine.table.impl.updateby.rollingminmax.ComparableRollingMinMaxOperator",
+                            "rolling minimum or maximum of vector column {input_name} of type \
+                             {input_type:?}: of two vectors that differ only in the sign of a \
+                             zero, Java keeps the one its ring buffer's layout favours"
+                        );
+                    }
                 }
                 // Behavior: UpdateByOperatorFactory.OperationVisitor#makeRollingWAvgOperator,
                 // which looks at the weight column before the input column
@@ -973,6 +1004,7 @@ impl Plan {
                 }
                 // `Plan::new` lets only the vectors whose equality is well defined through.
                 Values::Lists(cells) => values::push_list_keys(&mut keys, &cells, column_type)?,
+                Values::Ordered(_) => return Err(failure("a bucket key read to be ordered")),
             }
         }
         Ok(keys)
@@ -1041,7 +1073,7 @@ impl Plan {
         )? {
             Values::Int(v) => v.into_iter().map(|v| v.map(|v| v as f64)).collect(),
             Values::Float(v) => v,
-            Values::Text(_) | Values::Lists(_) => {
+            Values::Text(_) | Values::Lists(_) | Values::Ordered(_) => {
                 return Err(failure("update_by: an exponential operator on objects"))
             }
         };

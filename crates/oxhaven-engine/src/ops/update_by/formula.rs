@@ -72,7 +72,7 @@ const ARRAY_CAST: &str = "class [Ljava.lang.Object; cannot be cast to class [Lja
 /// primitive. Gives what Java throws for every row, if the formula has such a call.
 ///
 /// With `unported!` for `len` of an expression that reads a window of objects and is
-/// neither that column nor the result of a function.
+/// neither that column, a condition between such columns, nor the result of a function.
 fn window_calls(expression: &Expr, objects: &dyn Fn(&str) -> bool) -> Option<&'static str> {
     let all = |parts: &[&Expr]| parts.iter().find_map(|part| window_calls(part, objects));
     match expression {
@@ -97,7 +97,7 @@ fn window_calls(expression: &Expr, objects: &dyn Fn(&str) -> bool) -> Option<&'s
                 .iter()
                 .find_map(|part| window_calls(part, objects));
             match (function.as_str(), arguments.as_slice()) {
-                ("len", [Expr::Column(name)]) if objects(name) => Some(ARRAY_CAST),
+                ("len", [argument]) if object_windows(argument, objects) => Some(ARRAY_CAST),
                 ("len", [Expr::Column(_) | Expr::Call { .. }]) => inner,
                 // Any vector of a primitive window, a slice of it included, has the
                 // number of elements a vector column's would have, whatever form the
@@ -119,6 +119,19 @@ fn window_calls(expression: &Expr, objects: &dyn Fn(&str) -> bool) -> Option<&'s
                 .iter()
                 .find_map(|part| window_calls(part, objects))
         }),
+    }
+}
+
+/// Whether `expression` is a window of objects, or a condition each of whose sides is one:
+/// whichever Java chooses, `len` fails on it. Seen on Deephaven 42.9: `len(I[0] > 1 ? S :
+/// T)` of two windows of strings fails with `ClassCastException`, as `len(S)` does.
+fn object_windows(expression: &Expr, objects: &dyn Fn(&str) -> bool) -> bool {
+    match expression {
+        Expr::Column(name) => objects(name),
+        Expr::Ternary {
+            if_true, if_false, ..
+        } => object_windows(if_true, objects) && object_windows(if_false, objects),
+        _ => false,
     }
 }
 
