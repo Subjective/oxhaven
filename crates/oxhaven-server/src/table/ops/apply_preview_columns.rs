@@ -188,6 +188,36 @@ fn holds_array(column_type: &ColumnType) -> bool {
     }
 }
 
+/// Whether a client is sent the values of a column of `column_type` as they are when it
+/// lists no types: primitives, their boxes, `String`, `BigInteger`, `BigDecimal`,
+/// `Instant`, `ZonedDateTime`, `LocalDate` and `LocalTime`. Seen on Deephaven 42.9: a
+/// `Duration`, `Period`, `ZoneId`, `LocalDateTime`, `DayOfWeek`, `Object` or table column
+/// is replaced by its text. A list column never reaches this. No class is on the white
+/// list: its property, `ColumnPreviewManager.whiteListClasses`, is empty by default.
+///
+/// Behavior: `ColumnPreviewManager#isColumnTypeDisplayable`
+fn is_displayable(column_type: &ColumnType) -> bool {
+    match column_type {
+        ColumnType::Boolean
+        | ColumnType::Byte
+        | ColumnType::Char
+        | ColumnType::Short
+        | ColumnType::Int
+        | ColumnType::Long
+        | ColumnType::Float
+        | ColumnType::Double
+        | ColumnType::String
+        | ColumnType::BigInteger
+        | ColumnType::BigDecimal
+        | ColumnType::Instant
+        | ColumnType::ZonedDateTime
+        | ColumnType::LocalDate
+        | ColumnType::LocalTime
+        | ColumnType::PrimitiveBoolean => true,
+        _ => false,
+    }
+}
+
 /// The columns Java replaces by a preview of their values, in the order of the definition.
 /// `previews` are the columns of the table that are previews already; such a column has
 /// the preview class for its type, which is neither an array nor a vector.
@@ -198,10 +228,8 @@ fn holds_array(column_type: &ColumnType) -> bool {
 /// preview type registered: nothing in the reference calls
 /// `ColumnPreviewManager#addPreview`.
 ///
-/// Without a list, every array and vector column is replaced, and of the others those that
-/// `ColumnPreviewManager#isColumnTypeDisplayable` refuses. It accepts primitives, their
-/// boxes, `String` and `Instant`, so of the columns of this engine only a preview is
-/// replaced.
+/// Without a list, every array and vector column is replaced, and of the others a preview
+/// and those that [`is_displayable`] refuses.
 ///
 /// The description of a replaced column names the type it had, followed on a new line by
 /// the description it had, if any.
@@ -228,7 +256,8 @@ fn wrapped_columns(
             let kind = if list {
                 (unpreviewed.is_empty() || convert_arrays).then_some(Kind::Array)
             } else if unpreviewed.is_empty() {
-                preview.is_some().then_some(Kind::Display)
+                (preview.is_some() || !is_displayable(&column.column_type))
+                    .then_some(Kind::Display)
             } else {
                 (!unpreviewed.iter().any(|listed| *listed == type_name)).then_some(Kind::Display)
             }?;
@@ -648,6 +677,219 @@ mod tests {
             Arc::new(TimestampNanosecondArray::from(vec![Some(0), None]).with_timezone("UTC"));
         let previewed = preview_texts(Kind::Display, &ColumnType::Instant, &instants);
         assert_eq!(texts(&previewed), [Some("1970-01-01T00:00:00Z"), None]);
+    }
+
+    /// Seen on Deephaven 42.9: `ColumnPreviewManager#applyPreview` with the types the web
+    /// client lists, and without a list, over columns made by `java.time` factories.
+    #[test]
+    fn time_values_are_previewed_by_their_text() {
+        use arrow::array::{
+            DurationNanosecondArray, Int32Array, Int8Array, StructArray, TimestampNanosecondArray,
+        };
+        use arrow::datatypes::DataType;
+        let preview = |column_type: ColumnType, values: ArrayRef| {
+            texts(&preview_texts(Kind::Display, &column_type, &values))
+                .into_iter()
+                .map(|text| text.map(str::to_string))
+                .collect::<Vec<_>>()
+        };
+        let owned = |expected: &[Option<&str>]| {
+            expected
+                .iter()
+                .map(|text| text.map(str::to_string))
+                .collect::<Vec<_>>()
+        };
+        let durations: ArrayRef = Arc::new(DurationNanosecondArray::from(vec![
+            Some(0),
+            Some(1),
+            Some(-1),
+            Some(1_500_000_000),
+            Some(-1_500_000_000),
+            Some(3_600_000_000_000 * 25 + 61_000_000_123),
+            Some(-500_000_000),
+            None,
+            Some(-60_500_000_000),
+            Some(-3_661_000_000_001),
+            Some(-3_600_000_000_000),
+            Some(-500),
+            Some(3_600_000_000_001),
+            Some(-i64::MAX),
+            Some(-119_999_999_999),
+        ]));
+        assert_eq!(
+            preview(ColumnType::Duration, durations),
+            owned(&[
+                Some("PT0S"),
+                Some("PT0.000000001S"),
+                Some("PT-0.000000001S"),
+                Some("PT1.5S"),
+                Some("PT-1.5S"),
+                Some("PT25H1M1.000000123S"),
+                Some("PT-0.5S"),
+                None,
+                Some("PT-1M-0.5S"),
+                Some("PT-1H-1M-1.000000001S"),
+                Some("PT-1H"),
+                Some("PT-0.0000005S"),
+                Some("PT1H0.000000001S"),
+                Some("PT-2562047H-47M-16.854775807S"),
+                Some("PT-1M-59.999999999S"),
+            ])
+        );
+
+        let DataType::Struct(fields) = ColumnType::Period.arrow_type() else {
+            unreachable!("a Period is a struct")
+        };
+        let part = |values: [i32; 8]| Arc::new(Int32Array::from(values.to_vec())) as ArrayRef;
+        let periods: ArrayRef = Arc::new(StructArray::new(
+            fields,
+            vec![
+                part([0, 1, -1, 0, 2, 0, 0, 0]),
+                part([0, 2, 0, -3, 0, 0, 14, 0]),
+                part([0, 3, 0, 0, 0, -40, 0, 0]),
+            ],
+            Some(vec![true, true, true, true, true, true, true, false].into()),
+        ));
+        assert_eq!(
+            preview(ColumnType::Period, periods),
+            owned(&[
+                Some("P0D"),
+                Some("P1Y2M3D"),
+                Some("P-1Y"),
+                Some("P-3M"),
+                Some("P2Y"),
+                Some("P-40D"),
+                Some("P14M"),
+                None,
+            ])
+        );
+
+        let zones: ArrayRef = Arc::new(StringArray::from(vec![
+            Some("UTC"),
+            Some("Z"),
+            Some("America/New_York"),
+            Some("Etc/GMT+5"),
+            None,
+        ]));
+        assert_eq!(
+            preview(ColumnType::ZoneId, zones),
+            owned(&[
+                Some("UTC"),
+                Some("Z"),
+                Some("America/New_York"),
+                Some("Etc/GMT+5"),
+                None
+            ])
+        );
+
+        let DataType::Struct(fields) = ColumnType::ZonedDateTime.arrow_type() else {
+            unreachable!("a ZonedDateTime is a struct")
+        };
+        let instants = TimestampNanosecondArray::from(vec![
+            1_710_055_800_000_000_000,
+            1_710_021_600_000_001_000,
+            1_710_045_000_000_002_000,
+            1_710_048_600_000_003_000,
+            1_710_012_600_000_004_000,
+            0,
+        ])
+        .with_timezone("UTC");
+        let ids = StringArray::from(vec![
+            "America/New_York",
+            "Asia/Kolkata",
+            "UTC",
+            "Z",
+            "Australia/Lord_Howe",
+            "UTC",
+        ]);
+        let zoned: ArrayRef = Arc::new(StructArray::new(
+            fields,
+            vec![Arc::new(instants), Arc::new(ids)],
+            Some(vec![true, true, true, true, true, false].into()),
+        ));
+        assert_eq!(
+            preview(ColumnType::ZonedDateTime, zoned),
+            owned(&[
+                Some("2024-03-10T03:30-04:00[America/New_York]"),
+                Some("2024-03-10T03:30:00.000001+05:30[Asia/Kolkata]"),
+                Some("2024-03-10T04:30:00.000002Z[UTC]"),
+                Some("2024-03-10T05:30:00.000003Z"),
+                Some("2024-03-10T06:30:00.000004+11:00[Australia/Lord_Howe]"),
+                None,
+            ])
+        );
+
+        let days: ArrayRef = Arc::new(Int8Array::from(vec![Some(1), Some(7), None]));
+        assert_eq!(
+            preview(ColumnType::DayOfWeek, days),
+            owned(&[Some("MONDAY"), Some("SUNDAY"), None])
+        );
+    }
+
+    /// Seen on Deephaven 42.9: a column declared `Object` previews the text of each value,
+    /// and a column of the tables of a partition aggregation `QueryTable` for each.
+    #[test]
+    fn objects_and_tables_are_previewed_by_their_text() {
+        use arrow::array::{Int32Array, Int64Array};
+        let ints: ArrayRef = Arc::new(Int32Array::from(vec![Some(0), Some(3)]));
+        let previewed = preview_texts(
+            Kind::Display,
+            &ColumnType::object(Some(ColumnType::Int)),
+            &ints,
+        );
+        assert_eq!(texts(&previewed), [Some("0"), Some("3")]);
+        let nulls = arrow::array::new_null_array(&arrow::datatypes::DataType::Utf8, 2);
+        let previewed = preview_texts(Kind::Display, &ColumnType::object(None), &nulls);
+        assert_eq!(texts(&previewed), [None, None]);
+        let handles: ArrayRef = Arc::new(Int64Array::from(vec![Some(4), None]));
+        let tables = ColumnType::Table(oxhaven_contracts::schema::TableClass::QueryTable);
+        let previewed = preview_texts(Kind::Display, &tables, &handles);
+        assert_eq!(texts(&previewed), [Some("QueryTable"), None]);
+    }
+
+    /// Seen on Deephaven 42.9: `ColumnPreviewManager#applyPreview(Table)` (no list of
+    /// types) replaces the columns of these types by their text, and keeps the others.
+    #[test]
+    fn without_a_list_the_types_a_client_cannot_display_are_wrapped() {
+        let definition = TableDefinition::new(vec![
+            ColumnDefinition::new("D", ColumnType::Duration),
+            ColumnDefinition::new("P", ColumnType::Period),
+            ColumnDefinition::new("Z", ColumnType::ZoneId),
+            ColumnDefinition::new("LDT", ColumnType::LocalDateTime),
+            ColumnDefinition::new("DOW", ColumnType::DayOfWeek),
+            ColumnDefinition::new("ZDT", ColumnType::ZonedDateTime),
+            ColumnDefinition::new("LD", ColumnType::LocalDate),
+            ColumnDefinition::new("LT", ColumnType::LocalTime),
+            ColumnDefinition::new("BD", ColumnType::BigDecimal),
+            ColumnDefinition::new("BI", ColumnType::BigInteger),
+            ColumnDefinition::new("C", ColumnType::Char),
+            ColumnDefinition::new("O", ColumnType::object(Some(ColumnType::Int))),
+            ColumnDefinition::new(
+                "Tab",
+                ColumnType::Table(oxhaven_contracts::schema::TableClass::QueryTable),
+            ),
+        ])
+        .unwrap();
+        assert_eq!(
+            wrapped(&definition, &[], false),
+            of(Kind::Display, &["D", "P", "Z", "LDT", "DOW", "O", "Tab"])
+        );
+        let descriptions: Vec<String> = wrapped_columns(&definition, &HashMap::new(), &[], false)
+            .into_iter()
+            .map(|column| column.description)
+            .collect();
+        assert_eq!(
+            descriptions,
+            [
+                "Preview of type: java.time.Duration",
+                "Preview of type: java.time.Period",
+                "Preview of type: java.time.ZoneId",
+                "Preview of type: java.time.LocalDateTime",
+                "Preview of type: java.time.DayOfWeek",
+                "Preview of type: java.lang.Object",
+                "Preview of type: io.deephaven.engine.table.impl.QueryTable",
+            ]
+        );
     }
 
     fn lists_table(column_type: ColumnType) -> Arc<dyn Table> {

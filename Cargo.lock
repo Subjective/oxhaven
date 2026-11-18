@@ -1423,6 +1423,8 @@ dependencies = [
  "arrow",
  "base64 0.22.1",
  "bytes",
+ "chrono",
+ "chrono-tz",
  "flatbuffers",
  "futures-util",
  "h2",
