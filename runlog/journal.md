@@ -1479,3 +1479,7 @@ The three shipped calendars are written by a script from cited public rules. Dee
 ## 2026-11-18 17:15 UTC: pull request 181 merged
 
 Seven green checks on head 0d62a6e9. Main is at 5c21efbb. The server now starts with its own three calendars. Owner question 7.22 (twelve dates that follow the public record against Deephaven) is open.
+
+## 2026-11-18 20:58 UTC: task 12.4 reported, pull request 182
+
+Neither open question of the soak test is a server defect. Processor time per round follows the machine (a control loop in another process slowed at the same minute; a fresh server beside the old one costs the same). The memory steps are transparent huge pages in mimalloc's arena; with them a correct server would fail the long memory limit about one run in five, so the soak's server runs with MIMALLOC_ALLOW_THP=0 by default. Decision under PORTING rule 3, taken by the orchestrator: the two replaced soak checks are accepted. The running sum of fractional doubles cannot equal a recomputation bit for bit (Java's does not either), and the two time tables each read the clock themselves; both replacements are exact comparisons and no limit was loosened. One defect fixed: a session kept every released export id in a set; now ranges, as Java does.
