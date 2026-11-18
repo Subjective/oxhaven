@@ -141,15 +141,16 @@ samples), which a few high samples do not move. Its slope must not exceed the pr
 
 The limits come from the noise. Between two quiet points the resident size moves by 10 to
 20 MB without any trend, as the allocator returns freed pages to the system late and in
-pieces. Over the 30 minutes the long profile fits, the first long run's slope, with its leak
-(below), was 17 MB per hour, and the slope of its last 15 minutes was 1; 24 is above what the
-noise gives and below what a leak of the size found gives now that a round writes more. Over
-windows of 80 seconds, which is what the short profile fits, the slopes of that run ranged
-from -790 to +1,200 MB per hour, so the short limit is above the largest. A run with
-`--inject leak`, which keeps every round's tables, measured 16,700 MB per hour.
+pieces. Over the 30 minutes the long profile fits, two runs side by side, with the same
+seed, measured -9 MB per hour on the server as it is and +54 on the server with the leak
+described below: 24 is between the two with room on both sides. Over windows of 80 seconds,
+which is what the short profile fits, the slopes of the first long run ranged from -790 to
++1,200 MB per hour, so the short limit is above the largest. A run with `--inject leak`,
+which keeps every round's tables, measured 16,700 MB per hour.
 
-The warm-up of the long profile is long because resident memory is: in the first long run it
-rose in steps from 150 to about 195 MB over the first 13 minutes before it levelled.
+The warm-up of the long profile is long because resident memory takes long to level: it
+rises in steps for the first 9 to 13 minutes (155 to about 173 MB in the run above) and
+then stays.
 
 Open file descriptors and threads of the process are sampled with it: the median of the last
 third of the run may be at most 8 above the median of the first third after the warm-up. A
