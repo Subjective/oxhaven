@@ -1345,3 +1345,7 @@ Josh chose "No, keep it out" on the decision card: code ported from OpenJDK sour
 ## 2026-11-18 04:11 UTC: task 9.12 reported (pull request 166), task 9.13 started
 
 Josh asked whether the speed work copies Deephaven or improves on it; answered: own designs, results must match. Task 9.13 measures the allocator before deciding; mimalloc is MIT, so within the licence rule, and the choice is reversible behind a feature.
+
+## 2026-11-18 04:19 UTC: pull request 166 merged
+
+Seven green checks on head 4a55bd79. Main is at eb3902ac.
