@@ -100,7 +100,7 @@ impl Em {
         let values: Vec<Option<f64>> = match Values::read(values, input)? {
             Values::Int(v) => v.into_iter().map(|v| v.map(|v| v as f64)).collect(),
             Values::Float(v) => v,
-            Values::Text(_) | Values::Lists(_) => {
+            Values::Text(_) | Values::Lists(_) | Values::Ordered(_) => {
                 return Err(failure("no exponential operator for this column type"))
             }
         };
@@ -248,7 +248,7 @@ impl Em {
         let values: Vec<Option<f64>> = match Values::read(values, input)? {
             Values::Int(v) => v.into_iter().map(|v| v.map(|v| v as f64)).collect(),
             Values::Float(v) => v,
-            Values::Text(_) | Values::Lists(_) => {
+            Values::Text(_) | Values::Lists(_) | Values::Ordered(_) => {
                 return Err(failure("no exponential operator for this column type"))
             }
         };
