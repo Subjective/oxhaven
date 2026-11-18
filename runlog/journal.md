@@ -1337,3 +1337,15 @@ The old two-processor caveat changed few ratios: Deephaven on four processors is
 ## 2026-11-18 02:30 UTC: pull request 165 merged
 
 Seven green checks on head 67d0b4b3. Main is at 0da9e217.
+
+## 2026-11-18 03:51 UTC: owner ruling on ported JDK source
+
+Josh chose "No, keep it out" on the decision card: code ported from OpenJDK source does not go into the repository. The branch task/10.7-unported-filter-literals stays as it is (he did not choose to delete it). The DecimalFormat digits are to be rewritten from observable behaviour and the fixtures; PORTING.md should gain the rule in the next pull request that touches it.
+
+## 2026-11-18 04:11 UTC: task 9.12 reported (pull request 166), task 9.13 started
+
+Josh asked whether the speed work copies Deephaven or improves on it; answered: own designs, results must match. Task 9.13 measures the allocator before deciding; mimalloc is MIT, so within the licence rule, and the choice is reversible behind a feature.
+
+## 2026-11-18 04:19 UTC: pull request 166 merged
+
+Seven green checks on head 4a55bd79. Main is at eb3902ac.
