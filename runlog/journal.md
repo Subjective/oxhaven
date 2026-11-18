@@ -1333,3 +1333,7 @@ Seven green checks each (164 on the run after the label). Main is at ca839513. T
 ## 2026-11-18 02:22 UTC: task 9.11 reported (pull request 165), task 9.12 started
 
 The old two-processor caveat changed few ratios: Deephaven on four processors is about as fast as on two. Task 9.12 (design judgment, so on the default model) takes the remaining slower cases.
+
+## 2026-11-18 02:30 UTC: pull request 165 merged
+
+Seven green checks on head 67d0b4b3. Main is at 0da9e217.
