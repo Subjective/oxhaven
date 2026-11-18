@@ -301,7 +301,7 @@ impl AggOperator for Partition {
             while self.tables.len() < slot {
                 self.make(RowSet::empty());
             }
-            self.make(groups.rows(slot).clone());
+            self.make(groups.rows(slot).into_owned());
         }
         Ok(vec![false; slots.len()])
     }

@@ -1,6 +1,6 @@
 //! First and last.
 
-use super::operator::{AggOperator, Effect, GroupReader, Marks};
+use super::operator::{AggOperator, Effect, GroupReader, Marks, Rows};
 use super::slot_source::SlotSource;
 use super::values::{build, failure, Run, Runs, Scalar, Values};
 use arrow::array::{Array, ArrayRef};
@@ -179,11 +179,10 @@ impl AggOperator for FirstLast {
         let row_keys: Vec<RowKey> = slots
             .iter()
             .map(|&slot| {
-                let rows = groups.rows(slot);
                 let row_key = if self.first {
-                    rows.first_row_key()
+                    groups.first_row_key(slot)
                 } else {
-                    rows.last_row_key()
+                    groups.last_row_key(slot)
                 };
                 row_key.unwrap_or(NULL_ROW_KEY)
             })
@@ -343,9 +342,9 @@ impl AggOperator for FirstLastCell {
         self.mode == FirstLastMode::ByRowKey
     }
 
-    fn add_rows(&mut self, slots: &[usize], row_keys: &[RowKey], marks: &mut Marks) {
+    fn add_rows(&mut self, rows: &Rows<'_>, marks: &mut Marks) {
         debug_assert_eq!(self.mode, FirstLastMode::ByRowKey);
-        for (&slot, &row_key) in slots.iter().zip(row_keys) {
+        for (&slot, &row_key) in rows.slots.iter().zip(rows.row_keys) {
             let current = self.row_key[slot];
             let takes = current == NULL_ROW_KEY
                 || if self.first {
@@ -405,11 +404,10 @@ impl AggOperator for FirstLastCell {
         let tracked = self.mode == FirstLastMode::Tracked;
         if tracked {
             for &slot in slots {
-                let rows = groups.rows(slot);
                 let row_key = if self.first {
-                    rows.first_row_key()
+                    groups.first_row_key(slot)
                 } else {
-                    rows.last_row_key()
+                    groups.last_row_key(slot)
                 };
                 self.row_key[slot] = row_key.unwrap_or(NULL_ROW_KEY);
             }
@@ -574,7 +572,16 @@ mod tests {
                 for ((slot, _), effect) in runs.iter().zip(effects) {
                     expected.note(*slot, effect);
                 }
-                by_row.add_rows(&slots, &row_keys, &mut found);
+                let mut distinct = slots.clone();
+                distinct.sort_unstable();
+                distinct.dedup();
+                let rows = Rows {
+                    slots: &slots,
+                    distinct: &distinct,
+                    row_keys: &row_keys,
+                    values: None,
+                };
+                by_row.add_rows(&rows, &mut found);
                 assert_eq!(by_row.row_key, grouped.row_key, "first {first}");
                 for bit in [MODIFIED, RECOMPUTE] {
                     assert_eq!(found.marked(bit), expected.marked(bit), "first {first}");

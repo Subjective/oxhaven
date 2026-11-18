@@ -5,9 +5,9 @@
 //! that wraps onto the sentinel read as null, and it is why these operators port the Java
 //! arithmetic statement for statement instead of using `Option`.
 
-use super::operator::{AggOperator, Effect};
-use super::values::Run;
-use arrow::array::{ArrayRef, Float32Array, Float64Array, Int64Array};
+use super::operator::{AggOperator, Effect, Marks, Rows};
+use super::values::{Run, Values};
+use arrow::array::{Array, ArrayRef, Float32Array, Float64Array, Int64Array};
 use oxhaven_column::sentinel::{NULL_DOUBLE, NULL_FLOAT, NULL_LONG};
 use oxhaven_contracts::schema::ColumnType;
 use std::sync::Arc;
@@ -82,6 +82,91 @@ fn sum_longs(run: &Run<'_>, absolute: bool) -> (i64, i64) {
     })
 }
 
+/// What the rows of one chunk brought each slot of an integer-shaped column, while the
+/// rows are taken in row order: the wrapping sum of the non-null values and how many there
+/// are, as [`sum_longs`] gives them for a slot's rows together.
+#[derive(Default)]
+struct LongPartials {
+    /// Per slot; `(0, 0)` between chunks.
+    partial: Vec<(i64, i64)>,
+}
+
+impl LongPartials {
+    /// Adds each row's value to what the chunk brought its slot. `slots` is the number
+    /// of slots of the operator.
+    fn take(&mut self, rows: &Rows<'_>, slots: usize, absolute: bool) {
+        let Some(Values::Longs(array)) = rows.values else {
+            panic!("the operator's input is not an integer-shaped column");
+        };
+        if self.partial.len() < slots {
+            self.partial.resize(slots, (0, 0));
+        }
+        let partial = &mut self.partial[..];
+        let mut step = |slot: usize, value: i64| {
+            let value = if absolute {
+                value.wrapping_abs()
+            } else {
+                value
+            };
+            let (sum, count) = &mut partial[slot];
+            *sum = sum.wrapping_add(value);
+            *count += 1;
+        };
+        let values = rows.slots.iter().zip(array.values().iter());
+        match array.nulls().filter(|nulls| nulls.null_count() > 0) {
+            None => values.for_each(|(&slot, &value)| step(slot, value)),
+            Some(nulls) => {
+                for ((&slot, &value), valid) in values.zip(nulls.iter()) {
+                    if valid {
+                        step(slot, value);
+                    }
+                }
+            }
+        }
+    }
+
+    /// What the chunk brought `slot`, which then has nothing.
+    #[inline]
+    fn flush(&mut self, slot: usize) -> (i64, i64) {
+        std::mem::take(&mut self.partial[slot])
+    }
+}
+
+/// [`LongPartials`] for a floating point column: a [`FloatRun`] per slot, with the
+/// values added in row order from zero as [`FloatRun::of`] adds a slot's rows together.
+#[derive(Default)]
+struct FloatPartials {
+    partial: Vec<FloatRun>,
+}
+
+impl FloatPartials {
+    fn take(&mut self, rows: &Rows<'_>, slots: usize, absolute: bool) {
+        let Some(Values::Doubles(array)) = rows.values else {
+            panic!("the operator's input is not a floating point column");
+        };
+        if self.partial.len() < slots {
+            self.partial.resize(slots, FloatRun::default());
+        }
+        let partial = &mut self.partial[..];
+        let values = rows.slots.iter().zip(array.values().iter());
+        match array.nulls().filter(|nulls| nulls.null_count() > 0) {
+            None => values.for_each(|(&slot, &value)| partial[slot].take(value, absolute)),
+            Some(nulls) => {
+                for ((&slot, &value), valid) in values.zip(nulls.iter()) {
+                    if valid {
+                        partial[slot].take(value, absolute);
+                    }
+                }
+            }
+        }
+    }
+
+    #[inline]
+    fn flush(&mut self, slot: usize) -> FloatRun {
+        std::mem::take(&mut self.partial[slot])
+    }
+}
+
 /// The number of rows in each group, null values included.
 ///
 /// Behavior: io.deephaven.engine.table.impl.by.CountAggregationOperator
@@ -102,6 +187,19 @@ impl AggOperator for Count {
     fn add(&mut self, slot: usize, run: &Run<'_>) -> Effect {
         self.counts[slot] += run.len() as i64;
         Effect::MODIFIED
+    }
+
+    fn adds_rows(&self) -> bool {
+        true
+    }
+
+    fn add_rows(&mut self, rows: &Rows<'_>, marks: &mut Marks) {
+        for &slot in rows.slots {
+            self.counts[slot] += 1;
+        }
+        for &slot in rows.distinct {
+            marks.note(slot, Effect::MODIFIED);
+        }
     }
 
     fn remove(&mut self, slot: usize, run: &Run<'_>) -> Effect {
@@ -130,6 +228,7 @@ pub struct LongSum {
     absolute: bool,
     result: Vec<i64>,
     non_null: Vec<i64>,
+    partials: LongPartials,
 }
 
 impl LongSum {
@@ -173,6 +272,18 @@ impl AggOperator for LongSum {
     fn add(&mut self, slot: usize, run: &Run<'_>) -> Effect {
         let (sum, non_null) = sum_longs(run, self.absolute);
         self.update(slot, sum, non_null)
+    }
+
+    fn adds_rows(&self) -> bool {
+        true
+    }
+
+    fn add_rows(&mut self, rows: &Rows<'_>, marks: &mut Marks) {
+        self.partials.take(rows, self.result.len(), self.absolute);
+        for &slot in rows.distinct {
+            let (sum, non_null) = self.partials.flush(slot);
+            marks.note(slot, self.update(slot, sum, non_null));
+        }
     }
 
     fn remove(&mut self, slot: usize, run: &Run<'_>) -> Effect {
@@ -380,19 +491,25 @@ impl FloatRun {
     fn of(run: &Run<'_>, absolute: bool) -> FloatRun {
         let mut result = FloatRun::default();
         for value in run.doubles().flatten() {
-            let value = if absolute { value.abs() } else { value };
-            if value.is_nan() {
-                result.nan += 1;
-            } else if value == f64::INFINITY {
-                result.positive_infinity += 1;
-            } else if value == f64::NEG_INFINITY {
-                result.negative_infinity += 1;
-            } else {
-                result.sum += value;
-                result.normal += 1;
-            }
+            result.take(value, absolute);
         }
         result
+    }
+
+    /// Takes the next non-null value of the run.
+    #[inline]
+    fn take(&mut self, value: f64, absolute: bool) {
+        let value = if absolute { value.abs() } else { value };
+        if value.is_nan() {
+            self.nan += 1;
+        } else if value == f64::INFINITY {
+            self.positive_infinity += 1;
+        } else if value == f64::NEG_INFINITY {
+            self.negative_infinity += 1;
+        } else {
+            self.sum += value;
+            self.normal += 1;
+        }
     }
 
     fn has_non_normal(&self) -> bool {
@@ -460,6 +577,7 @@ pub struct FloatSum {
     running: Vec<f64>,
     /// The result, with `self.null()` for null.
     result: Vec<f64>,
+    partials: FloatPartials,
 }
 
 impl FloatSum {
@@ -471,6 +589,7 @@ impl FloatSum {
             counts: FloatCounts::default(),
             running: Vec::new(),
             result: Vec::new(),
+            partials: FloatPartials::default(),
         }
     }
 
@@ -505,6 +624,26 @@ impl FloatSum {
     fn value_no_sum(&self, slot: usize) -> Option<f64> {
         self.counts.forced(slot, false)
     }
+
+    /// The rows of one chunk, summed up as `chunk`, join `slot`.
+    ///
+    /// Behavior: DoubleChunkedSumOperator#addChunk
+    fn add_run(&mut self, slot: usize, chunk: FloatRun) -> Effect {
+        self.counts.update_non_normal(slot, &chunk, 1);
+        if chunk.normal > 0 {
+            self.counts.normal[slot] += chunk.normal;
+            let sum = plus_double(self.running[slot], chunk.sum);
+            self.running[slot] = sum;
+            self.result[slot] = self.value_with_sum(slot, sum);
+        } else if chunk.has_non_normal() {
+            if let Some(forced) = self.value_no_sum(slot) {
+                self.result[slot] = forced;
+            } else {
+                self.result[slot] = self.null();
+            }
+        }
+        Effect::MODIFIED
+    }
 }
 
 impl AggOperator for FloatSum {
@@ -525,21 +664,19 @@ impl AggOperator for FloatSum {
 
     /// Behavior: DoubleChunkedSumOperator#addChunk
     fn add(&mut self, slot: usize, run: &Run<'_>) -> Effect {
-        let chunk = FloatRun::of(run, self.absolute);
-        self.counts.update_non_normal(slot, &chunk, 1);
-        if chunk.normal > 0 {
-            self.counts.normal[slot] += chunk.normal;
-            let sum = plus_double(self.running[slot], chunk.sum);
-            self.running[slot] = sum;
-            self.result[slot] = self.value_with_sum(slot, sum);
-        } else if chunk.has_non_normal() {
-            if let Some(forced) = self.value_no_sum(slot) {
-                self.result[slot] = forced;
-            } else {
-                self.result[slot] = self.null();
-            }
+        self.add_run(slot, FloatRun::of(run, self.absolute))
+    }
+
+    fn adds_rows(&self) -> bool {
+        true
+    }
+
+    fn add_rows(&mut self, rows: &Rows<'_>, marks: &mut Marks) {
+        self.partials.take(rows, self.result.len(), self.absolute);
+        for &slot in rows.distinct {
+            let chunk = self.partials.flush(slot);
+            marks.note(slot, self.add_run(slot, chunk));
         }
-        Effect::MODIFIED
     }
 
     /// Behavior: DoubleChunkedSumOperator#removeChunk
@@ -647,6 +784,27 @@ pub struct LongAvg {
     running: Vec<i64>,
     non_null: Vec<i64>,
     result: Vec<f64>,
+    partials: LongPartials,
+}
+
+impl LongAvg {
+    /// Rows of one chunk with the sum `sum` of `non_null` non-null values join `slot`.
+    ///
+    /// Behavior: IntChunkedAvgOperator#addChunk
+    fn add_sum(&mut self, slot: usize, sum: i64, non_null: i64) -> Effect {
+        if non_null > 0 {
+            self.non_null[slot] += non_null;
+            let sum = plus_long(self.running[slot], sum);
+            self.running[slot] = sum;
+            self.result[slot] = sum as f64 / self.non_null[slot] as f64;
+            Effect::MODIFIED
+        } else if self.non_null[slot] == 0 {
+            self.result[slot] = NULL_DOUBLE;
+            Effect::MODIFIED
+        } else {
+            Effect::UNCHANGED
+        }
+    }
 }
 
 impl AggOperator for LongAvg {
@@ -663,17 +821,18 @@ impl AggOperator for LongAvg {
     /// Behavior: IntChunkedAvgOperator#addChunk
     fn add(&mut self, slot: usize, run: &Run<'_>) -> Effect {
         let (sum, non_null) = sum_longs(run, false);
-        if non_null > 0 {
-            self.non_null[slot] += non_null;
-            let sum = plus_long(self.running[slot], sum);
-            self.running[slot] = sum;
-            self.result[slot] = sum as f64 / self.non_null[slot] as f64;
-            Effect::MODIFIED
-        } else if self.non_null[slot] == 0 {
-            self.result[slot] = NULL_DOUBLE;
-            Effect::MODIFIED
-        } else {
-            Effect::UNCHANGED
+        self.add_sum(slot, sum, non_null)
+    }
+
+    fn adds_rows(&self) -> bool {
+        true
+    }
+
+    fn add_rows(&mut self, rows: &Rows<'_>, marks: &mut Marks) {
+        self.partials.take(rows, self.result.len(), false);
+        for &slot in rows.distinct {
+            let (sum, non_null) = self.partials.flush(slot);
+            marks.note(slot, self.add_sum(slot, sum, non_null));
         }
     }
 
@@ -714,6 +873,7 @@ pub struct FloatAvg {
     counts: FloatCounts,
     running: Vec<f64>,
     result: Vec<f64>,
+    partials: FloatPartials,
 }
 
 impl FloatAvg {
@@ -725,6 +885,19 @@ impl FloatAvg {
             None if self.counts.normal[slot] == 0 => NULL_DOUBLE,
             None => self.running[slot] / self.counts.normal[slot] as f64,
         };
+    }
+
+    /// The rows of one chunk, summed up as `chunk`, join `slot`.
+    ///
+    /// Behavior: DoubleChunkedAvgOperator#addChunk
+    fn add_run(&mut self, slot: usize, chunk: FloatRun) -> Effect {
+        self.counts.normal[slot] += chunk.normal;
+        self.counts.update_non_normal(slot, &chunk, 1);
+        if chunk.normal > 0 {
+            self.running[slot] = plus_double(self.running[slot], chunk.sum);
+        }
+        self.update_result(slot);
+        Effect::MODIFIED
     }
 }
 
@@ -741,14 +914,19 @@ impl AggOperator for FloatAvg {
 
     /// Behavior: DoubleChunkedAvgOperator#addChunk
     fn add(&mut self, slot: usize, run: &Run<'_>) -> Effect {
-        let chunk = FloatRun::of(run, false);
-        self.counts.normal[slot] += chunk.normal;
-        self.counts.update_non_normal(slot, &chunk, 1);
-        if chunk.normal > 0 {
-            self.running[slot] = plus_double(self.running[slot], chunk.sum);
+        self.add_run(slot, FloatRun::of(run, false))
+    }
+
+    fn adds_rows(&self) -> bool {
+        true
+    }
+
+    fn add_rows(&mut self, rows: &Rows<'_>, marks: &mut Marks) {
+        self.partials.take(rows, self.result.len(), false);
+        for &slot in rows.distinct {
+            let chunk = self.partials.flush(slot);
+            marks.note(slot, self.add_run(slot, chunk));
         }
-        self.update_result(slot);
-        Effect::MODIFIED
     }
 
     /// Behavior: DoubleChunkedAvgOperator#removeChunk

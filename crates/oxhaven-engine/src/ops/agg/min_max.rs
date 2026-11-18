@@ -1,8 +1,8 @@
 //! Minimum and maximum.
 
-use super::operator::{AggOperator, Effect};
-use super::values::{build, Run, Scalar};
-use arrow::array::ArrayRef;
+use super::operator::{AggOperator, Effect, Marks, Rows};
+use super::values::{build, Run, Scalar, Shape, Values};
+use arrow::array::{Array, ArrayRef};
 use oxhaven_contracts::schema::ColumnType;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -43,6 +43,15 @@ enum State {
         /// The best value that is not NaN, or null.
         best: Vec<Scalar>,
         /// Whether the group has a NaN.
+        nan: Vec<bool>,
+    },
+    /// [`State::Growing`] for an integer-shaped column ([`Shape::Long`]): the best value
+    /// of each group, typed.
+    GrowingLongs(Vec<Option<i64>>),
+    /// [`State::Growing`] for a floating point column ([`Shape::Double`]): the best
+    /// value that is not NaN, typed, and whether the group has a NaN.
+    GrowingDoubles {
+        best: Vec<Option<f64>>,
         nan: Vec<bool>,
     },
     /// Rows can leave a group.
@@ -139,6 +148,38 @@ impl Multiset {
     }
 }
 
+/// Whether `value` takes the place of `best`: when there is none yet, or when `value` is
+/// strictly less (`minimum`) or strictly greater. For values that are not NaN this is the
+/// order of [`Scalar::compare`], in which the two zeros are equal, so the first zero
+/// given stays.
+#[inline]
+fn takes<T: PartialOrd + Copy>(minimum: bool, value: T, best: Option<T>) -> bool {
+    match best {
+        None => true,
+        Some(best) if minimum => value < best,
+        Some(best) => value > best,
+    }
+}
+
+/// One value of a floating point column joins a group that only grows. Whether the
+/// group's result changed.
+#[inline]
+fn grow_double(minimum: bool, value: f64, best: &mut Option<f64>, nan: &mut bool) -> bool {
+    // A group with a NaN can never change.
+    if *nan {
+        return false;
+    }
+    if value.is_nan() {
+        *nan = true;
+        return true;
+    }
+    let better = takes(minimum, value, *best);
+    if better {
+        *best = Some(value);
+    }
+    better
+}
+
 impl MinMax {
     /// `retracts` says whether rows can leave a group.
     pub fn new(column_type: ColumnType, minimum: bool, retracts: bool) -> MinMax {
@@ -148,9 +189,16 @@ impl MinMax {
                 cells: Vec::new(),
             }
         } else {
-            State::Growing {
-                best: Vec::new(),
-                nan: Vec::new(),
+            match Shape::of(&column_type) {
+                Shape::Long => State::GrowingLongs(Vec::new()),
+                Shape::Double => State::GrowingDoubles {
+                    best: Vec::new(),
+                    nan: Vec::new(),
+                },
+                _ => State::Growing {
+                    best: Vec::new(),
+                    nan: Vec::new(),
+                },
             }
         };
         MinMax {
@@ -193,12 +241,60 @@ impl AggOperator for MinMax {
                     nan.resize(slots, false);
                 }
             }
+            State::GrowingLongs(best) => {
+                if best.len() < slots {
+                    best.resize(slots, None);
+                }
+            }
+            State::GrowingDoubles { best, nan } => {
+                if best.len() < slots {
+                    best.resize(slots, None);
+                    nan.resize(slots, false);
+                }
+            }
             State::Retracting { values, cells } => {
                 if values.len() < slots {
                     values.resize_with(slots, Multiset::default);
                     cells.resize(slots, Scalar::Null);
                 }
             }
+        }
+    }
+
+    /// The typed states take rows in row order: a group's best value so far is replaced
+    /// by a strictly better one whichever rows came with it in a chunk.
+    fn adds_rows(&self) -> bool {
+        matches!(
+            self.state,
+            State::GrowingLongs(_) | State::GrowingDoubles { .. }
+        )
+    }
+
+    fn add_rows(&mut self, rows: &Rows<'_>, marks: &mut Marks) {
+        let minimum = self.minimum;
+        match (&mut self.state, rows.values) {
+            (State::GrowingLongs(best), Some(Values::Longs(array))) => {
+                let nulls = array.nulls().filter(|nulls| nulls.null_count() > 0);
+                for (at, (&slot, &value)) in rows.slots.iter().zip(array.values()).enumerate() {
+                    if nulls.is_none_or(|nulls| nulls.is_valid(at))
+                        && takes(minimum, value, best[slot])
+                    {
+                        best[slot] = Some(value);
+                        marks.note(slot, Effect::MODIFIED);
+                    }
+                }
+            }
+            (State::GrowingDoubles { best, nan }, Some(Values::Doubles(array))) => {
+                let nulls = array.nulls().filter(|nulls| nulls.null_count() > 0);
+                for (at, (&slot, &value)) in rows.slots.iter().zip(array.values()).enumerate() {
+                    if nulls.is_none_or(|nulls| nulls.is_valid(at))
+                        && grow_double(minimum, value, &mut best[slot], &mut nan[slot])
+                    {
+                        marks.note(slot, Effect::MODIFIED);
+                    }
+                }
+            }
+            _ => unreachable!("add_rows of a minimum or maximum that takes groups"),
         }
     }
 
@@ -229,6 +325,23 @@ impl AggOperator for MinMax {
                 }
                 Effect::modified_if(changed)
             }
+            State::GrowingLongs(best) => {
+                let mut changed = false;
+                for value in run.longs().flatten() {
+                    if takes(self.minimum, value, best[slot]) {
+                        best[slot] = Some(value);
+                        changed = true;
+                    }
+                }
+                Effect::modified_if(changed)
+            }
+            State::GrowingDoubles { best, nan } => {
+                let mut changed = false;
+                for value in run.doubles().flatten() {
+                    changed |= grow_double(self.minimum, value, &mut best[slot], &mut nan[slot]);
+                }
+                Effect::modified_if(changed)
+            }
             State::Retracting { values, .. } => {
                 values[slot].insert(run);
                 self.write(slot)
@@ -239,7 +352,9 @@ impl AggOperator for MinMax {
     fn remove(&mut self, slot: usize, run: &Run<'_>) -> Effect {
         match &mut self.state {
             // Rows never leave such a group.
-            State::Growing { .. } => Effect::UNCHANGED,
+            State::Growing { .. } | State::GrowingLongs(_) | State::GrowingDoubles { .. } => {
+                Effect::UNCHANGED
+            }
             State::Retracting { values, .. } => {
                 values[slot].remove(run);
                 self.write(slot)
@@ -253,7 +368,9 @@ impl AggOperator for MinMax {
     /// Behavior: SsmChunkedMinMaxOperator#modifyChunk
     fn modify(&mut self, slot: usize, old: &Run<'_>, new: &Run<'_>) -> Effect {
         match &mut self.state {
-            State::Growing { .. } => Effect::UNCHANGED,
+            State::Growing { .. } | State::GrowingLongs(_) | State::GrowingDoubles { .. } => {
+                Effect::UNCHANGED
+            }
             State::Retracting { values, .. } => {
                 values[slot].remove(old);
                 values[slot].insert(new);
@@ -271,6 +388,14 @@ impl AggOperator for MinMax {
                         Scalar::Double(f64::NAN)
                     } else {
                         best[slot].clone()
+                    }
+                }
+                State::GrowingLongs(best) => best[slot].map_or(Scalar::Null, Scalar::Long),
+                State::GrowingDoubles { best, nan } => {
+                    if nan[slot] {
+                        Scalar::Double(f64::NAN)
+                    } else {
+                        best[slot].map_or(Scalar::Null, Scalar::Double)
                     }
                 }
                 State::Retracting { cells, .. } => cells[slot].clone(),
