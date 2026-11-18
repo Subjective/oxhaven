@@ -700,6 +700,28 @@ what the owner's ruling of 2026-11-16 allowed ("every use of a Java class fails 
 class's name"); the owner approved it, and the Java arrays below, and `PARITY.md` (A10)
 now says the stand-in carries out the Java classes this file lists and refuses the rest.
 
+A second exception, task 11.3, approved with the task:
+`io.deephaven.engine.table.impl.util.ColumnsToRowsTransform.columnsToRows`, which
+`dx.data.marketing` of `deephaven.plot.express` calls on a table's `j_table`. The engine
+carries it out (`oxhaven_engine::ops::columns_to_rows`, static and refreshing tables), and
+`deephaven/_columns_to_rows.py` chooses among its three overloads as jpy 2.2.0 does:
+
+| Call | Java 42.9, as observed | Here |
+| --- | --- | --- |
+| `columnsToRows(t, label, value, "A", "B", "C")`, three or more names after the value, or one list or tuple of them | the overload `(Table, String, String, String...)`: the names are the labels | the same |
+| `columnsToRows(t, label, value, ["x", "y"], ["A", "B"])` | `(Table, String, String, String[], String[])` | the same |
+| `columnsToRows(t, label, ["V", "W"], labels, [["A", "B"], ["C", "D"]])` | `(Table, String, String[], String[], String[][])` | the same |
+| five arguments whose last two are strings, `columnsToRows(t, "L", "V", "AB", "CD")` | jpy prefers the second overload and makes each string an array of its characters: labels `A`, `B` of the columns `C`, `D` | the same, and so for a string where any array is expected |
+| `None` in place of an argument, a `None` name | the `NullPointerException` and `NoSuchColumnException` (`Unknown column names [null]`) Java throws, in its order | the same texts |
+| a Python `Table` in place of its `j_table`, a number, `None` inside a list of labels; three `None` | jpy's `no matching Java method overloads found`; `ambiguous Java method call, ...` | the same |
+| bad arguments | `IllegalArgumentException`s (no value column, counts that differ, two types in a group: `Incompatible transpose types A is int, D is long`), `AssertionFailure` for no labels | the same texts, as `RuntimeError` |
+
+Refused as `not ported: ...ColumnsToRowsTransform#columnsToRows`, where Java's result is
+undefined or inconsistent (owner question 7.12): a column in two groups whose value columns
+have different types, and on a refreshing table a column named twice or a group whose
+columns are not in the table's order (Java's update then names the wrong rows as
+modified). Every other member of the class is refused as above.
+
 The refusal is `deephaven._java_time.NotPorted`, the error of this package for what Java
 does and it does not: a `NotImplementedError`, and so a `RuntimeError`, which is what jpy
 raises for a Java exception and what code written for jpy catches.

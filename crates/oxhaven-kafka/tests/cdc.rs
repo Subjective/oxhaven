@@ -11,7 +11,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use arrow::array::{ArrayRef, AsArray};
+use arrow::array::{Array, ArrayRef, AsArray};
 use arrow::datatypes::Int32Type;
 use bytes::Bytes;
 use oxhaven_contracts::graph::UpdateGraph;
@@ -552,18 +552,14 @@ fn an_envelope_without_op_or_the_keys_field_fails_with_javas_text() {
          columns [kid] are present in input table with columns [id, name, op]. Missing \
          columns: [kid]"
     );
-    // Refused: a Debezium decimal among the current rows. Its events are not.
-    assert_eq!(
-        error(&options(&registry, spec("c"), false)),
-        "not ported yet: io.deephaven.engine.table.impl.by.BlinkLastChunkedOperator: the \
-         current rows of a column of BigDecimal (name), which the engine's last of a blink \
-         table does not hold yet; the events (stream_table=True) have it"
-    );
-    let events = consume(&options(&registry, spec("c"), true)).unwrap();
-    assert_eq!(
-        events.columns()[1],
-        ("name".to_owned(), ColumnType::BigDecimal)
-    );
+    // A Debezium decimal, among the current rows and among the events.
+    for stream_table in [false, true] {
+        let table = consume(&options(&registry, spec("c"), stream_table)).unwrap();
+        assert_eq!(
+            table.columns()[1],
+            ("name".to_owned(), ColumnType::BigDecimal)
+        );
+    }
     // A blink table does not group by the key (probe keymiss_blink).
     let stream = consume(&options(&registry, spec("b"), true)).unwrap();
     assert_eq!(
@@ -574,4 +570,88 @@ fn an_envelope_without_op_or_the_keys_field_fails_with_javas_text() {
             ("op".to_owned(), ColumnType::String),
         ]
     );
+}
+
+/// A change event without `before`, whose `name` is a decimal of scale 2 (Debezium's
+/// `connect.decimal`), written as Avro writes a `bytes` decimal: the unscaled value's two's
+/// complement bytes.
+fn decimal_event(op: &str, after: Option<(i64, Option<&[u8]>)>) -> Vec<u8> {
+    let mut out = Vec::new();
+    zigzag(0, &mut out);
+    match after {
+        None => zigzag(0, &mut out),
+        Some((id, name)) => {
+            zigzag(1, &mut out);
+            zigzag(id, &mut out);
+            match name {
+                None => zigzag(0, &mut out),
+                Some(unscaled) => {
+                    zigzag(1, &mut out);
+                    zigzag(unscaled.len() as i64, &mut out);
+                    out.extend_from_slice(unscaled);
+                }
+            }
+        }
+    }
+    string("2.7.0.Final", &mut out);
+    zigzag(1_700_000_000_000, &mut out);
+    zigzag(0, &mut out);
+    string("false", &mut out);
+    zigzag(0, &mut out);
+    zigzag(0, &mut out);
+    string(op, &mut out);
+    zigzag(1, &mut out);
+    zigzag(1_700_000_000_100, &mut out);
+    framed(2, out)
+}
+
+/// The current rows keep a decimal column: each key shows the decimal of its last event,
+/// with the schema's scale, as Java's `last_by` of the events shows the row's `BigDecimal`.
+#[test]
+fn the_current_rows_keep_a_decimal_column() {
+    let decimal = VALUE.replace(
+        r#"{"name":"name","type":["null","string"],"default":null}"#,
+        r#"{"name":"name","type":["null",{"type":"bytes","logicalType":"decimal","precision":10,"scale":2}],"default":null}"#,
+    );
+    let mut answers = subject("db.inv.people-key", 1, KEY);
+    answers.extend(subject("db.inv.people-value", 2, &decimal));
+    let registry = Registry::serve(answers);
+    let stream = consume(&options(
+        &registry,
+        CdcSpec::short("db", "inv", "people"),
+        false,
+    ))
+    .unwrap();
+    assert_eq!(
+        stream.columns()[1],
+        ("name".to_owned(), ColumnType::BigDecimal)
+    );
+    // 12.34 and then 5.00 for 1001, null for 1002, and 1003 deleted.
+    let event = |op, id, name: Option<&[u8]>| decimal_event(op, Some((id, name)));
+    stream.cycle(vec![
+        record(
+            0,
+            Some(key(1001)),
+            Some(event("r", 1001, Some(&[0x04, 0xd2]))),
+        ),
+        record(1, Some(key(1002)), Some(event("c", 1002, None))),
+        record(2, Some(key(1003)), Some(event("c", 1003, Some(&[0x01])))),
+    ]);
+    stream.cycle(vec![
+        record(
+            3,
+            Some(key(1001)),
+            Some(event("u", 1001, Some(&[0x01, 0xf4]))),
+        ),
+        record(4, Some(key(1003)), Some(decimal_event("d", None))),
+    ]);
+    assert_eq!(stream.ints("id"), [Some(1001), Some(1002)]);
+    let names = stream.column("name");
+    let names = names.as_binary::<i32>();
+    let (scale, unscaled) = oxhaven_column::java_values::big_decimal_parts(names.value(0)).unwrap();
+    assert_eq!(
+        oxhaven_column::java_values::big_decimal_text(scale, unscaled),
+        "5.00"
+    );
+    assert!(names.is_null(1));
 }

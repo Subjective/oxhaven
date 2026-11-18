@@ -33,6 +33,7 @@ per primitive type and replaced by one generic implementation.
 | `impl/rangejoin` | `oxhaven-engine::ops::rangejoin` | 4.5 |
 | `impl/updateby` | `oxhaven-engine::ops::updateby` | 4.6 |
 | `UngroupOperation`, `engine/vector` | `oxhaven-engine::ops::ungroup` | 4.7 |
+| `util/ColumnsToRowsTransform` | `oxhaven-engine::ops::columns_to_rows` | 11.3 |
 | `DynamicWhereFilter`, select-distinct | `oxhaven-engine::ops::distinct` | 4.8 |
 | `impl/snapshot` | `oxhaven-engine::ops::snapshot` | 4.9 |
 | `impl/hierarchical` (rollup, tree) | `oxhaven-engine::ops::hierarchical` | 7.8, 7.9 |

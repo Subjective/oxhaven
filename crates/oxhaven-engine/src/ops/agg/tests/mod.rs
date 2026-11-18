@@ -1,5 +1,6 @@
 //! Tests of aggregation.
 
+mod big_numbers;
 mod by_rows;
 mod corpus;
 mod fixtures;
@@ -11,6 +12,7 @@ mod random;
 mod seeded;
 mod static_tables;
 mod time_types;
+mod vector_columns;
 
 use super::{aggregate_with, AggSpec, AggregateError, Aggregation, Pair, Sentinel};
 use crate::table::in_memory_table;

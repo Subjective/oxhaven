@@ -56,6 +56,9 @@ pub(super) fn every_aggregation(weighted_averages: bool, by: &[&str]) -> Vec<Agg
         count("N"),
         Aggregation::count_where("W1", ["I > 0"]),
         Aggregation::count_where("W2", ["D >= 0", "!isNull(L)", "S != `a`"]),
+        // Filters of a vector and of an array column.
+        Aggregation::count_where("W3", ["V == null"]),
+        Aggregation::count_where("W4", ["len(A) > 1", "len(V) < 3"]),
         // Formulas of several columns, of no column, and of a key column.
         Aggregation::formula("XM", "sum(I) + count(D) + len(S) + max(Y)"),
         Aggregation::formula("XV", "L"),
@@ -73,6 +76,16 @@ pub(super) fn every_aggregation(weighted_averages: bool, by: &[&str]) -> Vec<Agg
             aggregations.push(agg(AggSpec::Group, &[&format!("G{name} = {name}")]));
             aggregations.push(agg(AggSpec::First, &[&format!("F{name} = {name}")]));
             aggregations.push(agg(AggSpec::Last, &[&format!("L{name} = {name}")]));
+            // The distinct vectors; arrays have no order in Java. Without keys, only with
+            // nulls, as below for other columns.
+            if matches!(column_type, ColumnType::Vector(_)) {
+                let options: &[bool] = if keyed { &[false, true] } else { &[true] };
+                for &include_nulls in options {
+                    let spec = AggSpec::Distinct { include_nulls };
+                    let output = format!("D{}{name} = {name}", u8::from(include_nulls));
+                    aggregations.push(agg(spec, &[&output]));
+                }
+            }
             continue;
         }
         formulas.push(each("len(each)", format!("XL{name} = {name}")));
@@ -313,6 +326,14 @@ fn random_updates_by_one_key() {
 fn random_updates_by_two_keys() {
     for seed in test_seeds(100..120) {
         Run::new(seed, &["K", "G"]).run();
+    }
+}
+
+#[test]
+fn random_updates_by_a_vector_key() {
+    for seed in test_seeds(250..270) {
+        Run::new(seed, &["V"]).run();
+        Run::new(seed, &["K", "V"]).run();
     }
 }
 

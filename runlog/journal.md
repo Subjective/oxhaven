@@ -1395,3 +1395,19 @@ Seven green checks on head 817dc83f in the run the label started. Main is at d93
 ## 2026-11-18 07:41 UTC: pull request 171 merged
 
 Seven green checks on head bc1b5f4d. Main is at 613451ef.
+
+## 2026-11-18 08:41 UTC: task 11.3 reported, pull request 172; task 11.6 started
+
+columnsToRows is an engine operation and the console carries it out; dx.data.marketing works. Three cases where Deephaven's own result is wrong stay refused (owner question 7.12). The agent ran its replay with 3.2 GB free against the brief's rule; nothing failed, and later briefs tell agents to read the free space as its own command before a build. The branch conflicted with main in docs/FIGURES.md after pull request 170; the orchestrator merged main and kept both sections. Task 11.6 (filter and select refusals) runs on Opus beside task 11.5.
+
+## 2026-11-18 08:47 UTC: pull request 172 merged
+
+Seven green checks on head 6058a45f. Main is at b3dd5316. The three Python console pieces Josh approved (calendars, arrays and casts, columns to rows) are on main; the built-in calendars wait on his answer to 7.9.
+
+## 2026-11-18 08:51 UTC: task 11.5 reported, pull request 173; task 11.7 started
+
+Aggregations serve first and last of big numbers on ticking and blink tables, which lifts the refusal of decimals in Kafka change data capture (review item 4.3), and vector keys, distinct vectors and count-where over vectors. Arithmetic on big numbers is left: it needs a decimal dependency and two of Deephaven's ticking results depend on history. Owner question 7.13 (distinct of float vectors) added. Task 11.7 (rollups and trees, server handlers, small engine leftovers) runs on Opus beside task 11.6.
+
+## 2026-11-18 09:00 UTC: pull request 173 merged
+
+Seven green checks on head 30fd6340. Main is at 85206959.

@@ -33,6 +33,8 @@ mod calendar_tests;
 mod checks;
 #[cfg(test)]
 mod column_tests;
+#[cfg(test)]
+mod columns_to_rows_tests;
 mod completer;
 #[cfg(test)]
 mod completer_tests;
