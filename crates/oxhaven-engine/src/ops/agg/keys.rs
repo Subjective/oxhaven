@@ -20,7 +20,7 @@ use arrow::array::ArrayRef;
 /// (`Objects#deepEquals`), with io.deephaven.util.compare.ObjectComparisons#eq and
 /// #hashCode, which the hasher of a key of objects calls
 /// (io.deephaven.engine.table.impl.by.typed.TypedHasherFactory#make)
-fn groupable_vector(column_type: &ColumnType) -> bool {
+pub(crate) fn groupable_vector(column_type: &ColumnType) -> bool {
     match column_type {
         ColumnType::Vector(element) => match &**element {
             ColumnType::Boolean

@@ -545,13 +545,16 @@ fn sum_of_a_list_column_is_refused_as_java_refuses_a_type_without_a_sum() {
     );
 }
 
+/// Behavior: io.deephaven.engine.table.impl.QueryTable#selectDistinct: a vector column is
+/// a key by its contents, and a null vector and an empty one are two keys.
 #[test]
-#[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.by.typed.TypedHasherFactory#make: \
-                a key column stored as List"
-)]
-fn select_distinct_of_a_list_column_is_not_ported() {
-    let _ = select_distinct(&listed(), &["V".to_string()]);
+fn select_distinct_of_a_vector_column_keeps_its_cells() {
+    let result = select_distinct(&listed(), &["V".to_string()]).unwrap();
+    let vector = ColumnType::vector(ColumnType::Int);
+    assert_eq!(result.definition().columns()[0].column_type, vector);
+    let column = TableSnapshot::current(&*result).unwrap().columns[0].clone();
+    let expected = list_of(&vector, [Some(2), None, Some(0)], ints([1, 2]));
+    assert_eq!(&column, &expected);
 }
 
 #[test]

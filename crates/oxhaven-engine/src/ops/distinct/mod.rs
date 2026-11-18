@@ -36,7 +36,7 @@ use crate::table::{memoized, CopyType, QueryTable, TableSpec};
 use crate::update::modified_pre_shift;
 use arrow::array::{ArrayRef, UInt64Array};
 use oxhaven_contracts::rowset::{RowKey, RowSet};
-use oxhaven_contracts::schema::{ColumnDefinition, TableDefinition};
+use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::{Table, TableAttributes, TableFailure};
 use oxhaven_contracts::update::TableUpdate;
 use std::fmt;
@@ -413,10 +413,11 @@ fn with_keys(
         .collect();
     let graph = source.update_graph().filter(|_| source.is_refreshing());
     let of_source = source.attributes();
-    let data_types: Vec<_> = columns
+    let key_types: Vec<ColumnType> = columns
         .iter()
-        .map(|column| column.column_type.arrow_type())
+        .map(|column| column.column_type.clone())
         .collect();
+    let data_types: Vec<_> = key_types.iter().map(ColumnType::arrow_type).collect();
     let groups = Groups {
         source: source.clone(),
         columns: columns
@@ -437,8 +438,8 @@ fn with_keys(
     // Without removals the groups with rows are the groups, `0..size`.
     let flat = graph.is_none() || of_source.add_only || of_source.append_only || of_source.blink;
     QueryTable::derive(source, move || {
-        for data_type in &data_types {
-            keys::check(data_type)?;
+        for column_type in &key_types {
+            keys::check(column_type)?;
         }
         let size = {
             let mut state = groups.state.lock().unwrap_or_else(PoisonError::into_inner);
