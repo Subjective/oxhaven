@@ -616,7 +616,10 @@ fn a_minimum_of_boolean_vectors_is_unported() {
 }
 
 /// A rolling minimum of `[0.0]` and `[-0.0]`, which compare equal, keeps the one that the
-/// layout of Java's ring buffer favours. Owner question 7.10 of the second batch.
+/// layout of Java's ring buffer favours. Seen on Deephaven 42.9: over 400 rows that
+/// alternate `[-0.0]` and `[0.0]`, `rolling_min_tick` with `rev_ticks=3` keeps the earliest
+/// vector of the window except at rows 128, 256 and 384. Owner question 7.10 of the second
+/// batch.
 #[test]
 #[should_panic(
     expected = "unported: io.deephaven.engine.table.impl.updateby.rollingminmax.ComparableRollingMinMaxOperator: \
