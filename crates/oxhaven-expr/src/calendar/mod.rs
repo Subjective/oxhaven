@@ -12,6 +12,8 @@
 
 mod registry;
 #[cfg(test)]
+mod shipped_tests;
+#[cfg(test)]
 mod tests;
 mod xml;
 mod zone;
@@ -20,7 +22,8 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 pub use registry::{
-    calendars, Calendars, CalendarsGuard, DEFAULT_CALENDAR_NAME, SHIPPED_CALENDAR_NAMES,
+    calendars, shipped_calendar, Calendars, CalendarsGuard, DEFAULT_CALENDAR_NAME,
+    SHIPPED_CALENDARS,
 };
 pub use xml::{parse_calendar, read_calendar_file};
 pub use zone::CalendarZone;

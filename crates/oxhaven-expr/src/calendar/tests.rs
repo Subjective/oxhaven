@@ -622,15 +622,17 @@ fn the_collection_of_calendars_behaves_as_deephavens() {
         registry.names(),
         ["USBANK_EXAMPLE", "USNYSE_EXAMPLE", "UTC"]
     );
-    // the calendars Deephaven ships are named and not handed out
-    assert!(matches!(
-        registry.get("utc"),
-        Err(CalendarError::Unported { .. })
+    // the calendars of the names Deephaven ships are there from the start, UTC the default
+    let utc = registry.get("utc").unwrap();
+    assert!(Arc::ptr_eq(
+        &utc,
+        &registry.default_calendar().unwrap().unwrap()
     ));
-    assert!(matches!(
-        registry.default_calendar(),
-        Err(CalendarError::Unported { .. })
-    ));
+    assert_eq!(utc.name(), "UTC");
+    assert_eq!(
+        registry.get("usNYSE_example").unwrap().zone().id(),
+        "America/New_York"
+    );
 
     let ny = Arc::new(fixture("ny"));
     registry.add(ny.clone(), &valid).unwrap();
