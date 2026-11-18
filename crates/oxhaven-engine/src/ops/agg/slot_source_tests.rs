@@ -159,3 +159,64 @@ fn consecutive_values_are_read_without_a_copy() {
     let past = source.chunk(&RowSet::from_range(3, 5)).unwrap();
     assert_eq!(&past, &ints(&[Some(4), Some(5), None]));
 }
+
+/// A column written once from key 0 on keeps no place per key, reads as one written key
+/// by key, and becomes one when it is written again.
+#[test]
+fn a_column_written_once_from_the_first_key_reads_as_one_written_by_keys() {
+    let values = ints(&[Some(10), None, Some(12), Some(13)]);
+    let clock = ManualClock::idle();
+    let dense = SlotSource::new(ColumnType::Int, Some(clock.clone()));
+    let keyed = SlotSource::new(ColumnType::Int, Some(clock.clone()));
+    dense.fill_from(0, &values).unwrap();
+    keyed.fill_by_keys(&[0, 1, 2, 3], &values).unwrap();
+    {
+        let state = dense.state.read().unwrap();
+        assert_eq!((state.dense, state.places.len()), (4, 0));
+    }
+    let same = |context: &str| {
+        for keys in [
+            vec![0, 1, 2, 3],
+            vec![3, 0],
+            vec![2, 9, 1],
+            vec![NULL_ROW_KEY],
+        ] {
+            for use_prev in [false, true] {
+                assert_eq!(
+                    dense.chunk_by_keys(&keys, use_prev).unwrap().as_ref(),
+                    keyed.chunk_by_keys(&keys, use_prev).unwrap().as_ref(),
+                    "{context}: {keys:?}, previous {use_prev}"
+                );
+            }
+        }
+    };
+    same("written once");
+    assert_eq!(
+        dense.chunk(&RowSet::flat(4)).unwrap().as_ref(),
+        values.as_ref()
+    );
+    // A write in a cycle: both keep what the keys held before it.
+    clock.start_cycle();
+    for source in [&dense, &keyed] {
+        source
+            .fill_by_keys(&[1, 5], &ints(&[Some(21), Some(25)]))
+            .unwrap();
+    }
+    assert_eq!(dense.state.read().unwrap().dense, 0);
+    same("written again in a cycle");
+    clock.finish_cycle();
+    same("after the cycle");
+    // Written from another key on, or a second time, a column has a place per key.
+    let later = SlotSource::new(ColumnType::Int, None);
+    later.fill_from(2, &values).unwrap();
+    assert_eq!(later.state.read().unwrap().dense, 0);
+    assert_eq!(
+        later.chunk_by_keys(&[0, 2, 5, 6], false).unwrap().as_ref(),
+        ints(&[None, Some(10), Some(13), None]).as_ref()
+    );
+    dense.fill_from(0, &ints(&[Some(1)])).unwrap();
+    assert_eq!(
+        dense.chunk_by_keys(&[0, 1, 2], false).unwrap().as_ref(),
+        ints(&[Some(1), Some(21), Some(12)]).as_ref()
+    );
+}
