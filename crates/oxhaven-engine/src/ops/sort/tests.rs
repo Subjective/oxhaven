@@ -568,6 +568,47 @@ fn insertions_beyond_a_leaf_spread_over_more_leaves() {
     );
 }
 
+/// Rows that sort after every other keep arriving while the oldest leave, as in a sort by a
+/// time: the keys of the rows that left are used again, so the key space stays in
+/// proportion to the rows and does not grow with every row there ever was. The soak test
+/// found it (`docs/SOAK.md`): the arrays indexed by row key grew by 12 bytes per such row.
+#[test]
+fn rows_appended_while_others_leave_keep_the_key_space_in_proportion() {
+    use super::gapped::{INITIAL_FILL, LEAF};
+    let t = ticking_sort();
+    let mut next_key: i64 = 1000;
+    let mut oldest = next_key;
+    let mut size = 4;
+    let mut shifts_seen = 0;
+    for round in 0..400 {
+        // Ten rows that sort last, and from the tenth round on the ten oldest leave.
+        let added: Vec<i64> = (next_key..next_key + 10).collect();
+        next_key += 10;
+        size += 10;
+        let mut change = TableChange::new().add(added, rows(vec![1000 + round; 10], &["x"; 10]));
+        if round >= 10 {
+            change = change.remove(oldest..oldest + 10);
+            oldest += 10;
+            size -= 10;
+        }
+        let update = t.step(change).unwrap();
+        shifts_seen += update.shifted.ranges().len();
+        let shown: Vec<i32> = cells(&*t.result, 0)
+            .iter()
+            .map(|cell| cell.parse().expect("an int"))
+            .collect();
+        assert_eq!(shown.len(), size, "round {round}");
+        assert!(shown.is_sorted(), "round {round}: {shown:?}");
+        let last = t.result.row_set().last_row_key().expect("rows") as usize;
+        let room = (size + 10).div_ceil(INITIAL_FILL) * LEAF;
+        assert!(
+            last < 2 * room + LEAF,
+            "round {round}: the last key is {last} for {size} rows"
+        );
+    }
+    assert!(shifts_seen > 0, "the rows were never laid out again");
+}
+
 #[test]
 fn a_modified_column_that_is_not_sorted_by_keeps_the_row_in_place() {
     let t = ticking_sort();

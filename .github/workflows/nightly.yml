@@ -123,3 +123,43 @@ jobs:
           name: ide-test-output
           path: oracle/ide/.out
           if-no-files-found: warn
+
+  soak:
+    # The soak test (docs/SOAK.md): a release build of the server with its console under a
+    # fixed ticking workload for 45 minutes, with resident memory, processor time, cycle
+    # times and results checked throughout. Needs no secret and no Java.
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: soak
+      # The Python the server embeds and the one the client's environment is made from,
+      # as in the oracle-replay job of ci.yml.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: oracle/requirements-replay.txt
+      - name: Install the client's environment
+        run: |
+          python -m venv oracle/.venv
+          oracle/.venv/bin/pip install -r oracle/requirements-replay.txt
+      - name: Build the server as it is deployed, with its Python console
+        run: cargo build --release --locked -p oxhaven-server --features python
+      - name: Soak test, long
+        env:
+          VIRTUAL_ENV: ${{ github.workspace }}/oracle/.venv
+        run: |
+          mkdir -p "$RUNNER_TEMP/soak"
+          oracle/.venv/bin/python bench/soak.py selftest
+          oracle/.venv/bin/python bench/soak.py run --profile long \
+            --binary target/release/oxhaven-server \
+            --server-log "$RUNNER_TEMP/soak/server.log" --out "$RUNNER_TEMP/soak/soak-long.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: soak
+          path: ${{ runner.temp }}/soak
+          if-no-files-found: warn

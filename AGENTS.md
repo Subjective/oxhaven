@@ -25,7 +25,7 @@ Before changing anything, read, in this order:
 | `crates/oxhaven-kafka` | Kafka topics consumed into tables (`docs/KAFKA.md`) |
 | `crates/oxhaven-proto` | Generated protocol types |
 | `crates/oxhaven-server` | gRPC services, sessions, Barrage |
-| `bench/` | End-to-end benchmark against Deephaven (`docs/BENCHMARK.md`) |
+| `bench/` | End-to-end benchmark against Deephaven (`docs/BENCHMARK.md`), soak test (`docs/SOAK.md`) |
 | `oracle/` | Differential harness, fuzzer, recorded Java results. Protected. |
 | `tasks/` | One file per task: scope, inputs, owned paths, gate command, status |
 
