@@ -1,0 +1,11 @@
+config=tuned threads=4 binary=/tmp/claude-0/-home-user/f70c6dae-7b08-56df-adc6-ea0375049d39/scratchpad/p913/server-system env GLIBC_TUNABLES=glibc.malloc.mmap_threshold=33554432:glibc.malloc.trim_threshold=4294967296:glibc.malloc.arena_max=1
+start 04:40:07 utime_s=0 stime_s=0 VmHWM: 12396 kB VmRSS: 12396 kB  load="0.67, 0.81, 1.10"
+uptime before run 1:  04:40:07 up  4:46,  0 user,  load average: 0.67, 0.81, 1.10
+after-run1 04:41:22 utime_s=65.85 stime_s=8.69 VmHWM: 2578056 kB VmRSS: 1537608 kB  load="0.91, 0.86, 1.09"
+uptime before run 2:  04:41:22 up  4:47,  0 user,  load average: 0.91, 0.86, 1.09
+after-run2 04:42:28 utime_s=131.24 stime_s=9.97 VmHWM: 2631064 kB VmRSS: 2058328 kB  load="1.03, 0.90, 1.09"
+idle30-after-run2 04:42:58 utime_s=131.24 stime_s=9.97 VmHWM: 2631064 kB VmRSS: 2058304 kB  load="0.62, 0.82, 1.05"
+uptime before run 3:  04:42:58 up  4:48,  0 user,  load average: 0.62, 0.82, 1.05
+after-run3 04:44:07 utime_s=197.84 stime_s=11.03 VmHWM: 2684196 kB VmRSS: 2189596 kB  load="1.19, 0.94, 1.07"
+idle30-after-run3 04:44:37 utime_s=197.85 stime_s=11.03 VmHWM: 2684196 kB VmRSS: 2189572 kB  load="0.72, 0.85, 1.04"
+done
