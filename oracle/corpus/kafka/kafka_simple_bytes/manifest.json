@@ -1,13 +1,19 @@
 {
   "format": 2,
   "scenario": "kafka_simple_bytes",
-  "scenario_sha256": "877489b64161340ec37f91ba39f8c067d87736a79a6c3c46dedf6b90972c483a",
+  "scenario_sha256": "e3a551b285cdc1e7fa3bd85f09b983f50cc66422a14c043053932c49f6dbfba9",
   "reference": "42.9",
   "entries": [
     {
       "step": 0,
-      "table": "raw",
-      "file": "step000.raw.arrow",
+      "table": "types",
+      "file": "step000.types.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "cells",
+      "file": "step000.cells.arrow",
       "rows": 5
     }
   ]

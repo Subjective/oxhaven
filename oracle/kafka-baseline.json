@@ -1,0 +1,24 @@
+{
+ "format": 1,
+ "replay-kafka": {
+  "kafka_avro": {"state": "clean"},
+  "kafka_avro_arrays": {"state": "clean"},
+  "kafka_avro_failures": {"state": "clean"},
+  "kafka_call_errors": {"state": "clean"},
+  "kafka_cdc": {"state": "clean"},
+  "kafka_columns": {"state": "clean"},
+  "kafka_compressed": {"state": "clean"},
+  "kafka_json": {"state": "clean"},
+  "kafka_json_failures": {"state": "clean"},
+  "kafka_offsets": {"state": "clean"},
+  "kafka_partitioned": {"state": "clean"},
+  "kafka_protobuf": {"state": "clean"},
+  "kafka_protobuf_enum": {"state": "differs", "kinds": ["failure_unexpected:NOT_FOUND", "script_failure_unexpected:deephaven.dherror.DHError"], "tables": ["(script)", "paint"], "why": "a Protobuf enum field is refused at consume: Java's column holds EnumValueDescriptor objects, for which Oxhaven has no column type (docs/KAFKA.md, owner's item 23)"},
+  "kafka_simple_bad_number": {"state": "clean"},
+  "kafka_simple_bytes": {"state": "clean"},
+  "kafka_simple_not_utf8": {"state": "differs", "kinds": ["failure_unexpected:INVALID_ARGUMENT"], "tables": ["text"], "why": "bytes that are not UTF-8 in a String column fail the table, where Java replaces them: the owner's ruling of 2026-11-17 (PARITY.md A15; docs/KAFKA.md, owner's item 7)"},
+  "kafka_simple_numbers": {"state": "clean"},
+  "kafka_simple_text": {"state": "clean"},
+  "kafka_table_types": {"state": "clean"}
+ }
+}

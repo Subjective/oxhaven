@@ -32,6 +32,12 @@ recorded from the Java reference. The reference is pinned in [REFERENCE.md](REFE
 | `harness/views.py` | Reading a view of a hierarchical table, for script scenarios |
 | `scenarios/python/` | The script scenarios, one Python file each |
 | `corpus/python/<scenario>/` | The recorded Java results of each script scenario |
+| `scenarios/kafka/` | The Kafka scenarios: script scenarios that consume the topics of a broker |
+| `corpus/kafka/` | The topics (`topics.json`) and the recorded Java results of each Kafka scenario |
+| `harness/kafka.py`, `harness/kafka_topics.py` | The Kafka corpus: publishing the topics, the schema registry, the gate; the topics' definition |
+| `bin/kafka-replay.sh` | **The Kafka gate** that CI runs: broker, registry, build, start, replay, compare with its baseline |
+| `bin/kafka-record.sh`, `bin/kafka-services.sh` | Record the Kafka corpus from the Java reference; the broker and the registry of both |
+| `kafka-baseline.json` | The expected state of every Kafka scenario against Oxhaven |
 | `harness/formulas/` | The `formulas` command: corpus format, classifier, grid, extractors |
 | `corpus/formulas/` | The formula corpus: fixtures, cases and their recorded Java outcomes |
 | `tests/` | Tests of the harness itself; they need no server |
@@ -175,6 +181,7 @@ overall = source.agg_by([agg.sum_("Sum = NoSuchColumn")])
 | `# oracle: computed a.Col` | A float column under the tolerance of A1, as an aggregation's sum is in a table scenario |
 | `# oracle: step` | What follows is the script of the next step. A step without code only waits |
 | `# oracle: fails` | The script of this step must fail on the reference |
+| `# oracle: await t 12, u fails` | After this step's script, wait until the table in `t` has 12 rows or more and the one in `u` has failed, and only then read the results. For a table that something outside the update graph fills, as a Kafka consumer's thread does ("The Kafka corpus") |
 
 - The text before the first `step` is the script of step 0. Each script is one `run_script`
   call, and keeps the line numbers of the file.
@@ -315,6 +322,76 @@ CI job enforces this with `bin/check-baseline-change.sh <base>`, which you can r
 you believe a `clean` line is wrong, stop and say so in the pull request (`PORTING.md`, "Never
 weaken a check"). There is no state for a scenario that is sometimes clean: one that flakes
 is a defect to find, in the server or in the harness.
+
+## The Kafka corpus
+
+What Deephaven makes of fixed topic contents, recorded once, and compared with what Oxhaven
+makes of the same topics on a real broker. It is the script scenarios again, with what a
+Kafka consumer needs around the server:
+
+```bash
+oracle/bin/kafka-replay.sh                       # the Kafka gate; needs Docker
+oracle/bin/kafka-replay.sh kafka_json,kafka_avro # only some scenarios
+```
+
+`kafka-replay.sh` starts `apache/kafka` in Docker on `127.0.0.1` (a fresh broker every
+time), publishes the topics, starts the schema registry, builds and starts Oxhaven with its
+Python console, replays every scenario under `scenarios/kafka/` against the recordings under
+`corpus/kafka/`, and judges the outcome against `kafka-baseline.json`. It needs no Java, and
+the environment of the replay gate (`oracle/.venv` from `requirements-replay.txt`). CI runs
+it in the `oracle-replay` job, after the replay gate, which has built the same server.
+`ORACLE_KAFKA_PORT` (default 19192; the broker's controller takes the next port) and
+`ORACLE_KAFKA_REGISTRY_PORT` (19194) move the two services, `ORACLE_KAFKA_OUT` the output
+directory (default `oracle/.run/kafka`: `report.json`, the server's log, the paths the
+registry was asked for), and `DOCKER_HOST` selects the Docker daemon.
+
+| Piece | Where | What it is |
+| --- | --- | --- |
+| The topics | `corpus/kafka/topics.json`, written from `harness/kafka_topics.py` | Every topic with its partitions, and every record with its partition, timestamp, key, value and headers (text, or hexadecimal for bytes that are not text); the subjects of the schema registry with their versions and ids. `tests/test_kafka.py` checks that the file is what the definitions give |
+| Publishing | `harness kafka-publish --broker <host:port>` (`kafka.publish`, with `kafka-python`) | Creates the topics and sends each record alone, to its partition and with its timestamp, and checks the offset it got: a broker that is not fresh is refused |
+| The registry | `harness kafka-registry --port <n>` (`kafka.Registry`) | Answers `GET /subjects/<s>/versions/<n or latest>` and `GET /schemas/ids/<id>` from the file, with Confluent's bodies and error codes, and 404 for every other path. No registry image |
+| A scenario | `scenarios/kafka/<name>.py` | A script scenario. Its script reads the broker's address and the registry's URL from `ORACLE_KAFKA_BROKER` and `ORACLE_KAFKA_REGISTRY` in the environment of the server that runs it, and waits for its tables with `await` |
+| A recording | `corpus/kafka/<name>/` | As for every script scenario. `corpus/kafka/recorded-from.json` holds the hash of the topics file the recordings were made from; the gate refuses to run against another |
+| The baseline | `kafka-baseline.json`, section `replay-kafka` | One line per scenario, with the states, kinds and verdicts of the replay gate (`baseline.py`). Every change to it is protected: `bin/check-baseline-change.sh` knows `replay-baseline.json` only |
+
+**What makes a recording repeatable.** Nothing in a topic depends on the clock or on the
+broker: every record has a timestamp given by the producer and a partition, and a fresh
+broker gives each the offset of its position. The topics are created with
+`retention.ms=-1`, because the timestamps are in 2023 and a broker's default retention
+would delete the records within minutes. A consumer's thread fills its table outside the
+update graph, so every scenario waits (`await`) for the rows it expects, or for the failure
+it expects, before its tables are read. What Java leaves undefined is taken out in the
+script, each with a comment there: tables of two partitions are sorted by partition and
+offset (the order of two partitions' records within a poll, `PARITY.md` A3), the time a
+record was received is reduced to whether it is there, a blink table is compared through
+tables that keep its rows, and a consumer group is one that never commits.
+
+**Recording.** Against the Java reference only:
+
+```bash
+oracle/bin/kafka-record.sh                      # every scenario; needs Docker and a JDK
+ORACLE_KAFKA_HOLD=1 oracle/bin/kafka-record.sh  # start everything and wait, to write a scenario
+```
+
+It starts the same broker and registry and the Java reference (port 10020, or
+`ORACLE_KAFKA_JAVA_PORT`), with `oracle/.venv` made from `requirements.txt`, and stores the
+recordings. To change a topic, change `harness/kafka_topics.py`, write the file with
+`bin/harness kafka-topics --write`, and record every scenario again: one scenario alone
+cannot be recorded against topics other than those of the other recordings. While it
+holds, `bin/harness show-scripts --url <url> --scenarios oracle/scenarios/kafka --scripts
+<name>` prints what a scenario leaves.
+
+**A difference.** When Oxhaven differs from a recording, the gate fails with `REGRESSED` or
+`NEW KIND` and the lines of the mismatch. Fix Oxhaven; or, when the difference is one that
+stays for now, its line in `kafka-baseline.json` says `differs` with its kinds, tables and
+cause, as in the replay baseline, and the gate then fails when it differs in any other way
+or no longer differs. The comparison itself is never changed for it.
+
+**Not in the corpus.** Producing (`deephaven.stream.kafka.producer`); TLS and SASL, snappy,
+lz4 and zstd, transactions and a broker that restarts, which the broker tests of
+`crates/oxhaven-kafka` cover against Oxhaven alone; committed offsets of a consumer group
+that commits; `kafka.topics`, which returns a list and not a table; records that arrive
+while a table is open (every topic is filled before the server starts).
 
 ## Fuzz
 

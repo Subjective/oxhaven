@@ -201,6 +201,22 @@ message Inner {
 """
 TICK_ID = 21
 
+PAINT_PROTO = """\
+syntax = "proto3";
+package kc;
+
+enum Color {
+  RED = 0;
+  GREEN = 1;
+}
+
+message Paint {
+  string name = 1;
+  Color color = 2;
+}
+"""
+PAINT_ID = 22
+
 # Debezium's shapes for a table `people` of the database `inv` on the server `kc`.
 PEOPLE_KEY = {
     "type": "record", "name": "Key", "namespace": "kc.inv.people",
@@ -239,6 +255,9 @@ def subjects() -> list[dict[str, Any]]:
         {"subject": "kc_avro_more-value", "versions": [avro(1, MORE_ID, MORE)]},
         {"subject": "kc_proto-value",
          "versions": [{"version": 1, "id": TICK_ID, "type": "PROTOBUF", "schema": TICK_PROTO}]},
+        {"subject": "kc_proto_enum-value",
+         "versions": [{"version": 1, "id": PAINT_ID, "type": "PROTOBUF",
+                       "schema": PAINT_PROTO}]},
         {"subject": "kc.inv.people-key", "versions": [avro(1, PEOPLE_KEY_ID, PEOPLE_KEY)]},
         {"subject": "kc.inv.people-value",
          "versions": [avro(1, PEOPLE_VALUE_ID, PEOPLE_VALUE)]},
@@ -370,6 +389,13 @@ def topics() -> list[dict[str, Any]]:
             record(be(">h", 7), be(">q", 70)),
             record(be(">h", -(2 ** 15)), be(">q", 2 ** 63 - 1)),
         ]),
+        # Values that are not UTF-8: bytes no encoding of a character starts with, and a
+        # character cut off at the end of the value.
+        topic("kc_text_not_utf8", [
+            record("n1", "fine"),
+            record("n2", b"\xff\xfeabc"),
+            record("n3", b"caf\xc3"),
+        ]),
         # The third value has three bytes: not an int.
         topic("kc_bad_int", [
             record("a", be(">i", 1)),
@@ -428,6 +454,17 @@ def topics() -> list[dict[str, Any]]:
             record("t4", None),
             record("t5", _trade("DDD", 0, -0.0, 0, 0, "", "Z", -1, True, float("inf"))),
         ]),
+        # Avro records that cannot be read: after a good one, a record whose schema id the
+        # registry does not have; and in the second topic one that starts with another
+        # magic byte than 0.
+        topic("kc_avro_unknown_id", [
+            record("u1", _trade("AAA", 10, 1.5, T0, 0, None, "X", 100, True, 0.5)),
+            record("u2", confluent(99, avro_string("?"))),
+        ]),
+        topic("kc_avro_bad_magic", [
+            record("m1", _trade("AAA", 10, 1.5, T0, 0, None, "X", 100, True, 0.5)),
+            record("m2", b"\x07" + _trade("BBB", 1, 1.0, T0, 0, None, "X", 1, True, 0.5)[1:]),
+        ]),
         # Avro arrays and a decimal.
         topic("kc_avro_more", [
             record(None, _more([1, 2, 3], ["a", "b"], 12345)),
@@ -441,6 +478,12 @@ def topics() -> list[dict[str, Any]]:
         topic("kc_proto_tombstone", [
             record("p1", proto_serdes(TICK_ID, _TICKS[0])),
             record("p1", None),
+        ]),
+        # A Protobuf message with an enum field: GREEN, and RED, which is the default and
+        # so not written.
+        topic("kc_proto_enum", [
+            record(None, proto_serdes(PAINT_ID, proto_bytes(1, b"leaf") + proto_varint(2, 1))),
+            record(None, proto_serdes(PAINT_ID, proto_bytes(1, b"rose"))),
         ]),
         # Change data capture as Debezium writes it: rows created, one updated, one deleted
         # and followed by its tombstone, one created after that.
