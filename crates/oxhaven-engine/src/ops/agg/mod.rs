@@ -68,7 +68,7 @@ mod tests;
 
 pub use count_where::CountWhere;
 pub use distinct::{SetMode, SortedValues};
-pub use first_last::{FirstLast, FirstLastCell, FirstLastMode};
+pub use first_last::{FirstLast, FirstLastCell, FirstLastMode, ShownRows};
 pub use formula::{FormulaAgg, FormulaConstant, FormulaSource};
 pub use group::Group;
 pub use min_max::MinMax;
@@ -607,6 +607,10 @@ fn is_floating(column_type: &ColumnType) -> bool {
 /// `visit(AggSpecSortedFirst)`, `visit(AggSpecSortedLast)` / `addSortedFirstOrLastOperator`,
 /// and `visit(AggSpecGroup)`, which takes a column of any type and refuses a blink table
 /// (`unsupportedForBlinkTables`)
+/// The rows the groups of one aggregation show as their last (index 0) and as their first
+/// (index 1), once a cell that shows them has been made.
+type SharedShownRows = [Option<Arc<Mutex<ShownRows>>>; 2];
+
 fn make_operator(
     spec: &AggSpec,
     parent: &Arc<dyn Table>,
@@ -614,6 +618,7 @@ fn make_operator(
     kind: ParentKind,
     keyed: bool,
     output: &str,
+    shown: &mut SharedShownRows,
 ) -> Result<Option<Planned>, AggregateError> {
     let definition = parent.definition();
     let column = |name: &str| {
@@ -788,12 +793,16 @@ fn make_operator(
                 // column: Java's operator for these keeps a row key per group and shows the
                 // column through it. A cell of a column of tables is copied as its handle,
                 // and the result's source keeps the table it names.
-                let op = FirstLastCell::new(
-                    parent.column(input),
-                    input_type.clone(),
-                    *spec == AggSpec::First,
-                    mode,
-                );
+                let first = *spec == AggSpec::First;
+                let mut op =
+                    FirstLastCell::new(parent.column(input), input_type.clone(), first, mode);
+                if mode == FirstLastMode::ByRowKey {
+                    // The first of these cells leads; it is before the others among
+                    // the operators, which are in the order they are made here.
+                    let shared = &mut shown[usize::from(first)];
+                    let leads = shared.is_none();
+                    op = op.sharing(shared.get_or_insert_default().clone(), leads);
+                }
                 return Ok(Some(Planned {
                     reads,
                     ..Planned::new(Box::new(op), None)
@@ -1721,6 +1730,7 @@ fn aggregate_inner(
     let mut operators: Vec<Planned> = Vec::new();
     let mut outputs: Vec<&str> = Vec::new();
     let mut planned: Vec<(&str, Planned)> = Vec::new();
+    let mut shown: SharedShownRows = [None, None];
     // The key columns that formulas read, by their index among the key columns.
     let mut keys_read: Vec<usize> = Vec::new();
     let mut shared_group = SharedGroup::default();
@@ -1800,12 +1810,13 @@ fn aggregate_inner(
                         planned.push((&pair.output, operator));
                         continue;
                     }
-                    let operator = make_operator(spec, parent, index, kind, keyed, &pair.output)?
-                        .ok_or_else(|| AggregateError::UnsupportedType {
-                        spec: spec.clone(),
-                        column: pair.input.clone(),
-                        column_type: definition.columns()[index].column_type.clone(),
-                    })?;
+                    let operator =
+                        make_operator(spec, parent, index, kind, keyed, &pair.output, &mut shown)?
+                            .ok_or_else(|| AggregateError::UnsupportedType {
+                                spec: spec.clone(),
+                                column: pair.input.clone(),
+                                column_type: definition.columns()[index].column_type.clone(),
+                            })?;
                     planned.push((&pair.output, operator));
                 }
             }

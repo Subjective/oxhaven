@@ -404,20 +404,23 @@ pub struct Marks {
 }
 
 impl Marks {
+    /// Notes `effect` on `slot`. Whether that changed what is noted of the slot.
     #[inline]
-    pub fn note(&mut self, slot: usize, effect: Effect) {
+    pub fn note(&mut self, slot: usize, effect: Effect) -> bool {
         let bits = if effect.modified { MODIFIED } else { 0 }
             | if effect.recompute { RECOMPUTE } else { 0 };
         if bits == 0 || (self.recompute_only && !effect.recompute) {
-            return;
+            return false;
         }
         if self.state.len() <= slot {
             self.state.resize(slot + 1, 0);
         }
-        if self.state[slot] == 0 {
+        let before = self.state[slot];
+        if before == 0 {
             self.touched.push(slot);
         }
-        self.state[slot] |= bits;
+        self.state[slot] = before | bits;
+        before | bits != before
     }
 
     /// The slots marked with `bit`, increasing.

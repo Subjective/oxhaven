@@ -7,7 +7,7 @@ use arrow::array::{Array, ArrayRef};
 use oxhaven_contracts::rowset::{RowKey, RowSet, NULL_ROW_KEY};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{ColumnSource, TableFailure};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 /// How the first or last row of a group is found, which depends on what the parent can do.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -224,7 +224,12 @@ pub struct FirstLastCell {
     column_type: ColumnType,
     first: bool,
     mode: FirstLastMode,
-    row_key: Vec<RowKey>,
+    /// The row each group shows. The cells of one aggregation that show the same rows
+    /// ([`FirstLastCell::sharing`]) keep them once.
+    shown: Arc<Mutex<ShownRows>>,
+    /// Whether this cell is the one that decides the shown rows; the others repeat what
+    /// it found.
+    leads: bool,
     /// The cell of each group, by slot; a group that has had no rows shows a null.
     cells: SlotSource,
 }
@@ -242,23 +247,55 @@ impl FirstLastCell {
             column_type,
             first,
             mode,
-            row_key: Vec::new(),
+            shown: Arc::default(),
+            leads: true,
         }
+    }
+
+    /// The cell as one of several cells of one aggregation that all show the first rows
+    /// of the groups, or all the last, when rows are only added
+    /// ([`FirstLastMode::ByRowKey`]): they are given the same rows, so the row each group
+    /// shows is kept once, in `shown`, by the one cell that `leads`, and the others
+    /// repeat what it found. The cell that leads must come before the others among the
+    /// operators of the aggregation, which give every chunk to each operator in order.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.by.AggregationProcessor#addFirstOrLastOperators,
+    /// which makes one operator and one row redirection for all the columns
+    pub fn sharing(mut self, shown: Arc<Mutex<ShownRows>>, leads: bool) -> FirstLastCell {
+        assert_eq!(self.mode, FirstLastMode::ByRowKey);
+        self.shown = shown;
+        self.leads = leads;
+        self
+    }
+
+    fn shown(&self) -> MutexGuard<'_, ShownRows> {
+        self.shown.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
-impl FirstLastCell {
+/// The row each group of an aggregation shows as its first or its last, by slot, and what
+/// the cell that leads found in its last call, for the cells that share the rows with it.
+#[derive(Default)]
+pub struct ShownRows {
+    row_key: Vec<RowKey>,
+    /// The effects of the last [`AggOperator::add_runs`].
+    effects: Vec<Effect>,
+    /// The slots that the last [`AggOperator::add_rows`] newly marked.
+    marked: Vec<usize>,
+}
+
+impl ShownRows {
     /// What the first or last row `row_key` of rows that joined `slot` does to the
     /// group.
     #[inline]
-    fn offer(&mut self, slot: usize, row_key: RowKey) -> Effect {
+    fn offer(&mut self, mode: FirstLastMode, first: bool, slot: usize, row_key: RowKey) -> Effect {
         let current = self.row_key[slot];
-        let takes = match self.mode {
+        let takes = match mode {
             // Behavior: FirstOrLastChunkedOperator#updateRedirections, which reports the
             // group modified when the row it shows is another one, whatever its value.
             FirstLastMode::Tracked => {
                 let beyond = current == NULL_ROW_KEY
-                    || if self.first {
+                    || if first {
                         row_key < current
                     } else {
                         row_key > current
@@ -268,9 +305,9 @@ impl FirstLastCell {
                     recompute: true,
                 };
             }
-            FirstLastMode::ByRowKey if self.first => current == NULL_ROW_KEY || row_key < current,
+            FirstLastMode::ByRowKey if first => current == NULL_ROW_KEY || row_key < current,
             FirstLastMode::ByRowKey => current == NULL_ROW_KEY || row_key > current,
-            FirstLastMode::Arrival => !self.first || current == NULL_ROW_KEY,
+            FirstLastMode::Arrival => !first || current == NULL_ROW_KEY,
         };
         if !takes {
             return Effect::UNCHANGED;
@@ -279,7 +316,9 @@ impl FirstLastCell {
         // The cell is read once the chunk's rows are all seen.
         Effect::RECOMPUTE
     }
+}
 
+impl FirstLastCell {
     /// Whether the rows of `run`, which leave group `slot`, include the row it shows.
     ///
     /// Behavior: FirstOrLastChunkedOperator#updateRedirections
@@ -287,7 +326,7 @@ impl FirstLastCell {
         if self.mode != FirstLastMode::Tracked {
             return Effect::UNCHANGED;
         }
-        let current = self.row_key[slot];
+        let current = self.shown().row_key[slot];
         Effect {
             modified: run.row_keys().any(|row_key| row_key == current),
             recompute: true,
@@ -311,12 +350,17 @@ impl AggOperator for FirstLastCell {
     }
 
     fn ensure_slots(&mut self, slots: usize) {
-        if self.row_key.len() < slots {
-            self.row_key.resize(slots, NULL_ROW_KEY);
+        let mut shown = self.shown();
+        if shown.row_key.len() < slots {
+            shown.row_key.resize(slots, NULL_ROW_KEY);
         }
     }
 
     fn add(&mut self, slot: usize, run: &Run<'_>) -> Effect {
+        assert!(
+            self.leads,
+            "a cell that shares its rows takes the groups of a chunk at once"
+        );
         let mut row_keys = run.row_keys();
         let candidate = if self.first {
             row_keys.next()
@@ -326,12 +370,26 @@ impl AggOperator for FirstLastCell {
         let Some(row_key) = candidate else {
             return Effect::UNCHANGED;
         };
-        self.offer(slot, row_key)
+        self.shown().offer(self.mode, self.first, slot, row_key)
     }
 
     fn add_runs(&mut self, runs: &Runs<'_>, effects: &mut Vec<Effect>) {
+        let shared = Arc::strong_count(&self.shown) > 1;
+        let mut shown = self.shown();
+        if !self.leads {
+            // The cell that leads was given these groups just before.
+            effects.extend_from_slice(&shown.effects);
+            return;
+        }
+        let start = effects.len();
         let ends = runs.ends(self.first);
-        effects.extend(ends.map(|(slot, p)| self.offer(slot, runs.row_key(p))));
+        effects.extend(
+            ends.map(|(slot, p)| shown.offer(self.mode, self.first, slot, runs.row_key(p))),
+        );
+        if shared {
+            shown.effects.clear();
+            shown.effects.extend_from_slice(&effects[start..]);
+        }
     }
 
     /// When rows are only added, the row a group shows is its least or greatest row key
@@ -344,8 +402,24 @@ impl AggOperator for FirstLastCell {
 
     fn add_rows(&mut self, rows: &Rows<'_>, marks: &mut Marks) {
         debug_assert_eq!(self.mode, FirstLastMode::ByRowKey);
+        let shared = Arc::strong_count(&self.shown) > 1;
+        let mut shown = self.shown();
+        if !self.leads {
+            // The cell that leads was given these rows just before, and its marks were
+            // these marks until then: the slots it newly marked are those to mark here.
+            for &slot in &shown.marked {
+                marks.note(slot, Effect::RECOMPUTE);
+            }
+            return;
+        }
+        let ShownRows {
+            row_key: shown_rows,
+            marked,
+            ..
+        } = &mut *shown;
+        marked.clear();
         for (&slot, &row_key) in rows.slots.iter().zip(rows.row_keys) {
-            let current = self.row_key[slot];
+            let current = shown_rows[slot];
             let takes = current == NULL_ROW_KEY
                 || if self.first {
                     row_key < current
@@ -353,8 +427,10 @@ impl AggOperator for FirstLastCell {
                     row_key > current
                 };
             if takes {
-                self.row_key[slot] = row_key;
-                marks.note(slot, Effect::RECOMPUTE);
+                shown_rows[slot] = row_key;
+                if marks.note(slot, Effect::RECOMPUTE) && shared {
+                    marked.push(slot);
+                }
             }
         }
     }
@@ -376,7 +452,7 @@ impl AggOperator for FirstLastCell {
     /// columns, see AggregationProcessor#addFirstOrLastOperators): the result is modified
     /// when the group's first or last row is among them.
     fn modify(&mut self, slot: usize, _old: &Run<'_>, new: &Run<'_>) -> Effect {
-        let current = self.row_key[slot];
+        let current = self.shown().row_key[slot];
         Effect {
             modified: new.row_keys().any(|row_key| row_key == current),
             recompute: true,
@@ -386,13 +462,14 @@ impl AggOperator for FirstLastCell {
     /// Behavior: FirstOrLastChunkedOperator#shiftChunk, which moves the row the group
     /// shows without reporting the group modified.
     fn shifted(&mut self, slot: usize, before: &RowSet, after: &RowSet) {
-        let current = self.row_key[slot];
+        let mut shown = self.shown();
+        let current = shown.row_key[slot];
         if let Some((_, moved)) = before
             .iter()
             .zip(after.iter())
             .find(|&(row_key, _)| row_key == current)
         {
-            self.row_key[slot] = moved;
+            shown.row_key[slot] = moved;
         }
     }
 
@@ -402,17 +479,20 @@ impl AggOperator for FirstLastCell {
         groups: &GroupReader<'_>,
     ) -> Result<Vec<bool>, TableFailure> {
         let tracked = self.mode == FirstLastMode::Tracked;
-        if tracked {
-            for &slot in slots {
-                let row_key = if self.first {
-                    groups.first_row_key(slot)
-                } else {
-                    groups.last_row_key(slot)
-                };
-                self.row_key[slot] = row_key.unwrap_or(NULL_ROW_KEY);
+        let row_keys: Vec<RowKey> = {
+            let mut shown = self.shown();
+            if tracked {
+                for &slot in slots {
+                    let row_key = if self.first {
+                        groups.first_row_key(slot)
+                    } else {
+                        groups.last_row_key(slot)
+                    };
+                    shown.row_key[slot] = row_key.unwrap_or(NULL_ROW_KEY);
+                }
             }
-        }
-        let row_keys: Vec<RowKey> = slots.iter().map(|&slot| self.row_key[slot]).collect();
+            slots.iter().map(|&slot| shown.row_key[slot]).collect()
+        };
         let cells = self.input.chunk_by_keys(&row_keys, false)?;
         if cells.len() != slots.len() {
             return Err(failure("first or last: the column gave too few cells"));
@@ -529,7 +609,7 @@ mod tests {
                 for add in [true, false] {
                     let (a, b) = feed(&mut batched, &mut single, None, add);
                     assert_eq!(a, b, "cells, {mode:?}, first {first}, add {add}");
-                    assert_eq!(batched.row_key, single.row_key);
+                    assert_eq!(batched.shown().row_key, single.shown().row_key);
                 }
             }
         }
@@ -587,7 +667,11 @@ mod tests {
                     values: None,
                 };
                 by_row.add_rows(&rows, &mut found);
-                assert_eq!(by_row.row_key, grouped.row_key, "first {first}");
+                assert_eq!(
+                    by_row.shown().row_key,
+                    grouped.shown().row_key,
+                    "first {first}"
+                );
                 for bit in [MODIFIED, RECOMPUTE] {
                     assert_eq!(found.marked(bit), expected.marked(bit), "first {first}");
                 }
@@ -596,6 +680,96 @@ mod tests {
         // FirstLastMode::Tracked and Arrival take groups only.
         for mode in [FirstLastMode::Tracked, FirstLastMode::Arrival] {
             assert!(!FirstLastCell::new(source.clone(), ColumnType::Long, true, mode).adds_rows());
+        }
+    }
+
+    /// Cells that share the rows their groups show say of every chunk what a cell on
+    /// its own says, by rows and by groups, and read the same rows.
+    #[test]
+    fn cells_that_share_their_rows_are_cells_on_their_own() {
+        use super::super::operator::{MODIFIED, RECOMPUTE};
+        let column = |from: i64| -> Arc<dyn ColumnSource> {
+            let values: ArrayRef = Arc::new(Int64Array::from_iter_values(from..from + 40));
+            Arc::new(FlatSource::new(ColumnType::Long, values).expect("a column"))
+        };
+        let sources = [column(100), column(200), column(300)];
+        for (first, by_rows) in [(true, true), (true, false), (false, true), (false, false)] {
+            let alone = |source: &Arc<dyn ColumnSource>| {
+                FirstLastCell::new(
+                    source.clone(),
+                    ColumnType::Long,
+                    first,
+                    FirstLastMode::ByRowKey,
+                )
+            };
+            let shown: Arc<Mutex<ShownRows>> = Arc::default();
+            let mut sharing: Vec<FirstLastCell> = sources
+                .iter()
+                .enumerate()
+                .map(|(index, source)| alone(source).sharing(shown.clone(), index == 0))
+                .collect();
+            let mut apart: Vec<FirstLastCell> = sources.iter().map(alone).collect();
+            let marks = || -> Vec<Marks> { (0..3).map(|_| Marks::default()).collect() };
+            let (mut shared_marks, mut apart_marks) = (marks(), marks());
+            for cell in sharing.iter_mut().chain(&mut apart) {
+                cell.ensure_slots(3);
+            }
+            for (row_keys, order, runs) in chunks() {
+                let mut slots = vec![0; row_keys.len()];
+                for (slot, range) in &runs {
+                    for &position in &order[range.clone()] {
+                        slots[position] = *slot;
+                    }
+                }
+                let mut distinct = slots.clone();
+                distinct.sort_unstable();
+                distinct.dedup();
+                let groups: Vec<u32> = slots
+                    .iter()
+                    .map(|slot| distinct.binary_search(slot).expect("a slot") as u32)
+                    .collect();
+                let rows = Rows {
+                    slots: &slots,
+                    distinct: &distinct,
+                    groups: &groups,
+                    row_keys: &row_keys,
+                    values: None,
+                };
+                let grouped = Runs::new(None, None, &row_keys, &order, &runs);
+                for (cells, all_marks) in [
+                    (&mut sharing, &mut shared_marks),
+                    (&mut apart, &mut apart_marks),
+                ] {
+                    for (cell, marks) in cells.iter_mut().zip(all_marks.iter_mut()) {
+                        if by_rows {
+                            cell.add_rows(&rows, marks);
+                        } else {
+                            let mut effects = Vec::new();
+                            cell.add_runs(&grouped, &mut effects);
+                            assert_eq!(effects.len(), runs.len());
+                            for ((slot, _), effect) in runs.iter().zip(effects) {
+                                marks.note(*slot, effect);
+                            }
+                        }
+                    }
+                }
+                for (shared, alone) in shared_marks.iter().zip(&apart_marks) {
+                    for bit in [MODIFIED, RECOMPUTE] {
+                        assert_eq!(shared.marked(bit), alone.marked(bit), "first {first}");
+                    }
+                }
+                assert!(!apart_marks[0].marked(RECOMPUTE).is_empty());
+            }
+            let reader = GroupReader::new(&[], None, &[]);
+            for (shared, alone) in sharing.iter_mut().zip(&mut apart) {
+                assert_eq!(shared.shown().row_key, alone.shown().row_key);
+                shared.recompute(&[0, 1, 2], &reader).expect("the cells");
+                alone.recompute(&[0, 1, 2], &reader).expect("the cells");
+                assert_eq!(
+                    shared.results(&[0, 1, 2]).as_ref(),
+                    alone.results(&[0, 1, 2]).as_ref()
+                );
+            }
         }
     }
 }
