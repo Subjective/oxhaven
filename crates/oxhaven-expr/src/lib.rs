@@ -4,6 +4,7 @@
 //! expression tree ([`parse`]), the tree is type-checked against a table definition
 //! ([`types`]), and the typed tree is evaluated over Arrow arrays ([`eval`]).
 
+pub mod calendar;
 mod eval;
 mod external;
 mod functions;

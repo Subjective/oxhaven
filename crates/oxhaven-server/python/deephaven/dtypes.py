@@ -23,7 +23,7 @@ import operator
 import sys
 from typing import Any, Callable, Optional, Sequence
 
-from . import _java_time
+from . import _calendar, _java_time
 from .constants import (
     NULL_BYTE,
     NULL_CHAR,
@@ -115,7 +115,7 @@ ZonedDateTime = DType(j_name="java.time.ZonedDateTime", j_type=_java_time.ZonedD
 Duration = DType(j_name="java.time.Duration", j_type=_java_time.Duration)
 Period = DType(j_name="java.time.Period", j_type=_java_time.Period)
 TimeZone = DType(j_name="java.time.ZoneId", j_type=_java_time.ZoneId)
-BusinessCalendar = DType(j_name="io.deephaven.time.calendar.BusinessCalendar")
+BusinessCalendar = DType(j_name="io.deephaven.time.calendar.BusinessCalendar", j_type=_calendar.BusinessCalendar)
 PyObject = DType(j_name="org.jpy.PyObject")
 JObject = DType(j_name="java.lang.Object")
 bool_array = DType(j_name="[Z")

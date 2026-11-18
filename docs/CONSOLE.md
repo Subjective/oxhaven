@@ -581,10 +581,73 @@ A task has no `ExecutionContext` in Java, so a formula in it is refused there an
 (the row of the table above). `_register_named_java_executor` of a new name is refused by
 the name of `PythonDeephavenSession#registerJavaExecutor`.
 
-`deephaven.calendar` has its six functions, and each is refused with the reference's
-message for the failure and the name of its method of `io.deephaven.time.calendar.Calendars`
-(`calendar`, `calendarName`, `calendarNames`, `setCalendar`, `removeCalendar`,
-`addCalendar`, `addCalendarFromFile`): this server has no business calendars.
+`deephaven.calendar` is described in "Business calendars" below.
+
+### Business calendars
+
+Task 11.1. The reference keeps its business calendars in Java
+(`io.deephaven.time.calendar.Calendars`) and hands a script the Java `BusinessCalendar`.
+Here the calendars are the server's (`oxhaven_expr::calendar`: the calendar file format, the
+business days and hours, the arithmetic over business dates and times, the collection of
+named calendars), and a script gets a `deephaven._calendar.BusinessCalendar` that has every
+public method of Java's `BusinessCalendar` and `Calendar`, with Java's overloads.
+
+- **The functions of `deephaven.calendar`** (`calendar`, `calendar_name`,
+  `calendar_names`, `set_calendar`, `add_calendar`, `remove_calendar`) work as in Java 42.9,
+  with the reference's `DHError` texts. A file is read as
+  `BusinessCalendarXMLParser` reads it: the same elements, the same defaults (valid dates
+  taken from the holidays), the same refusals (no `name`, `timeZone` or `default`, a close of
+  `24:00`, both `businessTime` and `businessPeriod`, overlapping ranges, a name that is no
+  valid query name, a name already taken), and the legacy `businessPeriod` form.
+- **The calendars Deephaven ships are not here.** `UTC`, `USNYSE_EXAMPLE` and
+  `USBANK_EXAMPLE` are read from files under the Deephaven Community License, which is
+  neither Apache-2.0 nor MIT, so they were not copied. Their names are in
+  `calendar_names()`, `calendar_name()` is `UTC` as in Java, and asking for one of them
+  (`calendar()` among them, while the default is `UTC`) is refused as `not ported:
+  io.deephaven.time.calendar.Calendars#calendar`. Adding a calendar of one of those names is
+  refused as Java refuses a second calendar of a name. A calendar added from a file, and
+  any name set as the default with `set_calendar`, work.
+- **The methods of a calendar** are chosen among Java's overloads by the Python types of the
+  arguments, as jpy chooses: `str` for `String`, the values of `deephaven.time` for
+  `LocalDate`, `Instant`, `ZonedDateTime`, `LocalTime` and `ZoneId`, `None` for any of them,
+  `bool` and `int` for `int` (truncated to 32 bits, as jpy does), and jpy's two texts when no
+  overload or more than one fits (`no matching Java method overloads found`, `ambiguous Java
+  method call, too many matching method overloads found`). The overloads that are not public
+  in Java (`isLastBusinessDayOfMonth(LocalDate)`, `isLastBusinessDayOfYear(LocalDate)` and
+  `(String)`) are not reachable here either.
+- **What a calendar hands out** is a value of `deephaven._java_time` (`LocalDate`,
+  `Instant`, `ZonedDateTime`, `LocalTime`, `Duration`, `ZoneId`, `DayOfWeek`), a
+  `CalendarDay` or `TimeRange` of `deephaven._calendar`, a Python list for a Java array, and
+  small stand-ins of `java.util.List`, `Set` and `Map` with the methods FigureCalendar and
+  `deephaven.numpy` call (`toArray`, `get`, `size`, `isEmpty`, `contains`, `containsKey`,
+  `keySet`, `values`, `entrySet`); any other method of those is refused by its name.
+- `deephaven.numpy.to_np_busdaycalendar` works, as in Java.
+
+Not the same as Java 42.9:
+
+| What | Java | Here |
+| --- | --- | --- |
+| `holidays()`, `weekendDays()` | a `Map` and a `Set` from `Map.copyOf` and `Set.copyOf`, whose order changes from run to run | in order of date and of day |
+| The type of what `start()`, `end()`, `businessStart()` hand out | `java.lang.Comparable`, as jpy sees the generic type | the concrete `LocalTime` or `Instant`; its text is the same |
+| An array (`businessDates` and the like) | a jpy array | a Python list of the same items |
+| `hashCode()`, `getClass()` | the Java values | refused by name |
+| The texts of errors | Java's; for a calendar file, the message of the root cause | the same class and message for every failure probed, except: an invalid date in a file names `DateTimeParseException: Cannot parse local date` where Java's root cause is `DateTimeException: Invalid value for MonthOfYear`, an unknown weekend day is `Invalid day of week` where Java's root cause is `No enum constant java.time.DayOfWeek.X`, and a malformed file names `roxmltree`'s error |
+| A calendar file that is not UTF-8, or that names an external entity | read | refused |
+
+Reproduced from Java, though they look like defects: `remove_calendar` is case-sensitive
+while names are kept in upper case, so a lower-case name removes nothing; `set_calendar`
+takes any name and `calendar()` fails later; a holiday `date` of eight characters is read
+as `yyyyMMdd` whatever it holds (`2024-2-3` fails); a file with neither valid dates nor
+holidays fails with `NoSuchElementException`; the root element may have any name and the
+valid range may be reversed; a range that a change of the zone's offset makes run backwards
+fails the day it falls on (`Start is after end`); `includeClose` is true only for `true`;
+`diffBusinessYears` does not put a later start after the end and fails;
+`isLastBusinessDayOfMonth` compares the month only.
+
+Not ported, each refused by its name: the shipped calendars, as above; the business
+calendar of a `deephaven.plot` figure (`Figure#businessTime`, "Business time and transforms
+of an axis" in `docs/FIGURES.md`); the calendar functions of the formula language
+(`io.deephaven.time.calendar.StaticCalendarMethods`), which are not in the formula library.
 
 ### The jpy module
 
@@ -616,6 +679,22 @@ fails by that class's name.**
 | `jpy.types` | the 686 classes loaded so far | the types handed out so far |
 | `jpy.diag`, `jpy.VerboseExceptions`, `jpy.type_callbacks`, `jpy.type_translations` | settings of the bridge | objects with the same attributes and jpy's values in a process without a Java VM (`flags` 0, `enabled` false); nothing reads them |
 | `jpy.JType`, `JField`, `JMethod`, `JOverloadedMethod`, `JException` | the classes of jpy's wrappers | classes of those names; `JType` is a base of every type, `JException` is an `Exception` that nothing raises |
+
+One exception, task 11.1: two static methods of `io.deephaven.time.DateTimeUtils` are
+carried out, because `deephaven.plot.express` calls them for a figure with `calendar=`
+(`deephaven_figure/FigureCalendar.py`, `unpack_time_range`), and their Java overloads are
+chosen as jpy chooses:
+
+| Call | Java 42.9, as observed | Here |
+| --- | --- | --- |
+| `timeZone()` | the server's zone, `Etc/UTC` in the reference's container | `Etc/UTC` |
+| `timeZone(str)` | the zone of the text, by Deephaven's aliases (`ET` is `America/New_York`); `ZoneRulesException` for an unknown one; `None` for `None` | the same, through `deephaven.time`'s aliases |
+| `toLocalTime(Instant, ZoneId)`, `toLocalTime(ZonedDateTime)` | the time of day; `None` when an argument is `None` | the same |
+| `toLocalTime(None)`, `timeZone(ZoneId)`, `timeZone(5)` | jpy's `ambiguous ...` and `no matching ...` | the same |
+
+Every other member of `DateTimeUtils`, and of any class, is refused as above. This widens
+what the owner's ruling of 2026-11-16 allowed ("every use of a Java class fails by that
+class's name"); the task's report asks the owner to confirm it.
 
 The refusal is `deephaven._java_time.NotPorted`, the error of this package for what Java
 does and it does not: a `NotImplementedError`, and so a `RuntimeError`, which is what jpy

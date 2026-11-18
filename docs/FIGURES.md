@@ -316,6 +316,26 @@ against Java 42.9, with the tables a figure refers to fetched and compared too.
   (`ColumnsToRowsTransform#columnsToRows`) and `gapminder` when it ticks
   (`java.lang.String[]: jpy.array`).
 
+### After task 11.1
+
+Business calendars exist (`docs/CONSOLE.md`, "Business calendars"), and `jpy` carries out
+`DateTimeUtils.timeZone` and `toLocalTime`, the two calls the plugin makes for a figure with
+`calendar=` (`docs/CONSOLE.md`, "The jpy module").
+
+- A figure with a calendar added from a file is made, on both servers: `dx.line(...,
+  calendar="NAME")`, and with the calendar object. What the plugin sends the client for it,
+  `FigureCalendar.to_dict()` (the zone, the business days, the holidays with their business
+  hours as times of day in the calendar's zone, the hours of a standard day, the name), is
+  Java's for three calendar files written for the tests, one with a lunch break and partial
+  holidays, one in a zone given by an alias with a Friday weekend and legacy
+  `businessPeriod`s, one open all day with holidays on the days the offset changes
+  (`calendar_tests.rs`, `a_figure_reads_a_calendar_as_from_deephaven`).
+- The two recorded figures with `calendar=` still fail: they ask for a calendar Deephaven
+  ships (`calendar=True` is the default, `UTC`), whose files are not under Apache-2.0 or MIT
+  and are not here (`not ported: io.deephaven.time.calendar.Calendars#calendar`).
+- The business time of an axis of a `deephaven.plot` figure (`Figure#businessTime`) is
+  still refused, as the table of "Refused" says.
+
 ## Not started
 
 - What the trials above list as failing.

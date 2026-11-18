@@ -89,9 +89,10 @@ for call, text in (
     # a constructor
     (lambda: held(), 'io.deephaven.time.DateTimeUtils#<init>'),
     (lambda: held(1, zone='UTC'), 'io.deephaven.time.DateTimeUtils#<init>'),
-    # a static method, called or only taken; a static field
-    (lambda: held.timeZone('UTC'), 'io.deephaven.time.DateTimeUtils#timeZone'),
-    (lambda: held.toLocalTime, 'io.deephaven.time.DateTimeUtils#toLocalTime'),
+    # a static method, called or only taken; a static field (timeZone and toLocalTime are
+    # carried out, `calendar_tests.rs`)
+    (lambda: held.parseInstant('2024-07-03T13:30:00Z'), 'io.deephaven.time.DateTimeUtils#parseInstant'),
+    (lambda: held.toLocalDate, 'io.deephaven.time.DateTimeUtils#toLocalDate'),
     (lambda: held.MILLI, 'io.deephaven.time.DateTimeUtils#MILLI'),
     (lambda: getattr(held, 'SECOND', 1), 'io.deephaven.time.DateTimeUtils#SECOND'),
     (lambda: hasattr(held, 'now'), 'io.deephaven.time.DateTimeUtils#now'),

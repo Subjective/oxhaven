@@ -27,6 +27,9 @@
 mod appmode;
 #[cfg(test)]
 mod appmode_tests;
+mod calendar;
+#[cfg(test)]
+mod calendar_tests;
 mod checks;
 #[cfg(test)]
 mod column_tests;
@@ -528,6 +531,7 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         plugin::register(&native)?;
         checks::register(&native)?;
         appmode::register(&native)?;
+        calendar::register(&native)?;
         stream::register(&native)?;
         modules.set_item("_oxhaven", &native)?;
 
