@@ -1,10 +1,12 @@
 //! Stamps: the values of the as-of column of a row, in a form whose order is the order
 //! Java's stamp kernels and sorted arrays use.
 
+use crate::ops::key_table::groupable_vector;
+use crate::ops::sort::big_number_key;
 use crate::ops::zoned;
 use arrow::array::{
-    Array, ArrayRef, BooleanArray, Date32Array, DurationNanosecondArray, Float32Array,
-    Float64Array, Int16Array, Int32Array, Int64Array, Int8Array, StringArray,
+    Array, ArrayRef, AsArray, BinaryArray, BooleanArray, Date32Array, DurationNanosecondArray,
+    Float32Array, Float64Array, Int16Array, Int32Array, Int64Array, Int8Array, StringArray,
     Time64NanosecondArray, TimestampNanosecondArray, UInt16Array,
 };
 use oxhaven_contracts::rowset::RowSet;
@@ -52,6 +54,10 @@ impl Ord for Finite {
 /// then by its local date and time, which for one instant is the order of the zones'
 /// offsets, then by its zone's id; it equals another exactly when `equals` says so.
 ///
+/// A `BigInteger` orders by its value. A vector orders element by element, each element
+/// by the order of its type here, and a vector that is the start of another before it;
+/// for the vectors [`incomparable`] takes, two vectors that compare equal are equal.
+///
 /// Behavior: the `doComparison` and `eq` of the kernels under
 /// io.deephaven.engine.table.impl.join.stamp and
 /// io.deephaven.engine.table.impl.join.dupcompact, which call
@@ -61,7 +67,9 @@ impl Ord for Finite {
 /// io.deephaven.engine.table.impl.sources.ReinterpretUtils#maybeConvertToPrimitive for
 /// `Boolean` and `Instant`; java.time.LocalDate#compareTo, LocalTime#compareTo,
 /// LocalDateTime#compareTo, Duration#compareTo, java.lang.Enum#compareTo and
-/// java.time.chrono.ChronoZonedDateTime#compareTo.
+/// java.time.chrono.ChronoZonedDateTime#compareTo; java.math.BigInteger#compareTo,
+/// io.deephaven.vector.IntVector#compareTo and ObjectVector#compareTo (seen on Deephaven
+/// 42.9: `aj` and `raj` on `BigInteger` and `IntVector` stamps).
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub(super) enum Stamp {
     Null,
@@ -71,6 +79,10 @@ pub(super) enum Stamp {
     /// A `ZonedDateTime`: its instant in nanoseconds, its zone's offset at that instant in
     /// seconds, and its zone's id as UTF-16 code units.
     Zoned(i64, i32, Box<[u16]>),
+    /// A `BigInteger`, as bytes that order as the numbers (the sort's key of one).
+    Big(Box<[u8]>),
+    /// The elements of a vector.
+    List(Box<[Stamp]>),
     NaN,
 }
 
@@ -158,7 +170,15 @@ pub(super) fn incomparable(column_type: &ColumnType) -> Option<String> {
         | ColumnType::LocalDateTime
         | ColumnType::Duration
         | ColumnType::DayOfWeek
-        | ColumnType::ZonedDateTime => return None,
+        | ColumnType::ZonedDateTime
+        | ColumnType::BigInteger => return None,
+        // Seen on Deephaven 42.9: vector stamps join by `compareTo`, element by element.
+        vector if groupable_vector(vector) => return None,
+        // A `BigDecimal` orders by `compareTo` (`3` and `3.000` tie) but Java removes
+        // duplicate right stamps by `equals`, so which of tied right stamps of two scales
+        // a left row matches follows the binary search (owner item 7.18). Vectors of
+        // `float` or `double` likewise (7.6); arrays, tables and objects are compared by
+        // identity or fail (2.2, 2.3).
         other => unported!(
             "io.deephaven.engine.table.impl.AsOfJoinHelper#asOfJoin",
             "an as-of join on a column of type {other:?}"
@@ -229,6 +249,25 @@ fn stamps_of(values: &ArrayRef) -> Result<Vec<Stamp>, TableFailure> {
                 });
             }
             stamps
+        }
+        // A `BigInteger`: `incomparable` refuses `BigDecimal` stamps before they are read.
+        DataType::Binary => each::<BinaryArray>(values, |a, row| {
+            Stamp::Big(big_number_key(0, a.value(row)).into())
+        }),
+        DataType::List(_) => {
+            let lists = values.as_list::<i32>();
+            let elements = stamps_of(lists.values())?;
+            let offsets = lists.value_offsets();
+            (0..lists.len())
+                .map(|row| {
+                    if lists.is_null(row) {
+                        Stamp::Null
+                    } else {
+                        let range = offsets[row] as usize..offsets[row + 1] as usize;
+                        Stamp::List(elements[range].into())
+                    }
+                })
+                .collect()
         }
         other => unported!(
             "io.deephaven.engine.table.impl.join.stamp.StampKernel#makeStampKernel",

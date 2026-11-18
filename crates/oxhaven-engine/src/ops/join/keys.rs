@@ -2,11 +2,12 @@
 //! equality Java's join hashers use.
 
 use arrow::array::{
-    Array, ArrayRef, BooleanArray, Date32Array, DurationNanosecondArray, Float32Array,
-    Float64Array, Int16Array, Int32Array, Int64Array, Int8Array, StringArray, StructArray,
-    Time64NanosecondArray, TimestampNanosecondArray, UInt16Array,
+    Array, ArrayRef, AsArray, BinaryArray, BooleanArray, Date32Array, DurationNanosecondArray,
+    Float32Array, Float64Array, Int16Array, Int32Array, Int64Array, Int8Array, StringArray,
+    StructArray, Time64NanosecondArray, TimestampNanosecondArray, UInt16Array,
 };
 use arrow::datatypes::{DataType, TimeUnit};
+use oxhaven_column::java_values;
 use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{Table, TableFailure};
@@ -18,10 +19,17 @@ use oxhaven_contracts::unported;
 /// them equal: a null equals only a null, every NaN equals every NaN, and `-0.0` equals
 /// `0.0`. A `float` is widened to `double`, which keeps distinct values distinct.
 ///
+/// A vector is a key only when its type is one
+/// [`is_ported_key`](crate::ops::key_table::is_ported_key) takes, which the operations
+/// check before they read a key: its elements are then never floating point.
+///
 /// Behavior: the `eq` of io.deephaven.util.compare.DoubleComparisons, FloatComparisons,
 /// CharComparisons and ObjectComparisons as called by the hashers under
 /// io.deephaven.engine.table.impl.naturaljoin.typed; `Instant` is compared as its
-/// nanoseconds and `Boolean` as its byte (io.deephaven.engine.table.impl.BucketingContext).
+/// nanoseconds and `Boolean` as its byte (io.deephaven.engine.table.impl.BucketingContext);
+/// java.math.BigDecimal#equals, io.deephaven.vector.IntVector#equals and
+/// ObjectVector#equals for the objects (seen on Deephaven 42.9 for natural, exact and cross
+/// joins, `where_in` and `select_distinct`).
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub(crate) enum Cell {
     Null,
@@ -32,6 +40,13 @@ pub(crate) enum Cell {
     Text(String),
     /// The fields of a `ZonedDateTime` (instant, zone) or a `Period` (years, months, days).
     Fields(Vec<Cell>),
+    /// A `BigDecimal` or `BigInteger` as its column stores it, whose bytes are equal
+    /// exactly when Java's `equals` holds: a `BigDecimal` by value and scale (`3` is not
+    /// `3.000`).
+    Bytes(Vec<u8>),
+    /// The elements of a vector, which is equal to another of one size and equal
+    /// elements; an empty vector is not a null one.
+    List(Vec<Cell>),
 }
 
 /// The match column values of one row, in the order of the match columns. Empty for a join
@@ -118,6 +133,23 @@ fn append(keys: &mut [Key], values: &ArrayRef) {
                 });
             }
         }
+        DataType::Binary => {
+            each::<BinaryArray>(keys, values, |a, row| Cell::Bytes(a.value(row).to_vec()))
+        }
+        DataType::List(_) => {
+            let lists = values.as_list::<i32>();
+            let mut elements = vec![Key::with_capacity(1); lists.values().len()];
+            append(&mut elements, lists.values());
+            let offsets = lists.value_offsets();
+            for (row, key) in keys.iter_mut().enumerate() {
+                key.push(if lists.is_null(row) {
+                    Cell::Null
+                } else {
+                    let range = offsets[row] as usize..offsets[row + 1] as usize;
+                    Cell::List(elements[range].iter().map(|cell| cell[0].clone()).collect())
+                });
+            }
+        }
         other => unported!(
             "io.deephaven.engine.table.impl.by.typed.TypedHasherFactory#makeNaturalJoin",
             "a match column stored as {other}"
@@ -200,29 +232,50 @@ pub(crate) fn key_text(key: &[Cell], types: &[ColumnType]) -> String {
     let cells: Vec<String> = key
         .iter()
         .zip(types)
-        .map(|(cell, column_type)| match cell {
-            Cell::Null => "null".to_string(),
-            Cell::Bool(value) => value.to_string(),
-            Cell::Int(value) => match (column_type, u32::try_from(*value)) {
-                (ColumnType::Char, Ok(code)) => {
-                    char::from_u32(code).map_or_else(|| value.to_string(), String::from)
-                }
-                _ => value.to_string(),
-            },
-            Cell::Float(bits) => format!("{:?}", f64::from_bits(*bits)),
-            Cell::Text(text) => text.clone(),
-            Cell::Fields(fields) => {
-                let texts: Vec<String> = fields
-                    .iter()
-                    .map(|field| key_text(std::slice::from_ref(field), &[ColumnType::Long]))
-                    .collect();
-                format!("({})", texts.join(", "))
-            }
-        })
+        .map(|(cell, column_type)| cell_text(cell, column_type))
         .collect();
     match cells.as_slice() {
         [single] => single.clone(),
         _ => format!("[{}]", cells.join(", ")),
+    }
+}
+
+/// The text of one cell of a column of `column_type`, for [`key_text`]: a big number as
+/// Java prints it, a vector as `[a, b]`.
+fn cell_text(cell: &Cell, column_type: &ColumnType) -> String {
+    match cell {
+        Cell::Null => "null".to_string(),
+        Cell::Bool(value) => value.to_string(),
+        Cell::Int(value) => match (column_type, u32::try_from(*value)) {
+            (ColumnType::Char, Ok(code)) => {
+                char::from_u32(code).map_or_else(|| value.to_string(), String::from)
+            }
+            _ => value.to_string(),
+        },
+        Cell::Float(bits) => format!("{:?}", f64::from_bits(*bits)),
+        Cell::Text(text) => text.clone(),
+        Cell::Fields(fields) => {
+            let texts: Vec<String> = fields
+                .iter()
+                .map(|field| cell_text(field, &ColumnType::Long))
+                .collect();
+            format!("({})", texts.join(", "))
+        }
+        Cell::Bytes(bytes) => match column_type {
+            ColumnType::BigDecimal => java_values::big_decimal_parts(bytes).map_or_else(
+                || format!("{bytes:?}"),
+                |(scale, unscaled)| java_values::big_decimal_text(scale, unscaled),
+            ),
+            _ => java_values::big_integer_text(bytes),
+        },
+        Cell::List(elements) => {
+            let element = column_type.list_element().unwrap_or(&ColumnType::Long);
+            let texts: Vec<String> = elements
+                .iter()
+                .map(|cell| cell_text(cell, element))
+                .collect();
+            format!("[{}]", texts.join(", "))
+        }
     }
 }
 

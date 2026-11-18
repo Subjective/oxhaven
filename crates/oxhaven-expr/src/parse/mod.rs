@@ -1178,7 +1178,8 @@ mod tests {
             ),
             (
                 "A == '+12024-01-01T10:00 UTC'",
-                "time literal '+12024-01-01T10:00 UTC'",
+                "time literal '+12024-01-01T10:00 UTC' outside the range of a 64-bit \
+                 nanosecond timestamp",
             ),
         ];
         for (text, construct) in cases {

@@ -42,9 +42,75 @@ use arrow::datatypes::{
     Int64Type, Int8Type, Time64NanosecondType, TimeUnit, TimestampNanosecondType, UInt16Type,
 };
 use arrow::row::{RowConverter, SortField};
+use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::TableFailure;
 use oxhaven_contracts::unported;
 use std::sync::Arc;
+
+/// Whether rows keyed by a column of `column_type`, a vector, are keyed by the vectors'
+/// contents alone: a vector whose elements, at every depth, are integers, `char`s,
+/// `Boolean`s, `String`s, `Instant`s or vectors of these. Two such vectors are one key when
+/// both are null, or they have one size and equal elements, a null element equal only to a
+/// null element; an empty vector is a key of its own. Every vector class compares and
+/// hashes these elements by value, so the key does not depend on where the vectors came
+/// from. Arrow's row format, and the joins' key cells, compare lists in exactly this way.
+///
+/// Not taken: vectors of `float` or `double`, whose keys depend on the class of the vector
+/// objects (`-0.0` and `0.0`, owner item 7.6), and vectors of arrays, keyed by the
+/// identity of the arrays (7.7).
+///
+/// Behavior: io.deephaven.vector.IntVector#equals and #hashCode, ObjectVector#equals
+/// (`Objects#deepEquals`), with io.deephaven.util.compare.ObjectComparisons#eq and
+/// #hashCode, which the hasher of a key of objects calls
+/// (io.deephaven.engine.table.impl.by.typed.TypedHasherFactory#make)
+pub(crate) fn groupable_vector(column_type: &ColumnType) -> bool {
+    match column_type {
+        ColumnType::Vector(element) => match &**element {
+            ColumnType::Boolean
+            | ColumnType::Byte
+            | ColumnType::Char
+            | ColumnType::Short
+            | ColumnType::Int
+            | ColumnType::Long
+            | ColumnType::String
+            | ColumnType::Instant => true,
+            inner @ ColumnType::Vector(_) => groupable_vector(inner),
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+/// Whether a key column of `column_type` is one whose equality is ported: every column
+/// that is not a vector or an array, and the vectors [`groupable_vector`] takes. Arrays
+/// are keyed by identity in Java (owner item 7.7).
+pub(crate) fn is_ported_key(column_type: &ColumnType) -> bool {
+    column_type.list_element().is_none() || groupable_vector(column_type)
+}
+
+/// Whether `a` and `b` are both vectors of a type that is no primitive, which are one Java
+/// class, `io.deephaven.vector.ObjectVector`, whatever their element types. Java checks
+/// that two key columns are of one class, so it takes such a pair where their element
+/// types differ.
+///
+/// Behavior: io.deephaven.engine.table.impl.BucketingContext#BucketingContext, which
+/// compares `ColumnSource#getType`
+pub(crate) fn same_object_vector_class(a: &ColumnType, b: &ColumnType) -> bool {
+    let object_element = |column_type: &ColumnType| match column_type {
+        ColumnType::Vector(element) => !matches!(
+            **element,
+            ColumnType::Byte
+                | ColumnType::Char
+                | ColumnType::Short
+                | ColumnType::Int
+                | ColumnType::Long
+                | ColumnType::Float
+                | ColumnType::Double
+        ),
+        _ => false,
+    };
+    object_element(a) && object_element(b)
+}
 
 /// What [`KeyTable::find`] answers for a row whose key the table does not have.
 pub const NO_SLOT: u32 = u32::MAX;
@@ -774,10 +840,16 @@ pub(crate) fn canonical_floats(array: &ArrayRef) -> ArrayRef {
 /// With `unported!` for a column of a type that joins do not take as a key.
 fn canonical(column: &ArrayRef) -> ArrayRef {
     /// The types the joins' key cells (`ops::join::keys::Cell`) have an equality for. A
-    /// `ZonedDateTime` and a `Period` are structs of them.
+    /// `ZonedDateTime` and a `Period` are structs of them. A `BigDecimal` or `BigInteger`
+    /// cell is equal bytes exactly when Java's `equals` holds (the scale counts). A list
+    /// is a vector that [`is_ported_key`] took before it came here; one of floating point
+    /// elements never is, and would need its NaNs and zeros left as they are.
     fn is_key_type(data_type: &DataType) -> bool {
         match data_type {
-            DataType::Utf8 => true,
+            DataType::Utf8 | DataType::Binary => true,
+            DataType::List(element) => {
+                !element.data_type().is_floating() && is_key_type(element.data_type())
+            }
             DataType::Struct(fields) => fields.iter().all(|field| {
                 // No struct that is a column type has a floating point field, and one that
                 // had would need its NaNs and zeros brought to one form here.

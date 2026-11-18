@@ -2192,3 +2192,215 @@ fn big_number_filters_follow_a_ticking_parent() {
         assert!(checker.updates_seen() > 0, "{filters:?}");
     }
 }
+
+/// Columns declared as `Object`, as `update` makes them on Java of `J = i == 5 ? NULL_INT
+/// : i` and `D` (2.5, -0.0, 0.0, 1.5, NaN, `NULL_DOUBLE`, 1.0, 2.5): `OI = (Object) J`,
+/// `OL = (Object) (long) J`, `OD = (Object) D`, `OF = (Object) (float) D`, `OS = (Object)
+/// S` (`a0` to `a6`, then null), `ON = null` and `OZ = (Object) (i % 2 == 0)`. The boxes of
+/// row 5 hold the primitives' reserved values, which are no nulls.
+fn objects_table() -> Arc<dyn Table> {
+    let object = |class: ColumnType| ColumnType::object(Some(class));
+    let d = [2.5, -0.0, 0.0, 1.5, f64::NAN, NULL_DOUBLE, 1.0, 2.5];
+    let oi: ArrayRef = Arc::new(Int32Array::from(vec![0, 1, 2, 3, 4, NULL_INT, 6, 7]));
+    let ol: ArrayRef = Arc::new(Int64Array::from(vec![0, 1, 2, 3, 4, i64::MIN, 6, 7]));
+    let od: ArrayRef = Arc::new(Float64Array::from(d.to_vec()));
+    let of: ArrayRef = Arc::new(Float32Array::from(
+        d.iter().map(|v| *v as f32).collect::<Vec<_>>(),
+    ));
+    let os: ArrayRef = Arc::new(StringArray::from(
+        (0..8)
+            .map(|i| (i < 7).then(|| format!("a{i}")))
+            .collect::<Vec<_>>(),
+    ));
+    let on: ArrayRef = Arc::new(StringArray::from(vec![None::<&str>; 8]));
+    let oz: ArrayRef = Arc::new(BooleanArray::from(
+        (0..8).map(|i| i % 2 == 0).collect::<Vec<_>>(),
+    ));
+    let i: ArrayRef = Arc::new(Int32Array::from((0..8).collect::<Vec<_>>()));
+    static_table(vec![
+        ("I", ColumnType::Int, i),
+        ("OI", object(ColumnType::Int), oi),
+        ("OL", object(ColumnType::Long), ol),
+        ("OD", object(ColumnType::Double), od),
+        ("OS", object(ColumnType::String), os),
+        ("ON", ColumnType::object(None), on),
+        ("OZ", object(ColumnType::Boolean), oz),
+        ("OF", object(ColumnType::Float), of),
+    ])
+}
+
+/// Behavior: the `Object` convertor of `MatchFilter.ColumnTypeConvertorFactory#getConvertor`
+/// (a quoted `String`, a `Double` with a `.`, `Long.parseLong` of text ending in `L`, else
+/// `Integer.parseInt`), `ObjectChunkMatchFilterFactory` (`Objects.equals`, so a value of
+/// another class is never equal), and the formula a comparison falls back on when the
+/// literal cannot be converted. Each answer is what Java 42.9 kept from the same table.
+#[test]
+fn a_match_filter_of_an_object_column_compares_java_objects() {
+    let t = objects_table();
+    let none = [0i64; 0];
+    let all = [0, 1, 2, 3, 4, 5, 6, 7];
+    for (filter, rows) in [
+        ("OI == 3", &[3][..]),
+        ("OI = 3", &[3]),
+        ("3 == OI", &[3]),
+        ("OI == 03", &[3]),
+        ("OI == 0", &[0]),
+        ("OI != 3", &[0, 1, 2, 4, 5, 6, 7]),
+        ("OI == -2147483648", &[5]),
+        ("OI == NULL_INT", &[5]),
+        ("OI == null", &none),
+        ("OI != null", &all),
+        ("OI in 1, 3", &[1, 3]),
+        ("OI not in 1, 3", &[0, 2, 4, 5, 6, 7]),
+        ("OI in 1, 3, null", &[1, 3]),
+        ("OI in 1, 2, 3, 4, 6", &[1, 2, 3, 4, 6]),
+        ("OI in 3 , 1", &[1, 3]),
+        ("OI in 1, 3.5", &[1]),
+        ("OI in 3, `a`", &[3]),
+        ("OI in \" 3\"", &none),
+        ("OI icase in 3", &[3]),
+        ("OI icase not in 3", &[0, 1, 2, 4, 5, 6, 7]),
+        ("OI in +3", &[3]),
+        ("OI == -3", &none),
+        // an `Integer` equals no `Long`, `Double` or `String`
+        ("OI == 3.0", &none),
+        ("OI == 3.5", &none),
+        ("OI == `3`", &none),
+        ("OI == \"3\"", &none),
+        // through the formula: `Long.parseLong` and `Integer.parseInt` fail
+        ("OI == 3L", &none),
+        ("OI == 99999999999", &none),
+        ("OI == 0x3", &[3]),
+        ("OI == 3_0", &none),
+        ("OI == '3'", &none),
+        ("OD == 1.5", &[3]),
+        ("OD == 1.50", &[3]),
+        ("OD == 1.5d", &[3]),
+        ("OD == 1.5f", &[3]),
+        ("OD == 0x1.8p0", &[3]),
+        ("OD == 1.0", &[6]),
+        ("OD == 1", &none),
+        ("OD == 1e0", &[6]),
+        ("OD == .5", &none),
+        ("OD == 0.0", &[2]),
+        ("OD == -0.0", &[1]),
+        ("OD in 0.0", &[2]),
+        ("OD == -1.7976931348623157E308", &[5]),
+        ("OD in 1.5, 2.5", &[0, 3, 7]),
+        ("OD not in 1.5, 2.5", &[1, 2, 4, 5, 6]),
+        ("OS == \"a3\"", &[3]),
+        ("OS == `a3`", &[3]),
+        ("OS in \"a3\", \"a4\"", &[3, 4]),
+        ("OS icase in `a3`", &[3]),
+        ("OS icase in \"A3\"", &none),
+        ("OS in \" a3\"", &none),
+        ("OS == null", &[7]),
+        ("OS != null", &[0, 1, 2, 3, 4, 5, 6]),
+        ("ON == null", &all),
+        ("ON in null, null", &all),
+        ("ON != null", &none),
+        ("ON == 3", &none),
+        ("OZ == true", &[0, 2, 4, 6]),
+        ("OZ == null", &none),
+        ("OL == 3", &none),
+        ("OL == 3L", &[3]),
+        ("OL == 99999999999", &none),
+        ("OF == 1.5", &none),
+        ("OF == 1.5f", &none),
+    ] {
+        assert_eq!(kept(&t, &[filter]), rows, "{filter}");
+    }
+}
+
+/// Seen on Java 42.9: the literal fails to convert and there is no formula, or the
+/// formula fails too (`NaN` and `a3` name nothing, `'a3'` is no literal; `+3` is no literal; an
+/// `Object` has no order).
+#[test]
+fn a_match_filter_of_an_object_column_refuses_what_java_refuses() {
+    let t = objects_table();
+    for filter in [
+        "OI in 1, 3L",
+        "OI in 1, 'x'",
+        "OI == +3",
+        "OD == NaN",
+        "OD in NaN",
+        "OS == 'a3'",
+        "OS == a3",
+        "OI > 2",
+        "OI < null",
+    ] {
+        assert!(is_invalid(&refused(&t, &[filter])), "{filter}");
+    }
+}
+
+/// `I` and `X` are 0 to 4, `S` is `s0` to `s4`.
+fn annotation_table() -> Arc<dyn Table> {
+    let ints = || -> ArrayRef { Arc::new(Int32Array::from((0..5).collect::<Vec<_>>())) };
+    let s: ArrayRef = Arc::new(StringArray::from(
+        (0..5).map(|i| format!("s{i}")).collect::<Vec<_>>(),
+    ));
+    static_table(vec![
+        ("I", ColumnType::Int, ints()),
+        ("X", ColumnType::Int, ints()),
+        ("S", ColumnType::String, s),
+    ])
+}
+
+/// Behavior: FormulaParserConfiguration#extractParserAndExpression and
+/// ConditionFilter#createConditionFilter(String, FormulaParserConfiguration): the parser
+/// annotation names `Deephaven` or `Numba` before the first `:`; with `Numba` a match,
+/// range, `in` or `includes` filter is served, and a formula, or the formula a match or
+/// range filter would fall back on, fails. Each answer is what Java 42.9 gave, from a
+/// console script and over gRPC alike (all failures `INVALID_ARGUMENT`).
+#[test]
+fn a_parser_annotation_names_the_parser_of_the_filter_after_it() {
+    let t = annotation_table();
+    let annotated = |text: &str| format!("<ObfuscatedParserAnnotation>{text}");
+    for (filter, rows) in [
+        ("Deephaven:X > 2", &[3, 4][..]),
+        ("Deephaven: X > 2", &[3, 4]),
+        ("Deephaven:X == `a`", &[]),
+        ("Numba:X > 2", &[3, 4]),
+        ("Numba:X == 2", &[2]),
+        ("Numba:X in 1, 2", &[1, 2]),
+        ("Numba:S includes `1`", &[1]),
+    ] {
+        assert_eq!(kept(&t, &[&annotated(filter)]), rows, "{filter}");
+    }
+    for filter in [
+        "Numba:X + 1 > 2",
+        "Numba:X == 2.5",
+        "Numba:X < 2.5",
+        "Numba:X == `a`",
+        "Numba:X < `a`",
+        "Numba:X == I",
+        "Foo:X > 2",
+        "deephaven:X > 2",
+        " Deephaven:X > 2",
+        ":X > 2",
+        "X > 2",
+        "Deephaven:",
+        "Deephaven:X > 2:3",
+        "Deephaven:<ObfuscatedParserAnnotation>Deephaven:X > 2",
+    ] {
+        assert!(is_invalid(&refused(&t, &[&annotated(filter)])), "{filter}");
+    }
+    assert!(is_invalid(&refused(
+        &t,
+        &[" <ObfuscatedParserAnnotation>Deephaven:X > 2"]
+    )));
+}
+
+/// Seen on Java 42.9: `<ObfuscatedParserAnnotation>Deephaven:X + 1 > 2` keeps rows 2 to 4
+/// from a console script, and fails over gRPC (`INVALID_ARGUMENT`), where the formula
+/// validator reads the whole text as a formula.
+#[test]
+#[should_panic(
+    expected = "unported: io.deephaven.server.table.validation.ParsingColumnExpressionValidator"
+)]
+fn a_formula_after_a_parser_annotation_is_not_ported() {
+    kept(
+        &annotation_table(),
+        &["<ObfuscatedParserAnnotation>Deephaven:X + 1 > 2"],
+    );
+}

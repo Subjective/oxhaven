@@ -5,7 +5,6 @@
 
 use super::filters::{FilterSpec, MatchOptions, PatternSpec, RangeOp};
 use super::literal::{convert_string_literal, java_trim};
-use oxhaven_contracts::unported;
 use regex::Regex;
 use std::sync::LazyLock;
 
@@ -215,14 +214,69 @@ fn includes(text: &str) -> Option<Result<FilterSpec, String>> {
 /// skipped. A comparison keeps its text as a formula to fall back on when the column or
 /// the value does not fit the table.
 ///
+/// A text that starts with `<ObfuscatedParserAnnotation>` names its formula parser before
+/// the first `:`, exactly `Deephaven` (the default) or `Numba`, and the filter after it. A
+/// formula with the `Numba` parser fails, and so does a missing `:` or another name.
+///
 /// Behavior: io.deephaven.engine.table.impl.select.WhereFilterFactory#getExpression,
-/// io.deephaven.api.expression.ExpressionParser#parse
+/// io.deephaven.engine.table.impl.select.FormulaParserConfiguration#extractParserAndExpression,
+/// io.deephaven.engine.table.impl.select.ConditionFilter#createConditionFilter(String,
+/// FormulaParserConfiguration), io.deephaven.api.expression.ExpressionParser#parse
 pub(super) fn parse_filter(text: &str) -> Result<FilterSpec, String> {
-    if text.starts_with("<ObfuscatedParserAnnotation>") {
-        unported!(
-            "io.deephaven.engine.table.impl.select.FormulaParserConfiguration#extractParserAndExpression"
-        );
+    let Some(annotated) = text.strip_prefix("<ObfuscatedParserAnnotation>") else {
+        return parse_expression(text);
+    };
+    let Some((parser, expression)) = annotated.split_once(':') else {
+        return Err(format!(
+            "java.lang.StringIndexOutOfBoundsException: Range [0, -1) out of bounds for length {}",
+            annotated.encode_utf16().count()
+        ));
+    };
+    let spec = parse_expression(expression)?;
+    match parser {
+        "Deephaven" => Ok(match spec {
+            FilterSpec::Condition(formula) => FilterSpec::AnnotatedCondition(formula),
+            other => other,
+        }),
+        // Java makes no formula with this parser: a filter that is one fails, and a match
+        // or range filter that does not fit the table has no formula to fall back on.
+        "Numba" => match spec {
+            FilterSpec::Condition(_) => Err("java.lang.UnsupportedOperationException: Python \
+                                             condition filter should be created from python"
+                .to_string()),
+            FilterSpec::Match {
+                column,
+                values,
+                options,
+                ..
+            } => Ok(FilterSpec::Match {
+                column,
+                values,
+                options,
+                failover: None,
+            }),
+            FilterSpec::Range {
+                column, op, value, ..
+            } => Ok(FilterSpec::Range {
+                column,
+                op,
+                value,
+                failover: None,
+            }),
+            other => Ok(other),
+        },
+        other => Err(format!(
+            "java.lang.IllegalArgumentException: No enum constant \
+             io.deephaven.engine.table.impl.select.FormulaParserConfiguration.{other}"
+        )),
     }
+}
+
+/// [`parse_filter`] of a text without a parser annotation, or of what follows one.
+///
+/// Behavior: io.deephaven.api.expression.ExpressionParser#parse with the factories of
+/// io.deephaven.engine.table.impl.select.WhereFilterFactory
+fn parse_expression(text: &str) -> Result<FilterSpec, String> {
     let mut first_problem = None;
     for form in [comparison, membership, includes] {
         match form(text) {

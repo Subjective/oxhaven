@@ -438,8 +438,8 @@ fn with_keys(
     // Without removals the groups with rows are the groups, `0..size`.
     let flat = graph.is_none() || of_source.add_only || of_source.append_only || of_source.blink;
     QueryTable::derive(source, move || {
-        for column_type in &key_types {
-            keys::check(column_type)?;
+        for key_type in &key_types {
+            keys::check(key_type)?;
         }
         let size = {
             let mut state = groups.state.lock().unwrap_or_else(PoisonError::into_inner);

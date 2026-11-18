@@ -1,7 +1,7 @@
 //! Vector and array columns (`ColumnType::Vector`, `ColumnType::Array`) through the
 //! operations that exist: an operation that does not look into a column carries its list
-//! cells like any others, and an operation that would have to compare, order or compute
-//! with list cells refuses to, by `unported!`, until that is ported.
+//! cells like any others, one that compares or orders list cells does so as Java does,
+//! and one Java cannot do or that is not ported yet refuses.
 
 use crate::ops::agg::{aggregate, AggSpec, Aggregation, Pair, Sentinel};
 use crate::ops::distinct::select_distinct;
@@ -186,10 +186,11 @@ fn an_in_memory_table_holds_list_cells_and_a_sort_reorders_them_whole() {
     assert_eq!(cells.null_count(), 1);
 }
 
+/// A vector sorts element by element, a shorter one first, and null first of all.
 #[test]
-#[should_panic(expected = "unported: io.deephaven.engine.table.impl.SortOperation#SortOperation")]
-fn sort_by_a_list_column_is_not_ported() {
-    let _ = sort(&listed(), &[SortColumn::ascending("V")]);
+fn sort_by_a_vector_column_orders_null_then_shorter_vectors_first() {
+    let sorted = sort(&listed(), &[SortColumn::ascending("V")]).unwrap();
+    assert_eq!(cells(&*sorted, 0), ["2", "3", "1"]);
 }
 
 /// Each vector is its own group here: `[1, 2]`, null and `[]`.
@@ -545,26 +546,20 @@ fn sum_of_a_list_column_is_refused_as_java_refuses_a_type_without_a_sum() {
     );
 }
 
-/// Behavior: io.deephaven.engine.table.impl.QueryTable#selectDistinct: a vector column is
-/// a key by its contents, and a null vector and an empty one are two keys.
 #[test]
-fn select_distinct_of_a_vector_column_keeps_its_cells() {
-    let result = select_distinct(&listed(), &["V".to_string()]).unwrap();
-    let vector = ColumnType::vector(ColumnType::Int);
-    assert_eq!(result.definition().columns()[0].column_type, vector);
-    let column = TableSnapshot::current(&*result).unwrap().columns[0].clone();
-    let expected = list_of(&vector, [Some(2), None, Some(0)], ints([1, 2]));
-    assert_eq!(&column, &expected);
+fn select_distinct_of_a_vector_column_keeps_each_vector_once() {
+    let distinct = select_distinct(&listed(), &["V".to_string()]).unwrap();
+    assert_eq!(distinct.row_set().size(), 3);
 }
 
+/// `[1, 2]`, null and `[]` each match only themselves.
 #[test]
-#[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.by.typed.TypedHasherFactory#makeNaturalJoin"
-)]
-fn a_join_on_a_list_column_is_not_ported() {
+fn a_join_on_a_vector_column_matches_equal_vectors() {
     let on = [JoinMatch::same("V")];
     let add = [JoinAddition::renamed("RK", "K")];
-    let _ = natural_join(&listed(), &listed(), &on, &add, NaturalJoinType::FirstMatch);
+    let joined =
+        natural_join(&listed(), &listed(), &on, &add, NaturalJoinType::FirstMatch).unwrap();
+    assert_eq!(cells(&*joined, 3), ["1", "2", "3"]);
 }
 
 #[test]

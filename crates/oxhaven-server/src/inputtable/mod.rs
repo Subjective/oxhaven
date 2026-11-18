@@ -26,7 +26,7 @@ use oxhaven_proto::grpc::{
 };
 use tonic::{Request, Response, Status};
 
-use crate::flight::{convert_schema, not_ported, schema_from_ipc_bytes, snapshot, UploadError};
+use crate::flight::{convert_schema, schema_from_ipc_bytes, snapshot, UploadError};
 use crate::session::{current_session, ExportError, ExportValue, Reply, TicketRouter};
 
 /// Checks a `CreateInputTableRequest` before its source table is looked up.
@@ -76,16 +76,10 @@ pub fn create_input_table(
             ))
         }
     };
-    const MAKE_KEYED: &str = "io.deephaven.engine.table.impl.util.KeyedArrayBackedInputTable#make";
     let made = match request.kind.as_ref().and_then(|kind| kind.kind.as_ref()) {
         Some(Kind::InMemoryAppendOnly(_)) => append_only_input_table(graph, definition, None),
+        // Without key columns the table holds one row, the last one added.
         Some(Kind::InMemoryKeyBacked(keyed)) => {
-            if keyed.key_columns.is_empty() {
-                return Err(not_ported(
-                    MAKE_KEYED,
-                    "a keyed input table without key columns",
-                ));
-            }
             let keys: Vec<&str> = keyed.key_columns.iter().map(String::as_str).collect();
             keyed_input_table(graph, definition, &keys, None)
         }
@@ -234,9 +228,11 @@ pub fn checked_delete(
     let input = input_table_of(target)?;
     let keys = table_of(keys, "tableToRemove")?;
     let key_names = input.key_columns();
-    // A blink input table keeps the default `validateDelete`, which has no key column to
-    // refuse and so goes on to the checks below.
-    if key_names.is_empty() && !target.attributes().blink {
+    // Only the append-only input table refuses here. A blink input table keeps the default
+    // `validateDelete`, which has no key column to refuse and so goes on to the checks
+    // below, as does a keyed input table without key columns, whose one key is the empty
+    // one.
+    if target.attributes().append_only {
         return Err(
             Status::invalid_argument("Provided input table does not support delete.").into(),
         );
@@ -270,7 +266,7 @@ pub fn checked_delete(
             problems.join("\n")
         )));
     }
-    if key_names.is_empty() {
+    if target.attributes().blink {
         // Java: the UnsupportedOperationException of InputTableUpdater#deleteAsync, which
         // nothing catches, reported by its error id
         return Err(ExportError::Internal(

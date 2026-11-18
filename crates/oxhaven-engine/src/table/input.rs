@@ -4,6 +4,7 @@ use super::stream::{stream_table_with_input, StreamCallbacks, StreamPublisher};
 use super::{
     arrange_columns, failure, mark, tracked_source, Marks, QueryTable, RootSource, TableSpec,
 };
+use crate::ops::key_table::is_ported_key;
 use arrow::array::{Array, ArrayRef, Float32Array, Float64Array};
 use arrow::datatypes::{Float32Type, Float64Type};
 use arrow::record_batch::RecordBatch;
@@ -51,8 +52,14 @@ pub fn append_only_input_table(
 /// Java compares the values of one key column as boxed objects and those of two or three
 /// as a typed tuple (`Writer::key_bytes`).
 ///
+/// Without key columns every row has the one empty key: the table holds the last row
+/// added, and a delete of any row removes it (seen on Deephaven 42.9). A vector key column
+/// keys by the vectors' elements, a null vector being a key of its own (seen).
+///
 /// # Panics
-/// With `unported!` for a vector or array key column, and for no key columns at all.
+/// With `unported!` for a key column of arrays, which Java keys by the identity of the
+/// arrays (owner item 7.7), and of vectors of `float` or `double`, keyed by the class of
+/// the vector objects (7.6).
 ///
 /// Behavior: io.deephaven.engine.table.impl.util.KeyedArrayBackedInputTable#make
 pub fn keyed_input_table(
@@ -74,19 +81,9 @@ pub fn keyed_input_table(
             "Missing key columns in definition: {missing:?}"
         )));
     }
-    if keys.is_empty() {
-        unported!(
-            "io.deephaven.engine.table.impl.util.KeyedArrayBackedInputTable#makeKeySource",
-            "a keyed input table without key columns"
-        );
-    }
     for &index in &keys {
         // Java keys such a column by the vector or array as an object.
-        if definition.columns()[index]
-            .column_type
-            .list_element()
-            .is_some()
-        {
+        if !is_ported_key(&definition.columns()[index].column_type) {
             unported!(
                 "io.deephaven.engine.table.impl.util.KeyedArrayBackedInputTable#makeKeySource",
                 "vector or array key column {}",
@@ -312,7 +309,15 @@ impl Writer {
     /// io.deephaven.engine.table.impl.tuplesource.TupleSourceFactory#makeTupleSource,
     /// java.lang.Double#equals, io.deephaven.util.compare.DoubleComparisons#eq, and the
     /// same of `Float`
-    fn key_bytes(&self, key_values: &[ArrayRef]) -> Result<Vec<Box<[u8]>>, TableFailure> {
+    fn key_bytes(
+        &self,
+        rows: usize,
+        key_values: &[ArrayRef],
+    ) -> Result<Vec<Box<[u8]>>, TableFailure> {
+        if key_values.is_empty() {
+            // No key columns: every row has the one empty key.
+            return Ok(vec![Box::default(); rows]);
+        }
         let zeros_are_one = matches!(key_values.len(), 2 | 3);
         let key_values: Vec<ArrayRef> = key_values
             .iter()
@@ -357,7 +362,7 @@ impl Writer {
         let key_values: Vec<ArrayRef> = key_columns.iter().map(|&i| values[i].clone()).collect();
         let first_new = state.next_row;
         let mut destinations = Vec::with_capacity(size);
-        for key in self.key_bytes(&key_values)? {
+        for key in self.key_bytes(size, &key_values)? {
             let row = match state.row_of_key.get(&key).copied() {
                 None => {
                     state.next_row += 1;
@@ -393,11 +398,12 @@ impl Writer {
     fn delete(
         &self,
         state: &mut RowState,
+        rows: usize,
         key_values: &[ArrayRef],
         changes: &mut Changes,
     ) -> Result<(), TableFailure> {
         let mut deleted = Vec::new();
-        for key in self.key_bytes(key_values)? {
+        for key in self.key_bytes(rows, key_values)? {
             if let Some(row) = state.row_of_key.get_mut(&key) {
                 if *row >= 0 {
                     changes.remove(*row);
@@ -451,6 +457,8 @@ struct Queue {
 
 struct Pending {
     delete: bool,
+    /// The number of rows, which a delete without key columns has no column to tell.
+    rows: usize,
     values: Vec<ArrayRef>,
 }
 
@@ -475,13 +483,13 @@ impl Input {
     ///
     /// Behavior: BaseArrayBackedInputTable.ArrayBackedInputTableUpdater#add, #delete,
     /// #checkBlockingEditSafety and #waitForSequence
-    fn submit(&self, delete: bool, values: Vec<ArrayRef>) -> Result<(), TableFailure> {
+    fn submit(&self, delete: bool, rows: usize, values: Vec<ArrayRef>) -> Result<(), TableFailure> {
         if self.graph.current_thread_processes_updates() {
             return Err(failure(
                 "Attempted to make a blocking input table edit from a listener or notification",
             ));
         }
-        if values.first().map_or(0, |column| column.len()) == 0 {
+        if rows == 0 {
             return Ok(());
         }
         let sequence = {
@@ -490,7 +498,11 @@ impl Input {
                 return Err(broken.clone());
             }
             queue.enqueued += 1;
-            queue.pending.push(Pending { delete, values });
+            queue.pending.push(Pending {
+                delete,
+                rows,
+                values,
+            });
             queue.enqueued
         };
         loop {
@@ -540,13 +552,13 @@ impl InputTable for Input {
     /// If the calling thread holds the graph's shared lock: the cycle that applies the
     /// change could never run.
     fn add(&self, rows: RecordBatch) -> Result<(), TableFailure> {
-        self.submit(false, self.writer.arrange_rows(&rows)?)
+        self.submit(false, rows.num_rows(), self.writer.arrange_rows(&rows)?)
     }
 
     /// # Panics
     /// As [`InputTable::add`].
     fn delete(&self, keys: RecordBatch) -> Result<(), TableFailure> {
-        self.submit(true, self.writer.arrange_keys(&keys)?)
+        self.submit(true, keys.num_rows(), self.writer.arrange_keys(&keys)?)
     }
 }
 
@@ -572,7 +584,8 @@ impl UpdateSource for Input {
         let mut changes = Changes::new((*table.row_set()).clone());
         for change in &pending {
             let applied = if change.delete {
-                self.writer.delete(&mut state, &change.values, &mut changes)
+                self.writer
+                    .delete(&mut state, change.rows, &change.values, &mut changes)
             } else {
                 self.writer.add(&mut state, &change.values, &mut changes)
             };

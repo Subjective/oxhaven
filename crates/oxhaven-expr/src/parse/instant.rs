@@ -1,8 +1,9 @@
 //! Time literals: single-quoted text that Java replaces before it parses the formula.
 //!
-//! Instants with a year of four digits, in any zone Java reads, durations, periods, dates,
-//! times of day and zones are read. Java accepts more spellings (longer years after a
-//! sign, some dates and times); those are reported as unsupported, by their text.
+//! Instants in any zone Java reads, durations, periods, dates, times of day and zones are
+//! read. Java accepts more spellings (some dates and times) and instants outside the range
+//! of a column (every year of more than four digits); those are reported as unsupported,
+//! by their text.
 
 use chrono::{LocalResult, NaiveDate, Offset, TimeZone};
 use oxhaven_contracts::expr::FormulaError;
@@ -808,10 +809,15 @@ fn clock(text: &str, exact: bool) -> Option<(i64, i64, i64, i64)> {
 /// The instant of a time literal, and the id of its zone when a column of this server
 /// holds that.
 ///
-/// Read only when the text starts with a year of four digits and a `-`: Java reads longer
-/// years after a sign, and wraps around for years far from 1970.
+/// The year is read as Java reads it ([`leading_year`]), so a year Java rejects
+/// (`+2024-…`, `10000-…`) is a syntax error. An instant outside the range of a column,
+/// which every year of more than four digits is, is unsupported: Java compares such an
+/// instant correctly but wraps it around (before 1677) or fails (after 2262) where it
+/// becomes nanoseconds, a cell or a range filter. Seen on Java 42.9: `T < '+10000-01-01T00:00:00
+/// UTC'` is true in every row, null included; `update("X = '1600-01-01T00:00:00 UTC'")`
+/// gives 2184-07-20T23:34:33.709551616Z and `X = '+10000-01-01T00:00:00 UTC'` fails.
 fn parse_zoned(content: &str) -> Result<(i64, Option<&'static str>), FormulaError> {
-    match zoned_reach(content, false)? {
+    match zoned_reach(content, true)? {
         (Reach::Within(nanos), id) => Ok((nanos, id)),
         _ => Err(FormulaError::Unsupported(format!(
             "time literal '{content}' outside the range of a 64-bit nanosecond timestamp"
@@ -1705,16 +1711,7 @@ mod tests {
 
     #[test]
     fn other_time_literals_are_named() {
-        for content in [
-            // Java reads a year of more digits after a sign only, and one before the
-            // year 1 as an instant far in the future.
-            "+12023-11-14T22:13:20 UTC",
-            "12023-11-14T22:13:20Z",
-            "-2023-11-14T22:13:20Z",
-            "1700000000",
-            "12:30",
-            "UTC",
-        ] {
+        for content in ["1700000000", "12:30", "UTC"] {
             assert_eq!(
                 value(content),
                 Err(FormulaError::Unsupported(format!(
@@ -1730,10 +1727,41 @@ mod tests {
             "1677-09-21T00:12:43.145224192 UTC",
             "9999-01-01 UTC",
             "0001-01-01 UTC",
+            // A year of more than four digits after a sign, or before the year 1.
+            "+12023-11-14T22:13:20 UTC",
+            "+10000-01-01T00:00:00 UTC",
+            "+10000-01-01T00:00 UTC",
+            "+10000-01-01T00:00:00Z",
+            "+10000-01-01T00:00:00+01:00",
+            "+10000-01-01T00:00:00 America/New_York",
+            "+00001-01-01T00:00:00Z",
+            "+0999999999-12-31T23:59:59.999999999 UTC",
+            "-2023-11-14T22:13:20Z",
+            "-0001-01-01T00:00:00 UTC",
         ] {
             assert!(
                 matches!(value(content), Err(FormulaError::Unsupported(m)) if m.contains("range")),
                 "{content}"
+            );
+        }
+    }
+
+    /// Seen on Java 42.9 as filter literals (`T > '...'`): "Cannot parse literal as a
+    /// datetime, date, time, duration, period, or timezone".
+    #[test]
+    fn years_java_does_not_read_are_syntax_errors() {
+        for content in [
+            "12023-11-14T22:13:20Z",
+            "10000-01-01T00:00:00 UTC",
+            "+2024-01-01T00:00:00 UTC",
+            "+1000000000-01-01T00:00:00 UTC",
+            "+10000-01-01 UTC",
+            "-0000-01-01T00:00:00 UTC",
+        ] {
+            assert!(
+                matches!(parse(content), Err(FormulaError::Syntax(_))),
+                "{content}: {:?}",
+                parse(content)
             );
         }
     }

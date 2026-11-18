@@ -937,11 +937,15 @@ fn a_range_join_of_a_range_join_groups_vectors_and_carries_them() {
 }
 
 #[test]
-fn range_columns_that_are_vectors_are_refused_after_the_range_match() {
+fn range_columns_that_are_arrays_are_refused_after_the_range_match() {
     let sum = RangeAggregation::Other("sum".to_string());
-    let aggregations = [group(&[("Rs", "R"), ("Ss", "R")])];
-    let lists = range_join(&left(), &right(), &on(&["K"]), &inclusive(), &aggregations).unwrap();
-    let vector = ColumnType::vector(ColumnType::Int);
+    let array = ColumnType::array(ColumnType::Int);
+    let cells = || oxhaven_testkit::list_of(&array, [Some(1)], ints([1]));
+    let lists = static_table(&[
+        ("Rs", array.clone(), cells()),
+        ("Ss", array.clone(), cells()),
+        ("Lo", ColumnType::Int, ints([0])),
+    ]);
     // Before the aggregations are looked at, and after a fault of the range match.
     let error = refusal(
         &lists,
@@ -950,10 +954,10 @@ fn range_columns_that_are_vectors_are_refused_after_the_range_match() {
         "Rs <= Rs <= Ss",
         std::slice::from_ref(&sum),
     );
-    assert_eq!(error, RangeJoinError::InvalidRangeValueType(vector.clone()));
+    assert_eq!(error, RangeJoinError::InvalidRangeValueType(array.clone()));
     assert_eq!(
         error.to_string(),
-        "Invalid range value type Vector(Int), must be primitive or comparable"
+        "Invalid range value type Array(Int), must be primitive or comparable"
     );
     let error = refusal(
         &lists,
@@ -965,6 +969,160 @@ fn range_columns_that_are_vectors_are_refused_after_the_range_match() {
     assert!(matches!(error, RangeJoinError::InvalidRangeMatch(_)));
     let error = refusal(&lists, &lists, &on(&["Nope"]), "Rs <= Rs <= Ss", &[sum]);
     assert!(matches!(error, RangeJoinError::InvalidExactMatches(_)));
+}
+
+/// Seen on Deephaven 42.9: "Invalid range value type class java.time.Period, must be
+/// primitive or comparable".
+#[test]
+fn period_zone_and_object_range_columns_are_refused() {
+    for column_type in [
+        ColumnType::Period,
+        ColumnType::ZoneId,
+        ColumnType::object(Some(ColumnType::Int)),
+    ] {
+        let cells = || arrow::array::new_null_array(&column_type.arrow_type(), 1);
+        let table = static_table(&[
+            ("S", column_type.clone(), cells()),
+            ("E", column_type.clone(), cells()),
+            ("D", column_type.clone(), cells()),
+        ]);
+        let error = refusal(&table, &table, &[], "S <= D <= E", &[]);
+        assert_eq!(error, RangeJoinError::InvalidRangeValueType(column_type));
+    }
+}
+
+/// The `group` of `V` of the right rows in the range of each left row, by `S` and `E` of
+/// the left table and `D` of the right one, all of `column_type`.
+fn ranged(
+    column_type: ColumnType,
+    starts: ArrayRef,
+    ends: ArrayRef,
+    values: ArrayRef,
+    range: &str,
+) -> Vec<Option<Vec<String>>> {
+    let left = static_table(&[
+        ("S", column_type.clone(), starts),
+        ("E", column_type.clone(), ends),
+    ]);
+    let size = values.len() as i32;
+    let right = static_table(&[
+        ("D", column_type, values),
+        ("V", ColumnType::Int, ints(0..size)),
+    ]);
+    let range = RangeJoinMatch::parse(range).unwrap();
+    let joined = join(&left, &right, &[], &range, &[group(&[("Vs", "V")])]).unwrap();
+    arrays(&joined, "Vs", None)
+}
+
+/// Seen on Deephaven 42.9: range values of other `Comparable` classes are compared by
+/// `compareTo`.
+#[test]
+fn range_columns_of_other_comparable_classes_are_compared_by_compare_to() {
+    use arrow::array::{BinaryArray, Date32Array};
+    use oxhaven_column::java_values::big_integer_cell;
+    // January 2020: right days 1 3 3 5 8 9, left 2..6, 3..3, 1..9, 9..9
+    let days = |days: &[i32]| -> ArrayRef {
+        Arc::new(Date32Array::from_iter_values(
+            days.iter().map(|day| 18261 + day),
+        ))
+    };
+    let dates = |range| {
+        ranged(
+            ColumnType::LocalDate,
+            days(&[2, 3, 1, 9]),
+            days(&[6, 3, 9, 9]),
+            days(&[1, 3, 3, 5, 8, 9]),
+            range,
+        )
+    };
+    assert_eq!(
+        dates("S <= D <= E"),
+        [
+            some(&["1", "2", "3"]),
+            some(&["1", "2"]),
+            some(&["0", "1", "2", "3", "4", "5"]),
+            some(&["5"])
+        ]
+    );
+    assert_eq!(
+        dates("S < D < E"),
+        [
+            some(&["1", "2", "3"]),
+            None,
+            some(&["1", "2", "3", "4"]),
+            None
+        ]
+    );
+
+    let integers = |values: &[i128]| -> ArrayRef {
+        Arc::new(BinaryArray::from_iter_values(
+            values.iter().map(|value| big_integer_cell(*value)),
+        ))
+    };
+    assert_eq!(
+        ranged(
+            ColumnType::BigInteger,
+            integers(&[-6, 0, 8]),
+            integers(&[0, 7, 1000]),
+            integers(&[-5, 0, 7, 100]),
+            "S <= D <= E"
+        ),
+        [some(&["0", "1"]), some(&["1", "2"]), some(&["3"])]
+    );
+
+    let vector = ColumnType::vector(ColumnType::Int);
+    let vectors = |values: &[i32]| -> ArrayRef {
+        oxhaven_testkit::list_of(
+            &vector,
+            values.iter().map(|_| Some(1)),
+            ints(values.to_vec()),
+        )
+    };
+    assert_eq!(
+        ranged(
+            vector.clone(),
+            vectors(&[1, 2]),
+            vectors(&[1, 2]),
+            vectors(&[1, 2, 2, 3]),
+            "S <= D <= E"
+        ),
+        [some(&["0"]), some(&["1", "2"])]
+    );
+
+    // One instant in Tokyo is after it in UTC: its local time is later.
+    let hour = 3_600_000_000_000;
+    let zoned = crate::ops::zoned::tests::zoned;
+    assert_eq!(
+        ranged(
+            ColumnType::ZonedDateTime,
+            zoned(&[Some((0, "Asia/Tokyo")), Some((hour, "Asia/Tokyo"))]),
+            zoned(&[Some((2 * hour, "UTC")), Some((2 * hour, "UTC"))]),
+            zoned(&[
+                Some((0, "UTC")),
+                Some((hour, "UTC")),
+                Some((2 * hour, "UTC"))
+            ]),
+            "S <= D <= E"
+        ),
+        [some(&["1", "2"]), some(&["2"])]
+    );
+}
+
+/// Seen on Deephaven 42.9: right values `1 3.0 3 5` and the bounds `3 <= D <= 9` give the
+/// rows of `3` and `5` but not of `3.0` (owner item 7.18).
+#[test]
+#[should_panic(
+    expected = "unported: io.deephaven.engine.table.impl.rangejoin.RangeSearchKernelObject#eq"
+)]
+fn big_decimal_range_columns_are_unported() {
+    let decimals = || arrow::array::new_null_array(&ColumnType::BigDecimal.arrow_type(), 1);
+    let _ = ranged(
+        ColumnType::BigDecimal,
+        decimals(),
+        decimals(),
+        decimals(),
+        "S <= D <= E",
+    );
 }
 
 #[test]
