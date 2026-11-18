@@ -187,7 +187,10 @@ assert message(lambda: odd.diffBusinessYears(I('2024-01-03T15:00:00Z'), I('2024-
 
 # what a calendar does not do is refused by its name
 assert message(lambda: ny.hashCode()).startswith('not ported: io.deephaven.time.calendar.BusinessCalendar#hashCode')
-assert message(lambda: ny.noSuchMethod()).startswith('not ported: io.deephaven.time.calendar.BusinessCalendar#noSuchMethod')
+assert message(lambda: july4.toInstant).startswith('not ported: io.deephaven.time.calendar.CalendarDay#toInstant')
+# and a name Java does not have either is no attribute, as in jpy
+assert raised(lambda: ny.to_dict) == ('AttributeError', "'io.deephaven.time.calendar.BusinessCalendar' object has no attribute 'to_dict'")
+assert getattr(ny, 'to_dict', None) is None
 "#,
     );
 }

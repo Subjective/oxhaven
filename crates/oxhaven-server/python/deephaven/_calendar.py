@@ -124,11 +124,19 @@ class _JavaObject:
 
     __slots__ = ()
     _java_name = ""
+    # The class has every public method of its Java class but those named here, which are
+    # refused; a name Java does not have either is an AttributeError, as jpy's. A class
+    # whose `_unported` is None (the collections) refuses any name it does not have.
+    _unported = None
+    _OBJECT_METHODS = frozenset({"wait", "notify", "notifyAll"})
 
     def __getattr__(self, name):
         if name.startswith("__") and name.endswith("__"):
             raise AttributeError(name)
-        raise NotPorted(f"{self._java_name}#{name}")
+        unported = type(self)._unported
+        if unported is None or name in unported or name in _JavaObject._OBJECT_METHODS:
+            raise NotPorted(f"{self._java_name}#{name}")
+        raise AttributeError(f"'{self._java_name}' object has no attribute '{name}'")
 
     def hashCode(self):
         raise NotPorted(f"{self._java_name}#hashCode")
@@ -326,6 +334,7 @@ class TimeRange(_JavaObject):
 
     __slots__ = ("_start", "_end", "_inclusive", "_kind")
     _java_name = "io.deephaven.time.calendar.TimeRange"
+    _unported = frozenset({"toInstant"})
 
     def __init__(self, kind: type, start: int, end: int, inclusive: bool):
         self._kind = kind
@@ -378,6 +387,7 @@ class CalendarDay(_JavaObject):
 
     __slots__ = ("_ranges", "_kind")
     _java_name = "io.deephaven.time.calendar.CalendarDay"
+    _unported = frozenset({"toInstant"})
 
     def __init__(self, kind: type, ranges):
         self._kind = kind
@@ -541,6 +551,7 @@ class BusinessCalendar(_JavaObject):
 
     __slots__ = ("_handle", "_zone")
     _java_name = "io.deephaven.time.calendar.BusinessCalendar"
+    _unported = frozenset()
 
     def __init__(self, handle):
         self._handle = handle
