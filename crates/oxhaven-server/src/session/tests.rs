@@ -506,6 +506,69 @@ mod exports {
         assert_eq!(drain(&mut listener), []);
     }
 
+    /// A session that lives long makes and releases exports without end. What it remembers
+    /// of the released ones must not grow with their number.
+    #[test]
+    fn released_ids_are_remembered_as_ranges_however_many_there_were() {
+        let fixture = Fixture::new();
+        let session = fixture.session();
+        let kept = session.new_export(1).unwrap().submit(constant(1)).unwrap();
+        // Tens of exports, each ten released last to first, as a client drops the tables
+        // of a request; and an export of the server's own with each ten.
+        for batch in 0..300 {
+            let first = 2 + batch * 10;
+            let exports: Vec<Export> = (first..first + 10)
+                .map(|id| {
+                    session
+                        .new_export(id)
+                        .unwrap()
+                        .submit(constant(id))
+                        .unwrap()
+                })
+                .collect();
+            let own = session
+                .new_server_side_export(ExportValue::object(batch))
+                .unwrap();
+            fixture.executor.run_all();
+            for export in exports.iter().rev() {
+                export.cancel();
+            }
+            own.cancel();
+        }
+        assert_eq!(session.export_count(), 1);
+        // 2..=3001 and -300..=-1
+        assert_eq!(session.released_range_count(), 2);
+
+        // every one of them is still known to be released, and no other id is
+        for id in [2, 3, 1500, 3001, -1, -150, -300] {
+            assert_eq!(session.get_export(id).unwrap().state(), Released, "{id}");
+        }
+        assert_eq!(session.get_export(1).unwrap().state(), Exported);
+        assert!(session.get_export_if_exists(3002).unwrap().is_none());
+        assert!(session.get_export_if_exists(-301).unwrap().is_none());
+
+        // the id between two ranges joins them
+        let far = session
+            .new_export(3003)
+            .unwrap()
+            .submit(constant(0))
+            .unwrap();
+        fixture.executor.run_all();
+        far.cancel();
+        assert_eq!(session.released_range_count(), 3);
+        let between = session
+            .new_export(3002)
+            .unwrap()
+            .submit(constant(0))
+            .unwrap();
+        fixture.executor.run_all();
+        between.cancel();
+        kept.cancel();
+        // 1..=3003 and -300..=-1
+        assert_eq!(session.released_range_count(), 2);
+        assert_eq!(session.get_export(3002).unwrap().state(), Released);
+    }
+
     #[test]
     fn release_after_a_dependent_took_the_value_does_not_fail_the_dependent() {
         let fixture = Fixture::new();

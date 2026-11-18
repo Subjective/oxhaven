@@ -99,11 +99,18 @@ TOKEN_EXPIRE_MS = 30_000
 
 
 class Server:
-    def __init__(self, binary: str, cycle_ms: int, log_path: str, console: str):
+    def __init__(self, binary: str, cycle_ms: int, log_path: str, console: str, huge_pages: bool):
         self.psk = secrets.token_hex(8)
         self.log_path = log_path
         self.log = open(log_path, "wb")
         env = dict(os.environ, NO_COLOR="1")
+        if not huge_pages:
+            # The allocator asks the kernel for transparent huge pages in the memory it
+            # reserves, and the kernel then gives and takes resident memory in pieces of
+            # 2 MB on a schedule of its own, which hides a trend of the size the memory
+            # limit is there to find (docs/SOAK.md, "Memory"). This turns them off for the
+            # server process, and changes nothing else in it.
+            env["MIMALLOC_ALLOW_THP"] = "0"
         # A server with the Python console needs the libpython it was linked against.
         libdir = sysconfig.get_config_var("LIBDIR") or ""
         if libdir:
@@ -148,6 +155,16 @@ class Server:
             fds = len(os.listdir(f"/proc/{self.pid}/fd"))
         except OSError:
             return None
+        # The part of the resident memory that is in transparent huge pages, which the
+        # kernel gives and takes in pieces of 2 MB (docs/SOAK.md, "Memory").
+        huge = 0
+        try:
+            with open(f"/proc/{self.pid}/smaps_rollup") as f:
+                for line in f:
+                    if line.startswith("AnonHugePages:"):
+                        huge = int(line.split()[1])
+        except OSError:
+            pass
         rss = hwm = threads = 0
         for line in status.splitlines():
             if line.startswith("VmRSS:"):
@@ -161,7 +178,7 @@ class Server:
         rest = stat[stat.rindex(")") + 2:].split()
         ticks = os.sysconf("SC_CLK_TCK")
         return {
-            "rss_kb": rss, "hwm_kb": hwm, "threads": threads, "fds": fds,
+            "rss_kb": rss, "huge_kb": huge, "hwm_kb": hwm, "threads": threads, "fds": fds,
             "cpu_s": (int(rest[11]) + int(rest[12])) / ticks,
         }
 
@@ -186,6 +203,18 @@ class Server:
         if self.alive():
             self.proc.kill()
             self.proc.wait()
+
+
+def control_work() -> float:
+    """The processor time this thread needs for a fixed piece of work that has nothing to do
+    with the server. The machine decides it, so it tells a server that needs more processor
+    time for a round from a machine that gives less for the same time (docs/SOAK.md,
+    "Liveness")."""
+    t0 = time.thread_time()
+    x = 0
+    for i in range(300_000):
+        x += i * i
+    return time.thread_time() - t0
 
 
 # ---------------------------------------------------------------------------------------------
@@ -376,20 +405,28 @@ class World:
         self._add(self.inputs["dims"], DIMS, [SYMS, [self.rng.choice(SECTORS) for _ in SYMS], [self.rng.randrange(1, 9) for _ in SYMS]])
         self.write(initial=True)
         self.live = {p.name: p.build(self.inputs) for p in self.pipes}
-        # Time tables: one that keeps its rows and one blink table, with the same first row
-        # and period, so that both make the same number of rows in any one cycle. The count
-        # over the blink table counts the rows it has shown since the count was made; the
-        # rows it showed before that, in the cycles between the two requests, it never
-        # saw, so the two counts differ by a number that must never change.
+        # Time tables: one that keeps its rows and one blink table. Each count is checked
+        # against the rows its own table has made: row k of a time table is at the first
+        # row's time plus k periods, so the count over the first is known from its last row,
+        # and the count over the blink table, which counts every row it has shown since the
+        # count was made, from the first and the last of them. The two tables are not
+        # compared with each other: each reads the clock in its own refresh (in Java as
+        # well: TimeTable#refresh), so in a cycle in which a period ends between the two
+        # readings one of them has a row that the other gets a cycle later.
         self.period_ns = cycle_ms * 1_000_000
-        self.start_ns = time.time_ns()
+        # The first row is at a whole millisecond and `S` below is the row's time in whole
+        # milliseconds, as a double: the aggregation keeps its sums by adding and
+        # subtracting, and a sum of fractions kept that way differs in the last bit from one
+        # made of the rows as they are now (in Java as well: DoubleChunkedSumOperator keeps
+        # a running sum). `epochNanos(Timestamp) / 1000000` is no whole number even then:
+        # the nanoseconds of today need 61 bits and the division is of doubles.
+        self.start_ns = time.time_ns() // 1_000_000 * 1_000_000
         tt = self.s.time_table(period=self.period_ns, start_time=self.start_ns)
         tb = self.s.time_table(period=self.period_ns, start_time=self.start_ns, blink_table=True)
-        tb_count = tb.agg_by([agg.count_("N")], by=[])
-        self.blink_behind: int | None = None
+        tb_count = tb.agg_by([agg.count_("N"), agg.min_(["First = Timestamp"]), agg.max_(["Last = Timestamp"])], by=[])
         self.time = {
             "tt": tt,
-            "tt_tail": tt.tail(600).update(["S = epochNanos(Timestamp) / 1000000", "M = S % 7"]),
+            "tt_tail": tt.tail(600).update(["S = (double) epochMillis(Timestamp)", "M = S % 7"]),
             "tt_count": tt.agg_by([agg.count_("N")], by=[]),
             "tb_count": tb_count,
         }
@@ -504,21 +541,23 @@ class World:
             self.run.checked(name)
             if diff is not None:
                 self.run.violate("correctness", f"time table check {name}", diff)
-        blink = self.fetch(snap["tb_count"]).column("N").to_pylist()
-        kept = self.fetch(snap["tt_count"]).column("N").to_pylist()
-        behind = kept[0] - blink[0] if len(blink) == 1 and len(kept) == 1 else None
-        if self.blink_behind is None and behind is not None and behind >= 0:
-            self.blink_behind = behind
-        self.run.checked("blink_time_count")
-        if behind is None or behind != self.blink_behind:
-            self.run.violate("correctness", "time table check blink_time_count",
-                             {"blink": blink, "kept": kept, "behind_at_first_check": self.blink_behind})
         tail = self.fetch(snap["tt_tail"])
         self.run.checked("time_tail_rows")
         stamps = tail.column("S").to_pylist()
         step = self.period_ns // 1_000_000
         if tail.num_rows > 600 or any(b - a != step for a, b in zip(stamps, stamps[1:])):
             self.run.violate("correctness", "time table tail", {"rows": tail.num_rows, "first": stamps[:3], "last": stamps[-3:]})
+        kept = self.fetch(snap["tt_count"]).column("N").to_pylist()
+        want = (int(stamps[-1]) * 1_000_000 - self.start_ns) // self.period_ns + 1 if stamps else 0
+        self.run.checked("time_count")
+        if kept != [want]:
+            self.run.violate("correctness", "time table check time_count", {"count": kept, "rows_to_the_last": want, "last": stamps[-3:]})
+        blink = self.fetch(snap["tb_count"])
+        first, last = (blink.column(c).cast(pa.int64()).to_pylist() for c in ("First", "Last"))
+        shown = blink.column("N").to_pylist()
+        self.run.checked("blink_time_count")
+        if len(shown) != 1 or shown[0] != (last[0] - first[0]) // self.period_ns + 1:
+            self.run.violate("correctness", "time table check blink_time_count", {"count": shown, "first": first, "last": last})
         expected.close()
         for t in snap.values():
             t.close()
@@ -649,19 +688,45 @@ class Subscriber:
                 outer.run.violate("requests", "subscription to the time table failed", str(error)[:500])
 
         class Replica(TableListener):
-            """Keeps the rows of the aggregation by `Sym` as the updates give them."""
+            """Keeps the rows of the aggregation by `Sym` as the updates give them.
+
+            A Barrage update names the modified rows per column, and the modified cells are
+            taken per column here, from the update itself. `update.modified()` is not used:
+            it reads the rows of `all_modified_rows`, which is meant to be the union of the
+            columns' rows and is not. The client's `RowSequenceBuilder::AddInterval`
+            (cpp-client, dhcore `row_sequence.cc`) replaces an interval it already has by a
+            shorter one that starts inside it, so a row that only some columns modify is
+            lost from the union when a later column's rows have a gap at it, and
+            `modified()` then leaves that row out. A message that holds several cycles
+            can be such an update, from a Java server as well (docs/SOAK.md, "What it has
+            found")."""
 
             def on_update(self, update) -> None:
-                removed, added, modified = update.removed(), update.added(), update.modified()
+                removed, added = update.removed(), update.added()
+                raw = update.update
+                after = raw.after_modifies
+                names = list(after.schema.names)
+                key = after.get_column_by_name("Sym", True)
+                cells = []
+                for index, rows in enumerate(raw.modified_rows):
+                    if not rows.empty:
+                        cells.append((index, key.get_chunk(rows).to_pylist(),
+                                      after.get_column(index).get_chunk(rows).to_pylist()))
                 with outer.lock:
                     for sym in (removed.get("Sym").to_pylist() if removed else []):
                         outer.replica.pop(sym, None)
-                    for part in (added, modified):
-                        if part:
-                            names = list(part.keys())
-                            outer.columns = names
-                            for row in zip(*(part[n].to_pylist() for n in names)):
-                                outer.replica[row[names.index("Sym")]] = row
+                    if added:
+                        outer.columns = names
+                        for row in zip(*(added[n].to_pylist() for n in names)):
+                            outer.replica[row[names.index("Sym")]] = row
+                    for index, syms, values in cells:
+                        for sym, value in zip(syms, values):
+                            row = list(outer.replica.get(sym, ()))
+                            if not row:
+                                outer.run.violate("correctness", "barrage update modifies a row that was never added", sym)
+                                continue
+                            row[index] = value
+                            outer.replica[sym] = tuple(row)
 
             def on_error(self, error: Exception) -> None:
                 outer.run.violate("requests", "subscription to the aggregation failed", str(error)[:500])
@@ -925,6 +990,16 @@ def judge(rounds: list[dict], profile: Profile, subscriber: dict, cycle_ms: int)
     }
     if growth > profile.cpu_growth:
         violate("liveness", "processor time per round climbs", out["cpu"])
+    # Reported beside the two trends and not judged: what the machine did meanwhile.
+    control = [r["control_s"] for r in steady if r.get("control_s") is not None]
+    if control:
+        out["control_ms"] = {"median_first_third": round(statistics.median(third(control, 0)) * 1000, 1),
+                             "median_last_third": round(statistics.median(third(control, 2)) * 1000, 1)}
+    huge = [r["huge_kb"] / 1024 for r in steady if r.get("huge_kb") is not None]
+    if huge:
+        out["huge_pages_mb"] = {"median_first_third": round(statistics.median(third(huge, 0)), 1),
+                                "median_last_third": round(statistics.median(third(huge, 2)), 1),
+                                "min": round(min(huge), 1), "max": round(max(huge), 1)}
 
     for what in ("fds", "threads"):
         values = [r[what] for r in steady]
@@ -1031,7 +1106,7 @@ def run_soak(args: argparse.Namespace) -> int:
     log_path = args.server_log or os.path.join(tempfile.mkdtemp(prefix="soak-"), "server.log")
     run = Run()
     count_and_bound_client_calls(run)
-    server = Server(args.binary, args.cycle_ms, log_path, args.console)
+    server = Server(args.binary, args.cycle_ms, log_path, args.console, args.huge_pages == "keep")
     print(f"server pid {server.pid}, log {log_path}", flush=True)
     result: dict[str, Any] = {
         "meta": {
@@ -1039,7 +1114,7 @@ def run_soak(args: argparse.Namespace) -> int:
             "profile": args.profile, "duration_s": profile.duration, "warmup_s": profile.warmup,
             "seed": args.seed, "cycle_ms": args.cycle_ms, "round_s": args.round_seconds,
             "cpus": os.cpu_count(), "loadavg_start": os.getloadavg(), "inject": args.inject,
-            "write_steps": WRITE_STEPS,
+            "write_steps": WRITE_STEPS, "huge_pages": args.huge_pages,
         },
     }
     skip = set(filter(None, args.skip.split(",")))
@@ -1138,7 +1213,8 @@ def run_soak(args: argparse.Namespace) -> int:
                     cycles = {"cycles": rounds[-1]["cycles"] if rounds else 0, "cycle_gap_s": 0.0}
             rounds.append({"t": run.now(), "work_s": round(work, 3), "barrier_s": round(barrier_s, 4), **cycles,
                            "cpu_round_s": round(sample["cpu_s"] - last_cpu, 3), **sample,
-                           "updates": stats["updates"], "load": os.getloadavg()[0]})
+                           "updates": stats["updates"], "load": os.getloadavg()[0],
+                           "control_s": round(control_work(), 4)})
             last_cpu = sample["cpu_s"]
             if n % 15 == 0:
                 print(f"t={run.now():7.0f}s round {n} rss={sample['rss_kb'] / 1024:.1f}MB cpu={sample['cpu_s']:.0f}s "
@@ -1184,7 +1260,7 @@ def print_summary(result: dict) -> None:
     print()
     print(f"soak {result['status']}: profile {meta['profile']}, {meta.get('seconds', 0):.0f}s "
           f"({meta['warmup_s']:.0f}s warm-up), seed {meta['seed']}, cycle {meta['cycle_ms']}ms, "
-          f"console {'yes' if meta.get('console') else 'no'}, "
+          f"console {'yes' if meta.get('console') else 'no'}, huge pages {meta.get('huge_pages', 'keep')}, "
           f"{'without ' + ', '.join(meta['skip']) + ', ' if meta.get('skip') else ''}{meta['cpus']} cpus, "
           f"load {meta['loadavg_start'][0]:.1f} -> {meta.get('loadavg_end', [0])[0]:.1f}")
     if s.get("rss_mb"):
@@ -1200,8 +1276,13 @@ def print_summary(result: dict) -> None:
         print(f"  subscriber: {sb['updates']} updates, longest gap {sb['max_gap_s']}s, furthest behind {sb['max_lag_s']}s")
         print(f"  rss MB: start {r['start']}, after warm-up {r['after_warmup']}, end {r['end']}, peak {r['peak']}, "
               f"slope {r['slope_mb_per_hour']} MB/h (allowed {r['allowed_mb_per_hour']})")
+        hp, ct = s.get("huge_pages_mb"), s.get("control_ms")
+        if hp and hp["max"] > 0:
+            print(f"  of the rss, in huge pages: {hp['median_first_third']} -> {hp['median_last_third']} MB "
+                  f"(between {hp['min']} and {hp['max']})")
         print(f"  cpu: {c['total_s']}s, per round {c['per_round_first_third_s']}s -> {c['per_round_last_third_s']}s "
-              f"(growth {c['growth_over_window']:+.1%}, allowed {c['allowed_growth']:.0%})")
+              f"(growth {c['growth_over_window']:+.1%}, allowed {c['allowed_growth']:.0%})"
+              + (f"; the driver's fixed work {ct['median_first_third']} -> {ct['median_last_third']} ms" if ct else ""))
         print(f"  barrier: median {b['median'] * 1000:.1f}ms, max {b['max'] * 1000:.0f}ms; "
               f"fds {s['fds']['baseline']:.0f} -> {s['fds']['last_third']:.0f}, threads {s['threads']['baseline']:.0f} -> {s['threads']['last_third']:.0f}")
     sd = result.get("shutdown", {})
@@ -1292,6 +1373,9 @@ def main(argv: list[str]) -> int:
                    help="seconds one step of the workload may take before the run is ended as stalled")
     r.add_argument("--console", choices=["auto", "python", "none"], default="auto", help="the server's --console")
     r.add_argument("--server-log", help="where the server's output goes (default: a temporary directory)")
+    r.add_argument("--huge-pages", choices=["off", "keep"], default="off",
+                   help="off: the server runs without transparent huge pages, so that resident memory shows "
+                        "what it holds; keep: as the allocator and the machine have them")
     r.add_argument("--inject", choices=["leak", "mismatch", "stall"],
                    help="break one thing on purpose, to see the run fail: keep every round's tables, "
                         "recompute one check from the wrong rows, or stop making progress")
