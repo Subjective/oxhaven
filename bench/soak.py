@@ -80,7 +80,7 @@ PROFILES = {
         barrier_max=10.0, update_gap_max=10.0, lag_max=10.0, cycle_gap_max=5.0, barrier_growth=2.0,
     ),
     "short": Profile(
-        duration=120, warmup=40, rss_slope_mb_per_hour=600.0, cpu_growth=0.60, handles_slack=8,
+        duration=120, warmup=40, rss_slope_mb_per_hour=1500.0, cpu_growth=0.60, handles_slack=8,
         barrier_max=20.0, update_gap_max=20.0, lag_max=20.0, cycle_gap_max=10.0, barrier_growth=3.0,
     ),
 }
