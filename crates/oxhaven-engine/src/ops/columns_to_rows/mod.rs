@@ -192,7 +192,7 @@ impl From<ColumnsToRowsError> for TableFailure {
 /// whose columns are all in earlier groups.
 ///
 /// Refused as not ported, where Java's result is undefined or inconsistent (owner
-/// question 7.11 of `review-items-2.md`): a column in two groups whose value columns
+/// question 7.12 of `review-items-2.md`): a column in two groups whose value columns
 /// have different types; for a refreshing `source`, a column that is transposed twice or
 /// a group whose columns are not in the order of `source`'s columns, for which Java's
 /// update misses changed rows; and row keys of the result beyond the last row key.

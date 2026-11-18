@@ -336,6 +336,19 @@ Business calendars exist (`docs/CONSOLE.md`, "Business calendars"), and `jpy` ca
 - The business time of an axis of a `deephaven.plot` figure (`Figure#businessTime`) is
   still refused, as the table of "Refused" says.
 
+### After task 11.3
+
+`jpy` carries out `ColumnsToRowsTransform.columnsToRows` (`docs/CONSOLE.md`, "The jpy
+module"), the call that refused `dx.data.marketing`.
+
+- The body of `dx.data.marketing` (0.22.0, `data/data_generators.py`), run as the plugin
+  runs it, makes the table Java makes for `ticking=False`: the five rows `VisitedWebsite`
+  100, `Downloaded` 49, `PotentialCustomer` 39, `RequestedPrice` 33, `InvoiceSent` 10, at
+  the row keys 0 to 4, `Stage` a `String` and `Count` a `long`
+  (`columns_to_rows_tests.rs`). The ticking form is refreshing and its counts grow with
+  the time table.
+- `gapminder` when it ticks is still refused (`java.lang.String[]: jpy.array`).
+
 ## Not started
 
 - What the trials above list as failing.
