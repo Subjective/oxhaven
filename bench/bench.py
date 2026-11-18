@@ -513,6 +513,56 @@ def run(args: argparse.Namespace) -> int:
     return 0
 
 
+def merge(args: argparse.Namespace) -> int:
+    """Joins runs made one server at a time (each `run` given one `--server`) into one file
+    as `run` writes it for two servers, so that `report` reads it: the cases of every size
+    that all files ran, each server's result as measured, and `match` computed as `run`
+    computes it. A row's `load` is the highest of the files' loads; each one is kept in
+    `loads`."""
+    runs = []
+    for path in args.files:
+        with open(path) as f:
+            runs.append(json.load(f))
+    servers: dict[str, str] = {}
+    for r in runs:
+        if len(r["meta"]["servers"]) != 1:
+            sys.exit("merge: every file must come from a run with one --server")
+        servers.update(r["meta"]["servers"])
+    if len(servers) != len(runs):
+        sys.exit("merge: two files name the same server")
+    names = list(servers)
+    meta = {
+        "merged_from": [r["meta"] for r in runs],
+        "started": min(r["meta"]["started"] for r in runs),
+        "finished": max(r["meta"].get("finished", r["meta"]["started"]) for r in runs),
+        "servers": servers,
+        "done": runs[0]["meta"]["done"],
+    }
+    for key in ("host", "cpus", "warmup", "reps", "warmup_large", "reps_large"):
+        meta[key] = runs[0]["meta"][key]
+    out: dict = {"meta": meta, "sizes": {}}
+    for size, cases in runs[0]["sizes"].items():
+        per_case: dict = {}
+        for case in cases:
+            parts = [r["sizes"].get(size, {}).get(case) for r in runs]
+            if any(p is None for p in parts):
+                continue
+            row: dict[str, Any] = {"load": max(p["load"] for p in parts), "loads": [p["load"] for p in parts]}
+            for name, p in zip(names, parts):
+                row[name] = p[name]
+            oks = [row[name] for name in names if row[name]["status"] == "ok"]
+            if len(oks) == len(names):
+                first = oks[0]["check"]
+                row["match"] = all(same(first, r["check"]) for r in oks[1:])
+                if case == "ticking_append_where_sum_by":
+                    row["match"] = row["match"] and all(r["check"]["correct"] for r in oks)
+            per_case[case] = row
+        out["sizes"][size] = per_case
+    with open(args.out, "w") as f:
+        json.dump(out, f, indent=1)
+    return 0
+
+
 def fmt_ms(v: float) -> str:
     ms = v * 1000
     return f"{ms:.0f}" if ms >= 100 else f"{ms:.1f}" if ms >= 1 else f"{ms:.2f}"
@@ -598,8 +648,11 @@ def main(argv: list[str]) -> int:
     rp = sub.add_parser("report")
     rp.add_argument("files", nargs="+")
     rp.add_argument("--compact", action="store_true", help="medians only, one column per server")
+    mp = sub.add_parser("merge", help="join runs made one server at a time into one file")
+    mp.add_argument("files", nargs="+", help="one file per server; the first is the base of the ratio")
+    mp.add_argument("--out", required=True)
     args = p.parse_args(argv[1:])
-    return run(args) if args.cmd == "run" else report(args)
+    return {"run": run, "report": report, "merge": merge}[args.cmd](args)
 
 
 if __name__ == "__main__":
