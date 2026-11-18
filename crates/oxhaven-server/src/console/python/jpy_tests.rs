@@ -1,5 +1,6 @@
 //! Tests of the `jpy` module the binary holds (`python/jpy.py`): it imports, a type is held,
-//! and every use of a type is refused by the name of its Java class.
+//! and every use of a type is refused by the name of its Java class, but for the arrays
+//! (`jpy_array_tests.rs`) and the methods `calendar_tests.rs` tests.
 //!
 //! What jpy 2.2.0 answers without reaching a Java class (the names of the module, the name
 //! and text of a type, `cast` of None, `has_jvm` and `destroy_jvm` without a Java VM, the
@@ -102,15 +103,13 @@ for call, text in (
     # whether one class extends another
     (lambda: issubclass(held, jpy.get_type('java.lang.Object')),
      'io.deephaven.time.DateTimeUtils#getSuperclass: whether it extends java.lang.Object'),
-    # arrays, casts, conversions, by a name and by a type
-    (lambda: jpy.array('java.lang.String', ['a']), 'java.lang.String[]: jpy.array'),
-    (lambda: jpy.array('long', 3), 'long[]: jpy.array'),
+    # arrays, casts, conversions of classes without values here, by a name and by a type
+    # (the others are carried out, `jpy_array_tests.rs`)
     (lambda: jpy.array(held, 0), 'io.deephaven.time.DateTimeUtils[]: jpy.array'),
-    (lambda: jpy.cast(object(), held), 'io.deephaven.time.DateTimeUtils: jpy.cast'),
-    (lambda: jpy.cast(3, 'java.util.List'), 'java.util.List: jpy.cast'),
+    (lambda: jpy.array('java.util.List', [None]), 'java.util.List[]: jpy.array'),
+    (lambda: jpy.cast(jpy.array('long', 1), held), 'io.deephaven.time.DateTimeUtils: jpy.cast of a [J'),
     (lambda: jpy.convert('a', 'java.lang.String'), 'java.lang.String: jpy.convert'),
     (lambda: jpy.convert(None, held), 'io.deephaven.time.DateTimeUtils: jpy.convert'),
-    (lambda: jpy.array(3, 3), 'jpy.array: a Java type given as int'),
     # no class to name
     (lambda: jpy.byte_buffer(b'ab'), 'java.nio.ByteBuffer: jpy.byte_buffer'),
     (lambda: jpy.create_jvm([]), 'jpy.create_jvm: this server has no Java VM'),

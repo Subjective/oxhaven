@@ -305,6 +305,7 @@ Added by task 6.2. What Java does was observed on Java 42.9 with the formulas in
 | `str` | `String` |
 | `bool` | `Boolean` |
 | `java.time.Instant` of the package (`to_j_instant`) | `Instant`, as an instant literal is (task 5.8) |
+| A Java array of `jpy.array` or `dtypes.array` | its class (`long[]`), the same array in every row (task 11.2, "Java arrays") |
 | `list`, `dict` | none; an item under a cast is a value, see below (task 5.8) |
 
 **Items of a list and a dict** (task 5.8). Java holds a list as `org.jpy.PyListWrapper` and
@@ -657,7 +658,9 @@ written for it import the module: `deephaven.plot.express` has `import jpy` and 
 load and the server does not start. The binary holds a module `jpy` (`python/jpy.py`) that
 has the names of jpy 2.2.0 and no Java behind them. The owner decided this on 2026-11-16,
 over Python versions of the Java calls and over no module: **every use of a Java class
-fails by that class's name.**
+fails by that class's name.** The owner then approved two sets of exceptions, which the
+module carries out without a Java VM: two methods of `DateTimeUtils` (task 11.1, below)
+and Java arrays with the casts and conversions of them (task 11.2, "Java arrays").
 
 | Call | jpy 2.2.0 in the reference | Here |
 | --- | --- | --- |
@@ -667,11 +670,11 @@ fails by that class's name.**
 | An attribute of a type: a static method or field, `jclass` | the method, the value | `not ported: a.b.C#<name>`, when the attribute is read, called or not. `hasattr` and `getattr` with a default raise it too |
 | An attribute named `__x__` that a class does not have | `AttributeError` | the same, with jpy's text: Python asks every class for such names |
 | Setting or deleting an attribute | `TypeError: cannot set 'x' attribute of immutable type 'a.b.C'` | the same |
-| `isinstance(x, T)` | whether `x` is a Java object of the class | `False`: there are no Java objects |
-| `issubclass(T, U)` of two Java types | by the superclasses of the Java class | `not ported: a.b.T#getSuperclass: whether it extends a.b.U`; `True` for a type and itself, and for `jpy.JType` |
-| `jpy.array(type, init)` | a Java array | `not ported: a.b.C[]: jpy.array` |
-| `jpy.cast(obj, type)` | the object as that type; `None` for `None`, whatever the type | `None` for `None`; else `not ported: a.b.C: jpy.cast` |
-| `jpy.convert(obj, type)` | a Java object | `not ported: a.b.C: jpy.convert` |
+| `isinstance(x, T)` | whether `x` is a Java object of the class | the same for a Java array (task 11.2), whose class extends `java.lang.Object` only, as in jpy; `False` for anything else |
+| `issubclass(T, U)` of two Java types | by the superclasses of the Java class | the same where `T` is an array class; else `not ported: a.b.T#getSuperclass: whether it extends a.b.U`; `True` for a type and itself, and for `jpy.JType` |
+| `jpy.array(type, init)` | a Java array | a Java array of a primitive type or of a class listed under "Java arrays" below; `not ported: a.b.C[]: jpy.array` for any other class |
+| `jpy.cast(obj, type)` | the object as that type; `None` for `None`, whatever the type | see "Java arrays" below; `None` for `None` |
+| `jpy.convert(obj, type)` | a Java object | to an array class or a class of `java.time` the package has, see "Java arrays"; else `not ported: a.b.C: jpy.convert` |
 | `jpy.byte_buffer(obj)` | a `java.nio.ByteBuffer` | `not ported: java.nio.ByteBuffer: jpy.byte_buffer` |
 | `jpy.has_jvm()` | `True` | `False` |
 | `jpy.create_jvm(options)` | nothing, with a Java VM running | `not ported: jpy.create_jvm: this server has no Java VM` |
@@ -694,7 +697,8 @@ chosen as jpy chooses:
 
 Every other member of `DateTimeUtils`, and of any class, is refused as above. This widens
 what the owner's ruling of 2026-11-16 allowed ("every use of a Java class fails by that
-class's name"); the task's report asks the owner to confirm it.
+class's name"); the owner approved it, and the Java arrays below, and `PARITY.md` (A10)
+now says the stand-in carries out the Java classes this file lists and refuses the rest.
 
 The refusal is `deephaven._java_time.NotPorted`, the error of this package for what Java
 does and it does not: a `NotImplementedError`, and so a `RuntimeError`, which is what jpy
@@ -712,6 +716,96 @@ import `jpy`.
 
 Not here: the module `jpyutil` of the same distribution (it finds and starts a Java VM),
 and jpy's own texts for a wrong number of arguments (Python's are given).
+
+### Java arrays
+
+Task 11.2. `jpy.array`, `jpy.cast` and `jpy.convert` make and take Java arrays, and
+`deephaven.dtypes.array` returns them, as in the reference. An array is an object of the
+class `jpy.get_type` hands out for its name (`[J`, `[Ljava.lang.String;`), whose `__name__`,
+`__module__` and bases (`java.lang.Object`, `jpy.JType`) are jpy's. Arrays of these
+elements are made:
+
+- the eight primitive types; the elements are kept in an `array.array` of jpy's C type, so
+  `memoryview(a)` and `numpy.frombuffer(a, ...)` read them as jpy's (`q` for `long`, `B`
+  for `boolean`, `H` for `char`);
+- `java.lang.String`, `Boolean`, `Byte`, `Short`, `Integer`, `Long`, `Character`,
+  `Float`, `Double`, `Object`, and `org.jpy.PyObject`;
+- the classes of `java.time` the package has values of (`Instant`, `LocalDate`,
+  `LocalTime`, `ZonedDateTime`, `Duration`, `Period`, `ZoneId`, `DayOfWeek`) and of the
+  calendars (`BusinessCalendar`, `CalendarDay`, `TimeRange`);
+- arrays of any of these, to any depth (`[[J`).
+
+What a script sees, as observed on jpy 2.2.0 in Deephaven 42.9 (`jpy_array_tests.rs` has
+each case):
+
+- **Making one.** `init` is a length (an `int` from 0 to `2**31 - 1`) or a sequence read by
+  position (a list, tuple, range, `str`, `bytes`, a numpy array); anything else is
+  `ValueError: array: argument 2 (init) must be either an integer array length or any
+  sequence`. A length gives zeros, `False` or `None`.
+- **Conversions.** An integer type takes what has `__index__` and keeps the low bits
+  (`300` is `44` in a `byte[]`), and `None` is 0; a `float` fails with Python's text, an
+  `int` beyond 64 bits with `OverflowError` (`int too big to convert` for `long`, `Python
+  int too large to convert to C long` for the others). `float` and `double` take any real
+  number (`float` rounds, to an infinity beyond its range), `boolean` the truth of any
+  value. A `String` takes a `str`; the boxed integers an `int` or `bool`, kept to their
+  bits (`Integer` of `2**40` is 0); `Float` and `Double` an `int` or `float`; `Boolean`
+  the truth of any value; `Object` a `bool`, `int`, `float`, `str` or Java object, given
+  back as the same Python value; `PyObject` anything, given back as itself; a class of
+  `java.time` a value of it. Anything else is `ValueError: cannot convert a Python 'int'
+  to a Java 'java.lang.String'`, and `None` is a null everywhere. An array of arrays keeps
+  an array of its element class (so a change to it shows in both) and makes a new one of
+  a sequence (`cannot convert a Python 'int' to a Java array of type 'long'` otherwise).
+- **Positions.** `len`, `a[i]` with Python's negative positions, iteration, `in`,
+  `reversed`; `a[i] = v`. Reading past either end is `IndexError: Java array index out of
+  bounds`; writing is Java's `ArrayIndexOutOfBoundsException` (`Array region 3..4 out of
+  bounds for length 3` for a primitive array, `Index 3 out of bounds for length 3` for
+  another); a slice or a non-integer is `TypeError: sequence index must be integer, not
+  'slice'`; `del a[0]` is `RuntimeError: cannot delete items of Java arrays`.
+- **A Java object, not a Python sequence.** No `append`, `+` or `*`, no `length`
+  attribute; it cannot be pickled or copied (`cannot pickle '[J' object`). `==` is
+  identity, as Java's `equals`. `equals`, `hashCode` and `toString` are carried out;
+  `getClass`, `wait`, `notify`, `notifyAll` and `jclass` are refused by name.
+- **`jpy.cast(obj, type)`.** An array, or a value of `java.time` or a calendar, cast to
+  its own class is itself (jpy gives a new object of the same array). Cast to a class it is
+  no instance of, it is `None`: by the Java language's rules for arrays (an array is an
+  `Object`, `Cloneable` and `Serializable`, and an array of `S` is an array of each
+  supertype of `S`) and for the final classes above. A cast to a superclass (`Object`,
+  `Object[]`, `Comparable`), which in jpy gives an object with only that class's methods,
+  and a cast to a class whose relation needs Java's classes (`java.util.List`), are
+  refused: `not ported: java.lang.Object: jpy.cast of a [J`. What is no Java object (a
+  `str`, an `int`) is `ValueError: cast: argument 1 (obj) must be a Java object`; a table
+  or another handle of the server is refused by the class's name.
+- **`jpy.convert(obj, type)`** to an array class converts as an element of an array of
+  arrays does; to a class of `java.time` the package has, `None` and a value of the class
+  are themselves. Every other conversion gives a Java object the package has no value
+  for, and is refused by the class's name.
+- **In a formula.** A query scope variable that holds an array is that array in every row
+  (`X = arr`, a column of `long[]`), and the language's operations on an array apply:
+  `arr[i]`, `arr.length`, `sum(arr)`, `len(arr)`, a cast to its class, `ungroup` of the
+  column. The array is read when the formula is compiled. An array of `boolean`, `Object`
+  or another class the engine has no column type for is refused (`the engine has no
+  column type for it`). A formula a gRPC client sends is refused such a variable, as a
+list or a dict (what Java does with it was not observed).
+
+Reproduced from Java, though they look like defects: setting an element of a primitive
+array to a value it cannot take stores -1 (`65535` for `char`, `-1.0` for `float` and
+`double`) and raises nothing, where making an array of the same value fails; an `int`
+beyond 64 bits in an array of `Object`, `Long` or `Integer` is a `SystemError` (`returned
+a result with an exception set`); `a != 1` is `False`, as is every comparison of an array
+with a Python value.
+
+Not the same as Java 42.9:
+
+| What | Java | Here |
+| --- | --- | --- |
+| A change to an array after a formula read it | shows in the column: the column holds the array | does not: the column holds the elements the array had |
+| The order of two different arrays (`a < b`) | by their references in the JVM | by their identities in Python; neither is stable from run to run |
+| `str(a)`, `repr(a)`, `hash(a)` | the identity hash code and the JNI reference | the same shape, `[J@1c998901` and `[J(objectRef=0x...)`, with numbers from the Python object |
+| `jpy.cast(a, type(a))`, `a[i]` of an array of arrays or of `java.time` values | a new Python object of the same Java object | the same Python object |
+| `memoryview(a)` of a primitive array | read-only | writable, and a write is seen by the array |
+| `isinstance(a, collections.abc.Sequence)` | `False` | `True` for a primitive array (Python registers `array.array`), `False` for another |
+| An array of any other class (`java.util.List[]`, `BigDecimal[]`), even of nulls | made | `not ported: java.util.List[]: jpy.array` |
+| The text of `memoryview` of an array of a class | names `[Ljava.lang.String;` | names `String;`, the type's `__name__` |
 
 ## Completion
 

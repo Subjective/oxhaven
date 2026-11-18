@@ -20,9 +20,9 @@ use std::sync::Arc;
 
 use arrow::array::{
     Array, ArrayRef, AsArray, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array,
-    Int64Array, Int8Array, StringArray,
+    Int64Array, Int8Array, StringArray, UInt32Array,
 };
-use arrow::compute::concat;
+use arrow::compute::{concat, take};
 use arrow::datatypes::{
     DataType, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, UInt16Type,
 };
@@ -33,8 +33,8 @@ use oxhaven_expr::{ExternalArgument, ExternalFunction, ExternalFunctions};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyTuple};
 
-use crate::app::{item_function_parts, Scope, ScopedCompiler};
-use crate::schema::java_type_name;
+use crate::app::{array_function_variable, item_function_parts, Scope, ScopedCompiler};
+use crate::schema::{column_type_for_java_names, java_type_name};
 
 /// The Python half: signatures, conversions and the loop over the rows of a chunk.
 const SOURCE: &str = include_str!("../../../python/_oxhaven_udf.py");
@@ -115,6 +115,10 @@ impl ExternalFunctions for PythonFunctions {
         arguments: &[ExternalArgument<'_>],
     ) -> Option<Result<Arc<dyn ExternalFunction>, FormulaError>> {
         Python::attach(|py| {
+            if let Some(variable) = array_function_variable(name) {
+                let array = super::current_scope(py)?.get_item(variable).ok()??;
+                return Some(bind_array(py, variable, &array, arguments));
+            }
             if let Some((cast, variable)) = item_function_parts(name) {
                 let container = super::current_scope(py)?.get_item(variable).ok()??;
                 return Some(bind_item(py, cast, variable, &container, arguments));
@@ -261,6 +265,69 @@ fn bind_item(
         result,
         run: run.unbind(),
     }))
+}
+
+/// The Java array `array`, which the variable `variable` holds, as the value of every row:
+/// the elements it has now, converted as `new_table` converts the cells of a column of its
+/// class.
+///
+/// Behavior: `QueryLanguageParser`, which compiles a variable that holds a Java array as an
+/// expression of the array's class; the formula gives every row that array
+fn bind_array(
+    py: Python<'_>,
+    variable: &str,
+    array: &Bound<'_, PyAny>,
+    arguments: &[ExternalArgument<'_>],
+) -> Result<Arc<dyn ExternalFunction>, FormulaError> {
+    let failed = |error: PyErr| FormulaError::Type(format!("the array {variable}: {error}"));
+    let Some(class) = super::java_array_class(array) else {
+        return Err(FormulaError::Type(format!(
+            "the query scope variable {variable} holds no Java array"
+        )));
+    };
+    if !arguments.is_empty() {
+        return Err(FormulaError::Type(format!(
+            "the query scope variable {variable} is no function"
+        )));
+    }
+    let Some(result) = column_type_for_java_names(&class, None) else {
+        return Err(unsupported(
+            format!("the query scope variable {variable}, a Java {class}: the engine has no column type for it"),
+            "io.deephaven.engine.table.ColumnDefinition#fromGenericType",
+        ));
+    };
+    let dtype = py
+        .import("deephaven.dtypes")
+        .and_then(|dtypes| dtypes.call_method1("_from_java_name", (&class,)))
+        .map_err(failed)?;
+    let cells = py
+        .import("deephaven.table_factory")
+        .and_then(|factory| {
+            factory.call_method1("_engine_values", (dtype, PyList::new(py, [array])?))
+        })
+        .map_err(failed)?;
+    let cell = super::input_values(&result, &cells).map_err(failed)?;
+    Ok(Arc::new(ArrayConstant { result, cell }))
+}
+
+/// One array, the value of every row.
+struct ArrayConstant {
+    result: ColumnType,
+    /// The array, as a column of one row.
+    cell: ArrayRef,
+}
+
+impl ExternalFunction for ArrayConstant {
+    fn result_type(&self) -> &ColumnType {
+        &self.result
+    }
+
+    fn call(&self, _arguments: &[ArrayRef], rows: usize) -> Result<ArrayRef, TableFailure> {
+        let first = UInt32Array::from(vec![0; rows]);
+        take(&self.cell, &first, None).map_err(|error| TableFailure {
+            message: error.to_string(),
+        })
+    }
 }
 
 /// A Python function bound to the argument types of one call in a formula, or the items

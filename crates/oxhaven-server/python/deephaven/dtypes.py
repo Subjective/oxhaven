@@ -1,11 +1,11 @@
 """The data types of the engine, as `DType` objects.
 
 Behavior: `deephaven.dtypes` of the reference package. There a `DType` names a Java class
-and `array` makes a Java array through jpy; here a `DType` names the same class, and an
-array is a `JArray`, a Python list that knows its element type. The conversions of the
-values are jpy's, which the reference package's behavior rests on: an integer type takes
-anything with `__index__` and keeps the low bits, a floating point type takes any real
-number, `None` in a primitive array is zero, a `Boolean` is the truth of the value.
+and `array` makes a Java array through jpy; so it does here, with the arrays of the
+module `jpy` this server holds (`python/jpy.py`, task 11.2), which convert the values as
+jpy does: an integer type takes anything with `__index__` and keeps the low bits, a
+floating point type takes any real number, `None` in a primitive array is zero, a
+`Boolean` is the truth of the value.
 
 numpy and pandas are imported when a function is given one of their values, never at
 import: the server does not need them.
@@ -17,9 +17,7 @@ names, and a column of one is refused: `BigDecimal`, `BigInteger`, `Character`,
 `zdt_array`.
 """
 
-import ctypes
 import datetime
-import operator
 import sys
 from typing import Any, Callable, Optional, Sequence
 
@@ -165,9 +163,6 @@ _BUILDABLE_ARRAY_DTYPE_MAP = {
 _ARRAY_LETTERS = {"Z": "boolean", "B": "byte", "S": "short", "C": "char", "I": "int", "J": "long", "F": "float", "D": "double"}
 _PRIMITIVE_LETTERS = {name: letter for letter, name in _ARRAY_LETTERS.items()}
 
-# The bits of each integer type; `char` is the one without a sign.
-_INTEGER_BITS = {"byte": 8, "short": 16, "char": 16, "int": 32, "long": 64}
-
 
 def _component_name(j_name: str) -> Optional[str]:
     """The class name of the elements of the array class `j_name`, as `Class#getName`
@@ -241,15 +236,6 @@ def null_remap(dtype: DType) -> Callable[[Any], Any]:
     return lambda v: null_value if v is None else v
 
 
-class JArray(list):
-    """What `array` returns: the values of a Java array of `dtype` elements, converted as
-    jpy converts them. It is a list, so it has a length, positions and an order."""
-
-    def __init__(self, dtype: DType, values=()):
-        super().__init__(values)
-        self.dtype = dtype
-
-
 def _numpy():
     return sys.modules.get("numpy")
 
@@ -259,73 +245,11 @@ def _is_ndarray(value) -> bool:
     return numpy is not None and isinstance(value, numpy.ndarray)
 
 
-def _integer(value, bits: int, signed: bool) -> int:
-    """Behavior: jpy's conversion to a Java integer type: `PyLong_AsLong`, then a cast."""
-    if value is None:
-        return 0
-    try:
-        value = operator.index(value)
-    except TypeError:
-        raise TypeError(f"'{type(value).__name__}' object cannot be interpreted as an integer") from None
-    if not NULL_LONG <= value < 2**63:
-        raise OverflowError("int too big to convert")
-    value %= 2**bits
-    return value - 2**bits if signed and value >= 2 ** (bits - 1) else value
+def _java_array(dtype: DType, values):
+    """A Java array of `dtype` elements that holds `values`, which are values of it."""
+    import jpy
 
-
-def _real(value, is_float: bool) -> float:
-    """Behavior: jpy's conversion to `float` and `double`: `PyFloat_AsDouble`, and for a
-    `float` a cast, which rounds and gives an infinity beyond the range."""
-    if value is None:
-        return 0.0
-    if hasattr(type(value), "__float__") and not isinstance(value, str):
-        value = float(value)
-    elif hasattr(type(value), "__index__"):
-        value = float(operator.index(value))
-    else:
-        raise TypeError(f"must be real number, not {type(value).__name__}")
-    return ctypes.c_float(value).value if is_float else value
-
-
-def _object(dtype: DType, value):
-    """Behavior: jpy's conversion of a Python value to a Java object of a class."""
-    if value is None:
-        return None
-    name = dtype.j_name
-    refused = ValueError(f"cannot convert a Python '{type(value).__name__}' to a Java '{name}'")
-    if dtype is bool_:
-        try:
-            return bool(value)
-        except Exception:
-            raise refused from None
-    if dtype is string:
-        if not isinstance(value, str):
-            raise refused
-        return str(value)
-    if dtype is PyObject or dtype is JObject:
-        return value
-    component = _component_name(name)
-    if component is not None:
-        if isinstance(value, (str, bytes)) or not hasattr(type(value), "__len__"):
-            raise ValueError(
-                f"cannot convert a Python '{type(value).__name__}' to a Java array of type "
-                f"'{_canonical_name(component)}'"
-            )
-        return _convert(_from_java_name(component), value)
-    if dtype.j_type is None or not isinstance(value, dtype.j_type):
-        raise refused
-    return value
-
-
-def _convert(dtype: DType, values) -> JArray:
-    """The elements of a Java array of `dtype` from Python values."""
-    name = dtype.j_name
-    if name in _INTEGER_BITS:
-        bits, signed = _INTEGER_BITS[name], name != "char"
-        return JArray(dtype, (_integer(v, bits, signed) for v in values))
-    if name in ("float", "double"):
-        return JArray(dtype, (_real(v, name == "float") for v in values))
-    return JArray(dtype, (_object(dtype, v) for v in values))
+    return jpy.array(dtype.j_name, values)
 
 
 def _exact_nanos(value):
@@ -357,7 +281,7 @@ def _exact_nanos(value):
     return NotImplemented
 
 
-def _instant_array(data) -> JArray:
+def _instant_array(data):
     """The instants of a sequence of strings, integers in nanoseconds, `datetime`s, numpy
     or pandas times or instants; `None` is a null.
 
@@ -372,25 +296,25 @@ def _instant_array(data) -> JArray:
     of_nanos = _java_time.instant_of_nanos
     if _is_ndarray(data):
         if data.dtype.kind == "U":
-            return JArray(Instant, (_java_time.parse_instant(str(text)) for text in data))
+            return _java_array(Instant, [_java_time.parse_instant(str(text)) for text in data])
         if data.dtype.kind == "M":
             nanos = data.astype("datetime64[ns]").astype(numpy.int64).tolist()
-            return JArray(Instant, map(of_nanos, nanos))
+            return _java_array(Instant, list(map(of_nanos, nanos)))
         if data.dtype.kind == "i":
-            return JArray(Instant, map(of_nanos, data.astype(numpy.int64).tolist()))
+            return _java_array(Instant, list(map(of_nanos, data.astype(numpy.int64).tolist())))
     # a numpy array of any other kind is converted value by value
     by_value = _is_ndarray(data)
     data = list(data)
     if not data:
-        return JArray(Instant)
+        return _java_array(Instant, [])
     if all(d is None or isinstance(d, str) for d in data):
-        return JArray(Instant, (None if d is None else _java_time.parse_instant(d) for d in data))
+        return _java_array(Instant, [None if d is None else _java_time.parse_instant(d) for d in data])
     if not by_value and not any(isinstance(d, str) for d in data):
         try:
-            return JArray(Instant, map(of_nanos, map(_timestamp_nanos, data)))
+            return _java_array(Instant, list(map(of_nanos, map(_timestamp_nanos, data))))
         except Exception:
             pass
-    return JArray(Instant, map(to_j_instant, data))
+    return _java_array(Instant, list(map(to_j_instant, data)))
 
 
 def _timestamp_nanos(value) -> int:
@@ -430,8 +354,8 @@ def array(dtype: DType, seq: Optional[Sequence], remap: Optional[Callable[[Any],
             # Behavior: `PrimitiveArrayConversionUtility#translateArrayByteToBoolean`,
             # `BooleanUtils#byteAsBoolean`: a negative byte is a null
             bytes_ = seq.astype(dtype="int8").tolist()
-            return JArray(bool_, (None if b < 0 else b > 0 for b in bytes_))
-        return _convert(dtype, seq)
+            return _java_array(bool_, [None if b < 0 else b > 0 for b in bytes_])
+        return _java_array(dtype, seq)
     except Exception as e:
         raise DHError(e, f"failed to create a Java {dtype.j_name} array.") from e
 

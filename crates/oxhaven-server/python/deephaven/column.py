@@ -167,16 +167,17 @@ class InputColumn:
 
     def _to_j_column(self, input_data: Optional[Any] = None):
         data_type = self._column_definition.data_type
+        # the engine's name of the type, or the refusal of a type it cannot hold, before
+        # the values: an array of a class this server has no values of is refused too
+        self._engine_type = dtypes._engine_type(data_type)
         if input_data is None:
-            values = dtypes.JArray(data_type)
+            values = dtypes.array(data_type, [])
         elif data_type.is_primitive:
             values = dtypes.array(data_type, input_data, remap=dtypes.null_remap(data_type))
         else:
             values = dtypes.array(data_type, input_data)
         # Behavior: `io.deephaven.qst.column.header.ColumnHeader#of`, which checks the name
         _engine.native.validate_column_name(self._column_definition.name)
-        # the engine's name of the type, or the refusal of a type it cannot hold
-        self._engine_type = dtypes._engine_type(data_type)
         return values
 
 
