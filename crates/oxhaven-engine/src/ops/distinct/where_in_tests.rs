@@ -225,6 +225,121 @@ fn several_match_columns_are_one_key() {
     assert_eq!(ks(&*where_in(&left, &set, &twice).unwrap()), ["1", "3"]);
 }
 
+/// Seen on Deephaven 42.9 over six rows `K` = 0 to 5: `LD` dates of the 1st, 2nd, 3rd,
+/// 1st, 2nd and null, `Du` 0 or 1 seconds, `DW` Monday to Thursday then Monday and
+/// Tuesday, `Z` alternately `UTC` and `Z`, `ZDT` the instant 0 or 1 in `UTC` for the
+/// first three rows and in `Z` after; the set's rows hold the 2nd and 3rd, one second,
+/// Tuesday, `Z` and the instant 1 in `UTC`.
+#[test]
+fn time_values_are_keys_by_equality() {
+    use arrow::array::{Date32Array, DurationNanosecondArray, StringArray, StructArray};
+    let zoned = |cells: &[(i64, &str)]| -> ArrayRef {
+        let arrow::datatypes::DataType::Struct(fields) = ColumnType::ZonedDateTime.arrow_type()
+        else {
+            unreachable!("a ZonedDateTime is a struct")
+        };
+        let instants = arrow::array::TimestampNanosecondArray::from(
+            cells.iter().map(|(nanos, _)| *nanos).collect::<Vec<_>>(),
+        )
+        .with_timezone("UTC");
+        let zones = StringArray::from(cells.iter().map(|(_, zone)| *zone).collect::<Vec<_>>());
+        Arc::new(StructArray::new(
+            fields,
+            vec![Arc::new(instants), Arc::new(zones)],
+            None,
+        ))
+    };
+    const SECOND: i64 = 1_000_000_000;
+    let day = |d: i32| 19_722 + d;
+    let left = static_table(&[
+        ("K", ColumnType::Int, ints(0..6)),
+        (
+            "LD",
+            ColumnType::LocalDate,
+            Arc::new(Date32Array::from(vec![
+                Some(day(1)),
+                Some(day(2)),
+                Some(day(3)),
+                Some(day(1)),
+                Some(day(2)),
+                None,
+            ])),
+        ),
+        (
+            "Du",
+            ColumnType::Duration,
+            Arc::new(DurationNanosecondArray::from(
+                (0..6).map(|i| i % 2 * SECOND).collect::<Vec<_>>(),
+            )),
+        ),
+        (
+            "DW",
+            ColumnType::DayOfWeek,
+            Arc::new(Int8Array::from(vec![1, 2, 3, 4, 1, 2])),
+        ),
+        (
+            "Z",
+            ColumnType::ZoneId,
+            strings(["UTC", "Z", "UTC", "Z", "UTC", "Z"]),
+        ),
+        (
+            "ZDT",
+            ColumnType::ZonedDateTime,
+            zoned(&[
+                (0, "UTC"),
+                (SECOND, "UTC"),
+                (0, "UTC"),
+                (SECOND, "Z"),
+                (0, "Z"),
+                (SECOND, "Z"),
+            ]),
+        ),
+    ]);
+    let set = static_table(&[
+        (
+            "LD",
+            ColumnType::LocalDate,
+            Arc::new(Date32Array::from(vec![day(2), day(3)])),
+        ),
+        (
+            "Du",
+            ColumnType::Duration,
+            Arc::new(DurationNanosecondArray::from(vec![SECOND, SECOND])),
+        ),
+        (
+            "DW",
+            ColumnType::DayOfWeek,
+            Arc::new(Int8Array::from(vec![2, 2])),
+        ),
+        ("Z", ColumnType::ZoneId, strings(["Z", "Z"])),
+        (
+            "ZDT",
+            ColumnType::ZonedDateTime,
+            zoned(&[(SECOND, "UTC"), (SECOND, "UTC")]),
+        ),
+    ]);
+    let kept = |on_columns: &[&str], inclusion: bool| {
+        let pairs = on(on_columns);
+        let result = if inclusion {
+            where_in(&left, &set, &pairs)
+        } else {
+            where_not_in(&left, &set, &pairs)
+        };
+        ks(&*result.unwrap())
+    };
+    assert_eq!(kept(&["LD"], true), ["1", "2", "4"]);
+    assert_eq!(kept(&["Du"], true), ["1", "3", "5"]);
+    assert_eq!(kept(&["DW"], false), ["0", "2", "3", "4"]);
+    assert_eq!(kept(&["Z"], true), ["1", "3", "5"]);
+    assert_eq!(kept(&["ZDT"], true), ["1"]);
+    assert_eq!(kept(&["LD", "Du"], true), ["1"]);
+    // a date is not a duration
+    assert!(matches!(
+        where_in(&left, &set, &on(&["LD=Du"])),
+        Err(WhereInError::MismatchedTypes { .. })
+    ));
+}
+
 #[test]
 fn null_nan_and_the_two_zeros_are_one_key_each() {
     let other_nan = f64::from_bits(f64::NAN.to_bits() | 1);
