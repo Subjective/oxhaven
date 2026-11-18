@@ -481,8 +481,11 @@ class _JavaArray:
         self._set(self._position(index), value)
 
     def __delitem__(self, index):
-        self._position(index)
+        _operator.index(index)
         raise RuntimeError("cannot delete items of Java arrays")
+
+    def __setattr__(self, name, value):
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
     def __iter__(self):
         for position in range(len(self)):
@@ -760,7 +763,8 @@ def convert(obj, type, /):
     Every other conversion, which gives a Java object this package has no value for, is
     refused by the name of the class.
     """
-    name = _element_name(type, "convert", "2 (obj_type) must be a Java type name or Java type object")
+    # jpy's text names `cast` here too
+    name = _element_name(type, "cast", "2 (obj_type) must be a Java type name or Java type object")
     component = _component(name)
     if component is not None and _supported(component):
         return _element(name, obj, _overflowed("<built-in function convert>"))

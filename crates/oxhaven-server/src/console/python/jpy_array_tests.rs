@@ -58,6 +58,8 @@ assert list(a) == [1, 7, 9]
 assert raised(lambda: a.__setitem__(3, 1)) == ('RuntimeError', 'java.lang.ArrayIndexOutOfBoundsException: Array region 3..4 out of bounds for length 3')
 assert raised(lambda: a.__setitem__(-4, 1)) == ('RuntimeError', 'java.lang.ArrayIndexOutOfBoundsException: Array region -1..0 out of bounds for length 3')
 assert raised(lambda: a.__delitem__(0)) == ('RuntimeError', 'cannot delete items of Java arrays')
+assert raised(lambda: a.__delitem__(slice(0, 1))) == ('TypeError', "'slice' object cannot be interpreted as an integer")
+assert raised(lambda: setattr(a, 'x', 1)) == ('AttributeError', "'[J' object has no attribute 'x'")
 
 view = memoryview(a)
 assert (view.format, view.itemsize, view.shape) == ('q', 8, (3,))
@@ -205,8 +207,8 @@ assert kinds('java.lang.Short', [40000]) == [('int', -25536)] and kinds('java.la
 assert kinds('java.lang.Character', [-1, 65]) == [('int', 65535), ('int', 65)]
 assert kinds('java.lang.Double', [1, 1.5, True]) == [('float', 1.0), ('float', 1.5), ('float', 1.0)]
 assert kinds('java.lang.Float', [0.1, 1e300]) == [('float', 0.10000000149011612), ('float', float('inf'))]
-assert kinds('java.lang.Boolean', [1, None, 'a', [1], 1.5]) == [
-    ('bool', True), ('NoneType', None), ('bool', True), ('bool', True), ('bool', True)]
+assert kinds('java.lang.Boolean', [1, None, 'a', [1], 0]) == [
+    ('bool', True), ('NoneType', None), ('bool', True), ('bool', True), ('bool', False)]
 assert raised(lambda: jpy.array('java.lang.Long', [2**63]))[0] == 'SystemError'
 assert raised(lambda: stored('java.lang.Long', 2**64))[0] == 'SystemError'
 for name in ('java.lang.Integer', 'java.lang.Long', 'java.lang.Short', 'java.lang.Byte', 'java.lang.Character'):
@@ -284,6 +286,7 @@ for value, names in ((a, ('[I', '[Ljava.lang.Object;', '[Ljava.lang.String;', 'j
 
 # Java gives an object of the superclass, which has its methods only: refused here
 for value, name in ((a, 'java.lang.Object'), (s, '[Ljava.lang.Object;'), (a, 'java.io.Serializable'),
+                    (jpy.array('[J', 1), '[Ljava.lang.Object;'),
                     (instant, 'java.lang.Comparable'), (date, 'java.lang.Object')):
     try:
         jpy.cast(value, name)
@@ -304,6 +307,14 @@ assert type(jpy.convert([1, 2], '[I')).__name__ == '[I'
 assert list(jpy.convert(['a'], '[Ljava.lang.String;')) == ['a']
 assert jpy.convert(a, '[J') is a and jpy.convert(instant, 'java.time.Instant') is instant
 assert raised(lambda: jpy.convert('a', 'java.time.Instant')) == ('ValueError', "cannot convert a Python 'str' to a Java 'java.time.Instant'")
+assert raised(lambda: jpy.convert(instant, 'java.time.LocalDate')) == ('ValueError', "cannot convert a Python 'java.time.Instant' to a Java 'java.time.LocalDate'")
+assert jpy.convert(None, 'java.time.Instant') is None and jpy.convert(None, '[J') is None
+assert list(jpy.convert(jpy.array('int', [4]), '[J')) == [4]
+assert raised(lambda: jpy.convert(3, '[J')) == ('ValueError', "cannot convert a Python 'int' to a Java array of type 'long'")
+assert raised(lambda: jpy.convert('ab', '[J')) == ('TypeError', "'str' object cannot be interpreted as an integer")
+# jpy's text names `cast`
+assert raised(lambda: jpy.convert(1, 3)) == ('ValueError', 'cast: argument 2 (obj_type) must be a Java type name or Java type object')
+assert jpy.cast(a, '[[J') is None
 "#,
     );
 }
