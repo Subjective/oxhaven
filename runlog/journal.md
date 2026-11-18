@@ -1321,3 +1321,7 @@ Seven green checks on head ee0a2a25. Main is at 39956454. The DecimalFormat port
 ## 2026-11-18 01:53 UTC: tasks 10.8 and 10.9 reported, pull requests 163 and 164 opened
 
 Owner questions 10 and 11 of 10.8 go to review-items-2.md as 7.6 and 7.7.
+
+## 2026-11-18 01:53 UTC: task 9.11 started
+
+The machine is quiet (no other agent builds), so the benchmark rerun that removes the two-processor caveat runs now. No other builder is started until it has measured.
