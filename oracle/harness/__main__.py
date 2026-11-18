@@ -446,8 +446,16 @@ class _Triage:
         self.count: Counter = Counter()
 
     def split(self, scenario: sc.Scenario, found: list[rules.Mismatch],
-              seed: int | None = None) -> tuple[list[rules.Mismatch], list[kn.Finding]]:
-        """The mismatches that fit no known finding, and the findings the others fit."""
+              seed: int | None = None, actual: res.ResultSet | None = None,
+              ) -> tuple[list[rules.Mismatch], list[kn.Finding]]:
+        """The mismatches that fit no known finding, and the findings the others fit.
+
+        `actual` are the results of the actual side. With them, a result counts as one the
+        reference is inconsistent about only if the actual side holds for it what the
+        reference answers from scratch: that is what such a finding says of the actual
+        side (`PARITY.md`, A13), and a result that is neither of the reference's two
+        answers is a difference.
+        """
         if not found or not self.known:
             return found, []
 
@@ -458,7 +466,10 @@ class _Triage:
                 kept, fresh = self.target_a.run_fresh(scenario)
             except RunError:
                 return None
-            return {(m.step, m.table) for m in rules.compare_with_fresh(scenario, kept, fresh)}
+            both = {(m.step, m.table) for m in rules.compare_with_fresh(scenario, kept, fresh)}
+            if actual is not None:
+                both -= rules.differs_from_fresh(scenario, fresh, actual, both)
+            return both
 
         fits = self.known.classify(found, scenario.operations, reference_inconsistent)
         if seed is not None:
@@ -493,8 +504,8 @@ def _fuzz_all(args: argparse.Namespace, ops: frozenset[str], target_a: Any, targ
         doc, _ = fz.generate(seed, ops, args.variants)
         scenario = sc.parse(doc)
         try:
-            found = rules.compare_scenario(
-                scenario, target_a.run(scenario), target_b.run(scenario), args.exact)
+            actual = target_b.run(scenario)
+            found = rules.compare_scenario(scenario, target_a.run(scenario), actual, args.exact)
         except RunError as error:
             not_run += 1
             print(f"ERROR seed {seed}: {error}")
@@ -502,7 +513,7 @@ def _fuzz_all(args: argparse.Namespace, ops: frozenset[str], target_a: Any, targ
         if not found:
             clean += 1
             continue
-        found, _ = triage.split(scenario, found, seed)
+        found, _ = triage.split(scenario, found, seed, actual)
         if not found:
             known_only += 1
             _write_scenario(out_dir, doc, f"fuzz_{seed}")
@@ -539,6 +550,9 @@ def cmd_fuzz(args: argparse.Namespace) -> int:
     if args.family in fz.TIME_FAMILIES:
         ops = fz.TIME_FAMILIES[args.family]
         args.variants = args.variants or "times"
+    elif args.family in fz.THIRD_FAMILIES:
+        ops = fz.THIRD_FAMILIES[args.family]
+        args.variants = args.variants or "third"
     elif args.family in fz.SECOND_FAMILIES:
         ops = fz.SECOND_FAMILIES[args.family]
         args.variants = args.variants or "second"
@@ -583,7 +597,7 @@ def cmd_fuzz(args: argparse.Namespace) -> int:
         if not found:
             clean += 1
             continue
-        found, fits = triage.split(scenario, found, seed)
+        found, fits = triage.split(scenario, found, seed, actual)
         if not found:
             known_only += 1
             print(f"known seed {seed}: {', '.join(sorted({f.id for f in fits}))}")
@@ -598,8 +612,9 @@ def cmd_fuzz(args: argparse.Namespace) -> int:
             # A known finding does not count, or the shrinker would end at one of those.
             try:
                 parsed = sc.parse(candidate)
+                other = target_b.run(parsed)
                 return bool(triage.split(parsed, rules.compare_scenario(
-                    parsed, target_a.run(parsed), target_b.run(parsed), args.exact))[0])
+                    parsed, target_a.run(parsed), other, args.exact), None, other)[0])
             except RunError:
                 return False
 
@@ -697,18 +712,22 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--b", help="URL of the actual side; default is --a again")
     p.add_argument("--ops", help="comma-separated operations to draw from")
     p.add_argument("--family", choices=sorted(set(fz.FAMILIES) | set(fz.SECOND_FAMILIES)
-                                           | set(fz.TIME_FAMILIES)),
+                                           | set(fz.TIME_FAMILIES) | set(fz.THIRD_FAMILIES)),
                    help="instead of --ops: a named set of operations (fuzz.FAMILIES), with "
                         "the variants \"all\" unless --variants says otherwise; or one of "
                         "the second parity pass (fuzz.SECOND_FAMILIES), with the variants "
-                        "\"second\"")
+                        "\"second\"; or one of fuzz.TIME_FAMILIES or fuzz.THIRD_FAMILIES, "
+                        "with the variants \"times\" or \"third\"")
     p.add_argument("--variants", choices=fz.VARIANTS,
                    help="recorded: the generator of the seeds in the run log, the default "
                         "for --ops it can build. all: every operation and variant "
                         "(harness/fuzz_wide.py), the default when --ops names a newer "
                         "operation. second: the operations and forms of the second "
-                        "parity pass (harness/fuzz_second.py). A seed means a different "
-                        "scenario under each")
+                        "parity pass (harness/fuzz_second.py). times: the date and time "
+                        "column types (harness/fuzz_times.py). third: chains of as-of "
+                        "joins, vector columns and conditions between windows "
+                        "(harness/fuzz_third.py). A seed means a different scenario "
+                        "under each")
     p.add_argument("--seeds", type=int, default=100, help="how many seeds to run")
     p.add_argument("--seed", type=int, default=0, help="the first seed")
     p.add_argument("--exact", action="store_true",

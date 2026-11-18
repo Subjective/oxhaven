@@ -639,6 +639,26 @@ def compare_with_fresh(scenario: Any, kept: ResultSet, fresh: ResultSet,
     return compare(both, again, unordered, computed_columns(scenario.operations), rules)
 
 
+def differs_from_fresh(scenario: Any, fresh: ResultSet, actual: ResultSet,
+                       at: Iterable[tuple[int, str]],
+                       rules: Rules = DEFAULT_RULES) -> set[tuple[int, str]]:
+    """Of the results `at` (step, table), those for which `actual`, the results another
+    server kept up to date, are not what the reference answers from scratch (`fresh`; see
+    `compare_with_fresh`), or that one of the two does not hold. Computed floats get the
+    A1 tolerance."""
+    one, other = ResultSet(fresh.scenario), ResultSet(actual.scenario)
+    missing = set()
+    for step, table in at:
+        if (step, table) in fresh.keys() and (step, table) in actual.keys():
+            one.put(step, table, fresh.get(step, table))
+            other.put(step, table, actual.get(step, table))
+        else:
+            missing.add((step, table))
+    unordered = frozenset(r.table for r in scenario.results if not r.ordered)
+    found = compare(one, other, unordered, computed_columns(scenario.operations), rules)
+    return missing | {(m.step, m.table) for m in found}
+
+
 # What Python says when a name is not there. The module or class must be one of the
 # `deephaven` package, or the object one of a class that is not a builtin: a missing attribute
 # of `None` or of a list is a defect in the script or in the package, not an absent name.
