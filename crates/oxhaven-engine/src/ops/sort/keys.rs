@@ -12,7 +12,7 @@
 //! keeps the strings' bytes; any other sort keeps Arrow's row format over its columns.
 
 use super::{SortColumn, SortDirection, SortError};
-use crate::ops::zoned;
+use crate::ops::{agg, zoned};
 use arrow::array::{Array, ArrayRef, AsArray, BinaryArray, StringArray};
 use arrow::buffer::Buffer;
 use arrow::compute::SortOptions;
@@ -22,6 +22,7 @@ use arrow::datatypes::{
     TimestampNanosecondType, UInt16Type,
 };
 use arrow::row::{RowConverter, Rows, SortField};
+use oxhaven_column::java_values;
 use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{Table, TableFailure};
@@ -649,22 +650,15 @@ fn check_absolute(name: &str, column_type: &ColumnType) -> Result<(), SortError>
         | ColumnType::Long
         | ColumnType::Float
         | ColumnType::Double => Ok(()),
-        ColumnType::Boolean | ColumnType::String | ColumnType::Instant => {
-            Err(SortError::AbsoluteNotSupported {
-                column: name.to_string(),
-                column_type: column_type.clone(),
-            })
-        }
-        // Whether the formula `abs(charColumn)` compiles, by widening to `int`, is decided
-        // by the query language parser's overload resolution.
-        ColumnType::Char => unported!(
-            "io.deephaven.engine.table.impl.lang.QueryLanguageParser#visit(MethodCallExpr)",
-            "abs of a char column for an absolute sort"
-        ),
-        other => unported!(
-            "io.deephaven.engine.table.impl.SortOperation#SortOperation",
-            "sort by a column of type {other:?}"
-        ),
+        // Seen on Deephaven 42.9: `abs` of a `char` column compiles and is the `char`
+        // itself, a null staying null, so the absolute sort is the plain one.
+        ColumnType::Char => Ok(()),
+        // Seen on Deephaven 42.9: `Cannot find method abs(java.math.BigDecimal)`, and the
+        // same for `LocalDate`, `Duration`, `DayOfWeek` and `int[]`.
+        _ => Err(SortError::AbsoluteNotSupported {
+            column: name.to_string(),
+            column_type: column_type.clone(),
+        }),
     }
 }
 
@@ -698,21 +692,79 @@ fn encoded_type(name: &str, column_type: &ColumnType) -> Result<DataType, SortEr
         | ColumnType::LocalDateTime
         | ColumnType::Duration
         | ColumnType::DayOfWeek => column_type.arrow_type(),
-        ColumnType::Period | ColumnType::ZoneId | ColumnType::Object(_) => {
-            let class = match column_type {
-                ColumnType::Period => "java.time.Period",
-                ColumnType::ZoneId => "java.time.ZoneId",
-                _ => "java.lang.Object",
-            };
+        ColumnType::BigDecimal | ColumnType::BigInteger => DataType::Binary,
+        // Seen on Deephaven 42.9 for a column of the tables of a partition aggregation:
+        // `T is not a sortable type: class io.deephaven.engine.table.impl.QueryTable`.
+        ColumnType::Period | ColumnType::ZoneId | ColumnType::Object(_) | ColumnType::Table(_) => {
             return Err(SortError::NotSortableColumn(format!(
-                "{name} is not a sortable type: class {class}"
+                "{name} is not a sortable type: {}",
+                agg::java_class(column_type)
             )));
         }
+        // A vector is `Comparable` (element by element) and an array of most element types
+        // has a comparator in `ComparatorRegistry`: Java sorts both.
         other => unported!(
             "io.deephaven.engine.table.impl.SortOperation#SortOperation",
-            "sort by a column of type {other:?}"
+            "sort by a column of type {other:?}, which Java orders element by element"
         ),
     })
+}
+
+/// A key for a `BigDecimal` or `BigInteger` cell whose bytes order as the numbers do,
+/// whatever their scale: `1.0` and `1.00` have one key, as `BigDecimal#compareTo` makes
+/// them equal (seen on Deephaven 42.9: they keep their order in a sort).
+///
+/// The key is a sign byte, then for a number that is not zero the power of ten of its
+/// first significant digit and its significant digits up to the last one that is not
+/// zero, ended by a zero byte; a negative number has these bytes inverted, so that a
+/// larger magnitude comes first.
+///
+/// Behavior: `java.math.BigDecimal#compareTo`, `java.math.BigInteger#compareTo`
+fn big_number_key(scale: i32, unscaled: &[u8]) -> Vec<u8> {
+    let text = java_values::big_integer_text(unscaled);
+    let (negative, digits) = match text.strip_prefix('-') {
+        Some(digits) => (true, digits),
+        None => (false, text.as_str()),
+    };
+    if digits == "0" {
+        return vec![0x80];
+    }
+    // the power of ten of the first digit: the integer has `digits.len()` of them
+    let exponent = digits.len() as i64 - 1 - i64::from(scale);
+    let mut key = Vec::with_capacity(digits.len() + 10);
+    key.push(if negative { 0x40 } else { 0xc0 });
+    let magnitude = key.len();
+    key.extend_from_slice(&((exponent as u64) ^ (1 << 63)).to_be_bytes());
+    key.extend_from_slice(digits.trim_end_matches('0').as_bytes());
+    key.push(0);
+    if negative {
+        for byte in &mut key[magnitude..] {
+            *byte = !*byte;
+        }
+    }
+    key
+}
+
+/// The keys of [`big_number_key`] of a `BigDecimal` (with `decimal`) or `BigInteger`
+/// column's cells, null where the cell is.
+fn big_number_keys(values: &ArrayRef, decimal: bool) -> Result<ArrayRef, TableFailure> {
+    let cells = downcast::<BinaryArray>(values)?;
+    let keys = cells
+        .iter()
+        .map(|cell| {
+            cell.map(|cell| {
+                if decimal {
+                    let (scale, unscaled) = java_values::big_decimal_parts(cell)
+                        .ok_or_else(|| failure("a BigDecimal cell without a number"))?;
+                    Ok(big_number_key(scale, unscaled))
+                } else {
+                    Ok(big_number_key(0, cell))
+                }
+            })
+            .transpose()
+        })
+        .collect::<Result<Vec<Option<Vec<u8>>>, TableFailure>>()?;
+    Ok(Arc::new(BinaryArray::from_iter(keys)))
 }
 
 /// Floating point values with one NaN and one zero, and optionally without their sign.
@@ -768,6 +820,8 @@ fn comparable(
         ColumnType::Int if absolute => absolute_integers!(Int32Array, values),
         ColumnType::Long if absolute => absolute_integers!(Int64Array, values),
         ColumnType::ZonedDateTime => zoned::sort_key(values)?,
+        ColumnType::BigDecimal => big_number_keys(values, true)?,
+        ColumnType::BigInteger => big_number_keys(values, false)?,
         ColumnType::String => {
             // The bytes of the strings, in one buffer, changed to order as UTF-16 does.
             let values = downcast::<StringArray>(values)?;

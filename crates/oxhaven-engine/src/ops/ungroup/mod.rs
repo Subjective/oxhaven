@@ -34,7 +34,6 @@ use operator::Ungrouped;
 use oxhaven_contracts::rowset::RowKey;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{Table, TableFailure};
-use oxhaven_contracts::unported;
 use sources::{ArrayColumn, Lists};
 use std::fmt;
 use std::sync::Arc;
@@ -135,32 +134,16 @@ impl From<UngroupError> for TableFailure {
     }
 }
 
-/// Whether a column of `column_type` holds arrays: a vector or an array column does.
-///
-/// With `unported!` for a type this module does not know: a type added to the contracts
-/// must be decided here, not passed over.
+/// Whether a column of `column_type` holds arrays: a vector or an array column does, and
+/// no other. A column declared `Object` is not one whatever it holds, nor is a column of
+/// tables. Seen on Deephaven 42.9: `ungroup()` of a table with `BigDecimal` and
+/// `LocalDate` columns beside its vectors keeps those columns as they are.
 ///
 /// Behavior: the test `c.getDataType().isArray() || QueryLanguageParser.isTypedVector(c.getDataType())`
 /// of io.deephaven.engine.table.impl.QueryTable#ungroup and the test of
 /// io.deephaven.engine.table.impl.UngroupOperation#UngroupOperation
 fn is_array(column_type: &ColumnType) -> bool {
-    match column_type {
-        ColumnType::Boolean
-        | ColumnType::Byte
-        | ColumnType::Char
-        | ColumnType::Short
-        | ColumnType::Int
-        | ColumnType::Long
-        | ColumnType::Float
-        | ColumnType::Double
-        | ColumnType::String
-        | ColumnType::Instant => false,
-        ColumnType::Vector(_) | ColumnType::Array(_) => true,
-        other => unported!(
-            "io.deephaven.engine.table.impl.UngroupOperation#UngroupOperation",
-            "a column of type {other:?}"
-        ),
-    }
+    matches!(column_type, ColumnType::Vector(_) | ColumnType::Array(_))
 }
 
 /// The arrays of column `index` of `source`, which [`is_array`].

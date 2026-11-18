@@ -247,6 +247,49 @@ fn a_table_without_arrays_is_returned_as_it_is() {
     }
 }
 
+/// Seen on Deephaven 42.9: `ungroup()` of a `group_by` result with `BigDecimal` and
+/// `LocalDate` columns added keeps them as they are on every row of their group.
+#[test]
+fn columns_of_other_types_are_not_ungrouped() {
+    use arrow::array::{BinaryArray, Date32Array};
+    use oxhaven_column::java_values::big_decimal_cell;
+    let one = big_decimal_cell(0, &[1]);
+    let source = static_table(&[
+        ("K", ColumnType::Int, ints([0, 1])),
+        ("A", vector(), counted(&vector(), [Some(2), Some(1)])),
+        (
+            "BD",
+            ColumnType::BigDecimal,
+            Arc::new(BinaryArray::from_iter_values([&one, &one])),
+        ),
+        (
+            "LD",
+            ColumnType::LocalDate,
+            Arc::new(Date32Array::from(vec![19723, 19723])),
+        ),
+    ]);
+    let result = ungroup(&source, false, &[]).unwrap();
+    assert_eq!(result.row_set().size(), 3);
+    assert_eq!(
+        result.definition().columns()[2].column_type,
+        ColumnType::BigDecimal
+    );
+    let dates = result.column(3).chunk(&result.row_set()).unwrap();
+    assert_eq!(
+        dates
+            .as_any()
+            .downcast_ref::<Date32Array>()
+            .unwrap()
+            .values(),
+        &[19723, 19723, 19723]
+    );
+    // naming one of them is refused as for any column that holds no arrays
+    let error = ungroup(&source, false, &names(&["BD"]))
+        .err()
+        .expect("a refusal");
+    assert_eq!(error, UngroupError::NotAnArray("BD".to_string()));
+}
+
 #[test]
 fn a_column_that_is_not_an_array_is_refused() {
     let error = ungroup(&plain(), false, &names(&["A"]))
