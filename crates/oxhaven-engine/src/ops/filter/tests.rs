@@ -295,6 +295,37 @@ fn integer_and_big_number_literals_read_every_decimal_digit_java_reads() {
     assert_eq!(found("\u{665}"), [2]);
 }
 
+/// Every expectation was observed on Deephaven 42.9 (on JDK 21) with the same rows, the
+/// filters sent over gRPC.
+#[test]
+fn a_case_insensitive_match_maps_supplementary_characters_as_jdk_21_does() {
+    let s = StringArray::from(vec![
+        "\u{10400}",
+        "\u{10428}",
+        "\u{104D8}",
+        "\u{10D70}",
+        "\u{A7DC}",
+        "\u{1C6}",
+        "x\u{10400}y",
+        "abc",
+    ]);
+    let t = static_table(vec![("S", ColumnType::String, Arc::new(s))]);
+    assert_eq!(kept(&t, &["S icase in `\u{10428}`"]), [0, 1]);
+    assert_eq!(kept(&t, &["S icase in `\u{104B0}`"]), [2]);
+    // Garay and the Latin letters of Unicode 16 have no case in JDK 21
+    assert_eq!(kept(&t, &["S icase in `\u{10D50}`"]), [0i64; 0]);
+    assert_eq!(kept(&t, &["S icase in `\u{19B}`"]), [0i64; 0]);
+    assert_eq!(kept(&t, &["S icase in `\u{1C4}`"]), [5]);
+    assert_eq!(kept(&t, &["S icase in `X\u{10428}Y`"]), [6]);
+    assert_eq!(
+        kept(&t, &["S icase not in `\u{10428}`"]),
+        [2, 3, 4, 5, 6, 7]
+    );
+    let five = "`\u{10428}`, `\u{104B0}`, `\u{10D50}`, `\u{19B}`, `\u{1C5}`";
+    assert_eq!(kept(&t, &[&format!("S icase in {five}")]), [0, 1, 2, 5]);
+    assert_eq!(kept(&t, &[&format!("S icase not in {five}")]), [3, 4, 6, 7]);
+}
+
 #[test]
 fn integer_filters_treat_the_sentinel_as_null() {
     let t = ints_table();

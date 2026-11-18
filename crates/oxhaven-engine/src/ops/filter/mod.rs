@@ -13,6 +13,7 @@
 mod condition;
 mod factory;
 mod filters;
+mod jdk_case;
 mod kernels;
 mod literal;
 mod pattern;

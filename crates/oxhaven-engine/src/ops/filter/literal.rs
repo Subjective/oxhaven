@@ -109,65 +109,49 @@ pub(super) fn java_trim(text: &str) -> &str {
     text.trim_matches(|c: char| c <= ' ')
 }
 
-/// Behavior: java.lang.Character#toUpperCase(char) and #toLowerCase(char) for one UTF-16 unit:
-/// the single-character mapping, or the unit itself where the mapping is not one character.
-fn simple_case(unit: u16, upper: bool) -> u16 {
-    let Some(c) = char::from_u32(u32::from(unit)) else {
-        return unit;
+/// The simple upper case (`upper`) or lower case mapping of a code point, or the code point
+/// itself where it has none.
+///
+/// Behavior: java.lang.Character#toUpperCase(int) and java.lang.Character#toLowerCase(int)
+/// of JDK 21
+fn java_simple_case(code_point: u32, upper: bool) -> u32 {
+    use super::jdk_case::RUNS;
+    let at = RUNS.partition_point(|run| run.0 <= code_point);
+    let Some(&(first, last, to_upper, to_lower, pairs)) = at.checked_sub(1).map(|at| &RUNS[at])
+    else {
+        return code_point;
     };
-    if !upper && c == '\u{130}' {
-        return u16::from(b'i');
+    if code_point > last {
+        return code_point;
     }
-    let mut mapped = [c; 3];
-    let mut count = 0;
-    let mut push = |m: char| {
-        if count < 3 {
-            mapped[count] = m;
-        }
-        count += 1;
-    };
-    if upper {
-        c.to_uppercase().for_each(&mut push);
-    } else {
-        c.to_lowercase().for_each(&mut push);
+    if pairs {
+        let capital = code_point - (code_point - first) % 2;
+        return if upper { capital } else { capital + 1 };
     }
-    match (count, u16::try_from(u32::from(mapped[0]))) {
-        (1, Ok(unit)) => unit,
-        _ => unit,
-    }
+    let delta = if upper { to_upper } else { to_lower };
+    code_point.wrapping_add_signed(delta)
 }
 
-/// Behavior: java.lang.String#equalsIgnoreCase, which compares UTF-16 units: equal, or equal
-/// after `Character.toUpperCase`, or equal after `toLowerCase` of that.
+/// Behavior: java.lang.String#equalsIgnoreCase of JDK 21: strings of as many UTF-16 units,
+/// whose characters in turn are equal, or equal after `Character.toUpperCase`, or after
+/// `toLowerCase` of that. A supplementary character is mapped as a whole (since JDK 16);
+/// no simple mapping crosses between it and the Basic Multilingual Plane, so it never
+/// equals a character there.
 pub(super) fn java_equals_ignore_case(a: &str, b: &str) -> bool {
     if a == b {
         return true;
     }
-    if a.is_ascii() && b.is_ascii() {
-        return a.eq_ignore_ascii_case(b);
+    if a.encode_utf16().count() != b.encode_utf16().count() {
+        return false;
     }
-    // A supplementary character is two units, which have no case of their own. Whether
-    // Java maps such a character as a whole depends on the JDK, so only those without a
-    // case mapping are compared here.
-    let cased = |c: char| !c.to_uppercase().eq([c]) || !c.to_lowercase().eq([c]);
-    if a.chars()
-        .chain(b.chars())
-        .any(|c| u32::from(c) > 0xFFFF && cased(c))
-    {
-        unported!(
-            "java.lang.String#equalsIgnoreCase",
-            "strings with supplementary characters that have a case mapping"
-        );
-    }
-    let unit_equal = |x: u16, y: u16| {
+    a.chars().zip(b.chars()).all(|(x, y)| {
+        let (x, y) = (u32::from(x), u32::from(y));
         if x == y {
             return true;
         }
-        let (x, y) = (simple_case(x, true), simple_case(y, true));
-        x == y || simple_case(x, false) == simple_case(y, false)
-    };
-    let (a, b): (Vec<u16>, Vec<u16>) = (a.encode_utf16().collect(), b.encode_utf16().collect());
-    a.len() == b.len() && a.iter().zip(&b).all(|(&x, &y)| unit_equal(x, y))
+        let (x, y) = (java_simple_case(x, true), java_simple_case(y, true));
+        x == y || java_simple_case(x, false) == java_simple_case(y, false)
+    })
 }
 
 /// Behavior: java.lang.Long#parseLong(String), and with a narrower range
@@ -1215,6 +1199,67 @@ mod tests {
         }
         assert!(lines > 250);
         assert_eq!(parse_java_double(" "), Err("empty String".to_string()));
+    }
+
+    /// `java_case.txt` lists, for every code point that JDK 21's `Character.toUpperCase(int)`
+    /// or `Character.toLowerCase(int)` maps to another, the code point and both mappings.
+    #[test]
+    fn simple_case_mappings_are_those_of_jdk_21() {
+        let mut listed = std::collections::HashSet::new();
+        for line in include_str!("java_case.txt").lines() {
+            let [cp, upper, lower] = <[u32; 3]>::try_from(
+                line.split(' ')
+                    .map(|x| u32::from_str_radix(x, 16).unwrap())
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap();
+            assert_eq!(java_simple_case(cp, true), upper, "{line}");
+            assert_eq!(java_simple_case(cp, false), lower, "{line}");
+            listed.insert(cp);
+        }
+        assert_eq!(listed.len(), 2879);
+        for cp in (0..=0x10FFFF).filter(|cp| !listed.contains(cp)) {
+            assert_eq!(java_simple_case(cp, true), cp, "{cp:x}");
+            assert_eq!(java_simple_case(cp, false), cp, "{cp:x}");
+        }
+    }
+
+    /// What JDK 21's `String#equalsIgnoreCase` answered for each pair.
+    #[test]
+    fn equals_ignore_case_follows_jdk_21() {
+        for (a, b, equal) in [
+            ("\u{10400}", "\u{10428}", true),
+            ("\u{10400}a", "\u{10428}A", true),
+            ("\u{104B0}", "\u{104D8}", true),
+            ("\u{1E900}", "\u{1E922}", true),
+            ("\u{10D50}", "\u{10D70}", false),
+            ("\u{19B}", "\u{A7DC}", false),
+            ("\u{1C89}", "\u{1C8A}", false),
+            ("\u{1F80}", "\u{1F88}", true),
+            ("\u{130}", "i", true),
+            ("\u{130}", "I", true),
+            ("stra\u{DF}e", "STRASSE", false),
+            ("\u{10400}", "ab", false),
+            ("\u{17F}", "S", true),
+            ("\u{1C5}", "\u{1C6}", true),
+            ("\u{1C4}", "\u{1C5}", true),
+            ("\u{3C2}", "\u{3A3}", true),
+            ("\u{1E9E}", "\u{DF}", true),
+            ("\u{2126}", "\u{3C9}", true),
+            ("\u{212A}", "k", true),
+            ("\u{16E40}", "\u{16E60}", true),
+            ("\u{10C80}", "\u{10CC0}", true),
+            ("\u{118A0}", "\u{118C0}", true),
+            ("\u{10570}", "\u{10597}", true),
+            ("\u{B5}", "\u{39C}", true),
+            ("\u{FF}", "\u{178}", true),
+            ("\u{1D400}", "\u{1D41A}", false),
+            ("\u{10401}\u{10402}", "\u{10429}\u{1042A}", true),
+            ("x\u{10400}y", "X\u{10428}Y", true),
+            ("\u{10400}", "\u{10401}", false),
+        ] {
+            assert_eq!(java_equals_ignore_case(a, b), equal, "{a:?} {b:?}");
+        }
     }
 
     #[test]
