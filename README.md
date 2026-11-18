@@ -28,6 +28,11 @@ IDE keeps notebooks and layouts in, and `oxhaven-server --help` lists the other 
 before the server accepts clients, as Java's application mode does (`docs/CONSOLE.md`,
 "Applications defined by scripts").
 
+Build features of `oxhaven-server`: `python` (the console, off by default) and `mimalloc`
+(on by default), which makes mimalloc the binary's memory allocator; build with
+`--no-default-features` (and `--features python` if wanted) for the system allocator.
+`docs/BENCHMARK.md`, "After task 9.13", has the measurements behind it.
+
 What works in the IDE, as `oracle/ide/ide-test.js` tests it: the console, tables in the grid
 that tick, scroll, sort and filter, notebooks in the File Explorer (create, run, save,
 rename, move, delete), the Log panel and Command History. From Python: `empty_table`,
