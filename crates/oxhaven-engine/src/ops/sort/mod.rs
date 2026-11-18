@@ -17,6 +17,8 @@ mod sorted;
 #[cfg(test)]
 mod corpus;
 #[cfg(test)]
+mod list_tests;
+#[cfg(test)]
 mod shape_tests;
 #[cfg(test)]
 pub(crate) mod testing;

@@ -13,12 +13,12 @@
 
 use super::{SortColumn, SortDirection, SortError};
 use crate::ops::{agg, zoned};
-use arrow::array::{Array, ArrayRef, AsArray, BinaryArray, StringArray};
+use arrow::array::{Array, ArrayRef, AsArray, BinaryArray, ListArray, StringArray};
 use arrow::buffer::Buffer;
 use arrow::compute::SortOptions;
 use arrow::datatypes::{
-    ArrowPrimitiveType, DataType, Date32Type, DurationNanosecondType, Float32Type, Float64Type,
-    Int16Type, Int32Type, Int64Type, Int8Type, Time64NanosecondType, TimeUnit,
+    ArrowPrimitiveType, DataType, Date32Type, DurationNanosecondType, Field, Float32Type,
+    Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, Time64NanosecondType, TimeUnit,
     TimestampNanosecondType, UInt16Type,
 };
 use arrow::row::{RowConverter, Rows, SortField};
@@ -701,13 +701,92 @@ fn encoded_type(name: &str, column_type: &ColumnType) -> Result<DataType, SortEr
                 agg::java_class(column_type)
             )));
         }
-        // A vector is `Comparable` (element by element) and an array of most element types
-        // has a comparator in `ComparatorRegistry`: Java sorts both.
+        // Seen on Deephaven 42.9: a vector sorts element by element, each element by its
+        // type's order (null first, NaN last, `-0.0` equal to `0.0`, strings by UTF-16
+        // code unit), and a vector that is the start of another before it.
+        ColumnType::Vector(element) if is_comparable_element(element) => {
+            list_key_type(encoded_type(name, element)?)
+        }
+        // An array sorts by the comparator `ComparatorRegistry` has for its class, which
+        // orders it as a vector of its elements; Java refuses an array of a class without
+        // one (seen: `Z is not a sortable type: class [Ljava.lang.Boolean;`, `class [Z`,
+        // `class [[I`, `class [Ljava.time.DayOfWeek;`).
+        ColumnType::Array(element) if has_array_comparator(element) => {
+            list_key_type(encoded_type(name, element)?)
+        }
+        ColumnType::Array(_) => {
+            return Err(SortError::NotSortableColumn(format!(
+                "{name} is not a sortable type: {}",
+                agg::java_class(column_type)
+            )));
+        }
+        // A vector of `Period`s, `ZoneId`s, objects, tables or arrays: `ObjectVector#compareTo`
+        // fails with a `ClassCastException` once it compares two elements that are not
+        // one object (owner item 2.2).
         other => unported!(
-            "io.deephaven.engine.table.impl.SortOperation#SortOperation",
-            "sort by a column of type {other:?}, which Java orders element by element"
+            "io.deephaven.vector.ObjectVector#compareTo",
+            "sort by a column of type {other:?}, whose elements Java compares by \
+             ObjectComparisons#compare and cannot order"
         ),
     })
+}
+
+/// The Arrow type of the sort keys of a vector or an array whose elements have keys of
+/// `element`: a list, which Arrow's row format orders element by element, a list that is
+/// the start of another first, a null list first (or last, descending).
+fn list_key_type(element: DataType) -> DataType {
+    DataType::List(Arc::new(Field::new("", element, true)))
+}
+
+/// Whether `ObjectVector#compareTo` orders vectors of `element` (or the vector class of a
+/// primitive element its own `compareTo`): every element type that is primitive or
+/// `Comparable`, and vectors of these.
+///
+/// Behavior: io.deephaven.vector.IntVector#compareTo and ObjectVector#compareTo, with
+/// io.deephaven.util.compare.ObjectComparisons#compare
+fn is_comparable_element(element: &ColumnType) -> bool {
+    match element {
+        ColumnType::Period
+        | ColumnType::ZoneId
+        | ColumnType::Object(_)
+        | ColumnType::Table(_)
+        | ColumnType::Array(_)
+        | ColumnType::PrimitiveBoolean => false,
+        ColumnType::Vector(inner) => is_comparable_element(inner),
+        _ => true,
+    }
+}
+
+/// Whether `ComparatorRegistry` has a comparator for arrays of `element`: the primitive
+/// arrays but `boolean[]`, and the arrays of `String`, `BigInteger`, `BigDecimal`,
+/// `Instant`, `ZonedDateTime`, `LocalDate`, `LocalDateTime`, `LocalTime` and `Duration`.
+/// Each orders as a vector of the same elements: `Arrays#compare` for the integer arrays
+/// (signed, and the null of each type is its least value), and for the others the
+/// comparisons of io.deephaven.util.compare, a shorter array that is the start of a longer
+/// one first, a null array first.
+///
+/// Behavior: io.deephaven.engine.table.impl.ComparatorRegistry#reset,
+/// io.deephaven.engine.table.impl.comparators.CharArrayComparator#compare and its siblings
+fn has_array_comparator(element: &ColumnType) -> bool {
+    matches!(
+        element,
+        ColumnType::Byte
+            | ColumnType::Char
+            | ColumnType::Short
+            | ColumnType::Int
+            | ColumnType::Long
+            | ColumnType::Float
+            | ColumnType::Double
+            | ColumnType::String
+            | ColumnType::BigInteger
+            | ColumnType::BigDecimal
+            | ColumnType::Instant
+            | ColumnType::ZonedDateTime
+            | ColumnType::LocalDate
+            | ColumnType::LocalDateTime
+            | ColumnType::LocalTime
+            | ColumnType::Duration
+    )
 }
 
 /// A key for a `BigDecimal` or `BigInteger` cell whose bytes order as the numbers do,
@@ -822,6 +901,16 @@ fn comparable(
         ColumnType::ZonedDateTime => zoned::sort_key(values)?,
         ColumnType::BigDecimal => big_number_keys(values, true)?,
         ColumnType::BigInteger => big_number_keys(values, false)?,
+        ColumnType::Vector(element) | ColumnType::Array(element) => {
+            let lists = downcast::<ListArray>(values)?;
+            let elements = comparable(lists.values(), element, false)?;
+            Arc::new(ListArray::new(
+                Arc::new(Field::new("", elements.data_type().clone(), true)),
+                lists.offsets().clone(),
+                elements,
+                lists.nulls().cloned(),
+            ))
+        }
         ColumnType::String => {
             // The bytes of the strings, in one buffer, changed to order as UTF-16 does.
             let values = downcast::<StringArray>(values)?;
