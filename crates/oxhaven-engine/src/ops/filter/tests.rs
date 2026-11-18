@@ -2332,3 +2332,75 @@ fn a_match_filter_of_an_object_column_refuses_what_java_refuses() {
         assert!(is_invalid(&refused(&t, &[filter])), "{filter}");
     }
 }
+
+/// `I` and `X` are 0 to 4, `S` is `s0` to `s4`.
+fn annotation_table() -> Arc<dyn Table> {
+    let ints = || -> ArrayRef { Arc::new(Int32Array::from((0..5).collect::<Vec<_>>())) };
+    let s: ArrayRef = Arc::new(StringArray::from(
+        (0..5).map(|i| format!("s{i}")).collect::<Vec<_>>(),
+    ));
+    static_table(vec![
+        ("I", ColumnType::Int, ints()),
+        ("X", ColumnType::Int, ints()),
+        ("S", ColumnType::String, s),
+    ])
+}
+
+/// Behavior: FormulaParserConfiguration#extractParserAndExpression and
+/// ConditionFilter#createConditionFilter(String, FormulaParserConfiguration): the parser
+/// annotation names `Deephaven` or `Numba` before the first `:`; with `Numba` a match,
+/// range, `in` or `includes` filter is served, and a formula, or the formula a match or
+/// range filter would fall back on, fails. Each answer is what Java 42.9 gave, from a
+/// console script and over gRPC alike (all failures `INVALID_ARGUMENT`).
+#[test]
+fn a_parser_annotation_names_the_parser_of_the_filter_after_it() {
+    let t = annotation_table();
+    let annotated = |text: &str| format!("<ObfuscatedParserAnnotation>{text}");
+    for (filter, rows) in [
+        ("Deephaven:X > 2", &[3, 4][..]),
+        ("Deephaven: X > 2", &[3, 4]),
+        ("Deephaven:X == `a`", &[]),
+        ("Numba:X > 2", &[3, 4]),
+        ("Numba:X == 2", &[2]),
+        ("Numba:X in 1, 2", &[1, 2]),
+        ("Numba:S includes `1`", &[1]),
+    ] {
+        assert_eq!(kept(&t, &[&annotated(filter)]), rows, "{filter}");
+    }
+    for filter in [
+        "Numba:X + 1 > 2",
+        "Numba:X == 2.5",
+        "Numba:X < 2.5",
+        "Numba:X == `a`",
+        "Numba:X < `a`",
+        "Numba:X == I",
+        "Foo:X > 2",
+        "deephaven:X > 2",
+        " Deephaven:X > 2",
+        ":X > 2",
+        "X > 2",
+        "Deephaven:",
+        "Deephaven:X > 2:3",
+        "Deephaven:<ObfuscatedParserAnnotation>Deephaven:X > 2",
+    ] {
+        assert!(is_invalid(&refused(&t, &[&annotated(filter)])), "{filter}");
+    }
+    assert!(is_invalid(&refused(
+        &t,
+        &[" <ObfuscatedParserAnnotation>Deephaven:X > 2"]
+    )));
+}
+
+/// Seen on Java 42.9: `<ObfuscatedParserAnnotation>Deephaven:X + 1 > 2` keeps rows 2 to 4
+/// from a console script, and fails over gRPC (`INVALID_ARGUMENT`), where the formula
+/// validator reads the whole text as a formula.
+#[test]
+#[should_panic(
+    expected = "unported: io.deephaven.server.table.validation.ParsingColumnExpressionValidator"
+)]
+fn a_formula_after_a_parser_annotation_is_not_ported() {
+    kept(
+        &annotation_table(),
+        &["<ObfuscatedParserAnnotation>Deephaven:X + 1 > 2"],
+    );
+}

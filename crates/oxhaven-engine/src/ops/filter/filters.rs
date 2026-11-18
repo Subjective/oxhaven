@@ -109,6 +109,14 @@ pub(super) enum FilterSpec {
     },
     /// Behavior: io.deephaven.engine.table.impl.select.ConditionFilter
     Condition(String),
+    /// A formula filter written after the parser annotation of the `Deephaven` parser
+    /// (`<ObfuscatedParserAnnotation>Deephaven:X + 1 > 2`). Java serves it from a console
+    /// script, and over gRPC its formula validator, which reads the whole text, annotation
+    /// and all, as a formula, refuses it; this server runs both through one path, so it is
+    /// refused as not ported where it compiles.
+    ///
+    /// Behavior: io.deephaven.server.table.validation.ParsingColumnExpressionValidator#validateSelectFilters
+    AnnotatedCondition(String),
     /// Behavior: io.deephaven.engine.table.impl.select.ConjunctiveFilter
     And(Vec<FilterSpec>),
     /// Behavior: io.deephaven.engine.table.impl.select.DisjunctiveFilter
@@ -440,6 +448,14 @@ pub(super) fn resolve(
             invert_pattern,
         } => resolve_pattern(column, pattern, *ignore_case, *invert_pattern, definition),
         FilterSpec::Condition(text) => resolve_condition(text, definition, compiler),
+        FilterSpec::AnnotatedCondition(text) => {
+            resolve_condition(text, definition, compiler)?;
+            oxhaven_contracts::unported!(
+                "io.deephaven.server.table.validation.ParsingColumnExpressionValidator#validateSelectFilters",
+                "the formula filter {text} after a parser annotation, which Deephaven serves \
+                 from a console script and refuses over gRPC"
+            )
+        }
         FilterSpec::Search { text, columns } => search::expand(definition, text, columns, compiler),
         FilterSpec::And(specs) => {
             let mut parts = Vec::new();
