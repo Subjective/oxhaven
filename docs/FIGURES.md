@@ -365,6 +365,18 @@ module"), the call that refused `dx.data.marketing`.
   (`columns_to_rows_tests.rs`). The ticking form is refreshing and its counts grow with
   the time table.
 
+### After task 12.5
+
+The server starts with calendars of the three names Deephaven ships, written for Oxhaven
+(`docs/CONSOLE.md`, "Business calendars").
+
+- With `deephaven-plugin-plotly-express` 0.22.0 on both servers, `dx.line(..., calendar=True)`
+  and `dx.line(..., calendar='UTC')` send what Java sends, byte for byte after sorting the
+  keys: the two figures with `calendar=` that tasks 5.8 and 11.1 left failing are made.
+  With `calendar='USNYSE_EXAMPLE'` and `'USBANK_EXAMPLE'` everything is Java's but the
+  calendar's holidays, which differ exactly on the dates listed in `docs/CONSOLE.md`
+  (`tasks/12.5-shipped-calendars/probe_px.py`).
+
 ## Not started
 
 - What the trials above list as failing.

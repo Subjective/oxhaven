@@ -5,9 +5,10 @@ hands a script the Java `BusinessCalendar`, whose methods the script then calls.
 calendars are the server's, and a script gets a `deephaven._calendar.BusinessCalendar`
 with the same methods (`docs/CONSOLE.md`, "Business calendars").
 
-Deephaven starts with three calendars, read from files that are under the Deephaven
-Community License; this server does not ship them, so their names are listed and asking
-for one of them is refused as not ported. Calendars added from files work.
+The server starts with three calendars of the names Deephaven starts with, `UTC` (the
+default), `USNYSE_EXAMPLE` and `USBANK_EXAMPLE`, from files written for Oxhaven from public
+holiday rules: Deephaven's own files are under the Deephaven Community License and are not
+used (`docs/CONSOLE.md`, "Business calendars", lists where the two differ).
 
 Behavior: `deephaven.calendar`, `io.deephaven.time.calendar.Calendars`
 """

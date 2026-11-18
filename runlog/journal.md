@@ -1467,3 +1467,19 @@ The soak test is a Python driver beside the benchmark. Its first 45-minute run f
 ## 2026-11-18 16:10 UTC: pull request 180 merged; the approved gap-closing list is done
 
 Seven green checks on head 91d81c99; oracle-replay took 11 min 11 s with the short soak step and a cold build. Main is at fa0fd060. Everything Josh approved on 2026-11-18 05:39 UTC is merged: pull requests 168 to 180. What remains needs his answers (owner questions 7.1 to 7.21, the calendar card) or his go-ahead for larger pieces (big-number arithmetic, vectors of vectors, a backtracking regex dependency, performance).
+
+## 2026-11-18 16:15 UTC: Josh answered the calendar card; tasks 12.4 and 12.5 running
+
+Josh chose "Write all three ourselves" for Deephaven's built-in business calendars (owner question 7.9). Task 12.5 writes them from public facts; Deephaven's files (Deephaven Community License) are read only for what a user can observe and are not copied. Task 12.4 is the two-hour soak run that settles what 12.3 left open.
+
+## 2026-11-18 17:05 UTC: task 12.5 reported, pull request 181
+
+The three shipped calendars are written by a script from cited public rules. Deephaven's names are UTC, USNYSE_EXAMPLE and USBANK_EXAMPLE. UTC matches Deephaven on every date. On twelve dates the exchange and bank calendars follow the public record where Deephaven's files differ (missing early closes 1999 to 2001, Juneteenth 2022, the 2025 day of mourning, Christmas Eve hours 2024 and 2025, Thanksgiving 2019 in the bank calendar, one bank holiday before the valid range). These are owner question 7.22 and listed in docs/CONSOLE.md; PARITY.md is not changed. The comparison is in unit tests against values recorded from Deephaven, since the task could not change oracle/.
+
+## 2026-11-18 17:15 UTC: pull request 181 merged
+
+Seven green checks on head 0d62a6e9. Main is at 5c21efbb. The server now starts with its own three calendars. Owner question 7.22 (twelve dates that follow the public record against Deephaven) is open.
+
+## 2026-11-18 20:58 UTC: task 12.4 reported, pull request 182
+
+Neither open question of the soak test is a server defect. Processor time per round follows the machine (a control loop in another process slowed at the same minute; a fresh server beside the old one costs the same). The memory steps are transparent huge pages in mimalloc's arena; with them a correct server would fail the long memory limit about one run in five, so the soak's server runs with MIMALLOC_ALLOW_THP=0 by default. Decision under PORTING rule 3, taken by the orchestrator: the two replaced soak checks are accepted. The running sum of fractional doubles cannot equal a recomputation bit for bit (Java's does not either), and the two time tables each read the clock themselves; both replacements are exact comparisons and no limit was loosened. One defect fixed: a session kept every released export id in a set; now ranges, as Java does.

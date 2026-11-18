@@ -801,19 +801,18 @@ handle.stop()
     );
 }
 
-/// The business calendars Deephaven ships are refused by the Java method that hands them
-/// out; the rest of `deephaven.calendar` works (`calendar_tests.rs`).
+/// The business calendars of the names Deephaven ships are handed out, in any case; the
+/// rest of `deephaven.calendar` is in `calendar_tests.rs`.
 #[tokio::test]
-async fn a_shipped_business_calendar_is_refused_by_the_name_of_its_java_method() {
+async fn the_shipped_business_calendars_are_handed_out() {
     let python = Python::start().await;
     python.run(SETUP);
     python.run(
         r#"
 from deephaven import calendar as cal
-calendars = 'not ported: io.deephaven.time.calendar.Calendars#calendar'
-for name in ('UTC', 'usnyse_example', 'USBANK_EXAMPLE'):
-    kind, text = raised(lambda: cal.calendar(name))
-    assert kind == 'DHError' and text.startswith('failed to get the default calendar. : ' + calendars), text
+for name, zone in (('UTC', 'UTC'), ('usnyse_example', 'America/New_York'), ('USBANK_EXAMPLE', 'America/New_York')):
+    found = cal.calendar(name)
+    assert found.name() == name.upper() and str(found.timeZone()) == zone, (name, str(found.timeZone()))
 assert raised(lambda: cal.add_calendar(object())) == ('DHError', 'failed to add calendar : no matching Java method overloads found')
 assert raised(lambda: cal.add_calendar(None)) == ('DHError', 'cal must be specified')
 "#,

@@ -1,0 +1,328 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Written for Oxhaven by generate.py in this directory, from the public rules cited
+  there. Not derived from Deephaven's calendar files. Licensed as the rest of
+  Oxhaven.
+  The Federal Reserve Banks' holidays. Those from 1999 to 2012 are before the
+  first valid date: no date of those years can be asked for, and holidays()
+  lists them, as it does for Deephaven's calendar of this name.
+-->
+<calendar>
+  <name>USBANK_EXAMPLE</name>
+  <description>An example calendar of United States bank business days, by the Federal Reserve Banks' holiday schedule; not for trading or other production use.</description>
+  <timeZone>America/New_York</timeZone>
+  <firstValidDate>2013-01-01</firstValidDate>
+  <lastValidDate>2027-12-31</lastValidDate>
+  <default>
+    <weekend>Saturday</weekend>
+    <weekend>Sunday</weekend>
+    <businessTime><open>09:00</open><close>17:00</close></businessTime>
+  </default>
+  <!-- 1999 -->
+  <holiday><date>1999-01-01</date></holiday> <!-- New Year's Day -->
+  <holiday><date>1999-01-18</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>1999-02-15</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>1999-05-31</date></holiday> <!-- Memorial Day -->
+  <holiday><date>1999-07-05</date></holiday> <!-- Independence Day -->
+  <holiday><date>1999-09-06</date></holiday> <!-- Labor Day -->
+  <holiday><date>1999-10-11</date></holiday> <!-- Columbus Day -->
+  <holiday><date>1999-11-11</date></holiday> <!-- Veterans Day -->
+  <holiday><date>1999-11-25</date></holiday> <!-- Thanksgiving Day -->
+  <!-- 2000 -->
+  <holiday><date>2000-01-17</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2000-02-21</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2000-05-29</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2000-07-04</date></holiday> <!-- Independence Day -->
+  <holiday><date>2000-09-04</date></holiday> <!-- Labor Day -->
+  <holiday><date>2000-10-09</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2000-11-23</date></holiday> <!-- Thanksgiving Day -->
+  <holiday><date>2000-12-25</date></holiday> <!-- Christmas Day -->
+  <!-- 2001 -->
+  <holiday><date>2001-01-01</date></holiday> <!-- New Year's Day -->
+  <holiday><date>2001-01-15</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2001-02-19</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2001-05-28</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2001-07-04</date></holiday> <!-- Independence Day -->
+  <holiday><date>2001-09-03</date></holiday> <!-- Labor Day -->
+  <holiday><date>2001-10-08</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2001-11-12</date></holiday> <!-- Veterans Day -->
+  <holiday><date>2001-11-22</date></holiday> <!-- Thanksgiving Day -->
+  <holiday><date>2001-12-25</date></holiday> <!-- Christmas Day -->
+  <!-- 2002 -->
+  <holiday><date>2002-01-01</date></holiday> <!-- New Year's Day -->
+  <holiday><date>2002-01-21</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2002-02-18</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2002-05-27</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2002-07-04</date></holiday> <!-- Independence Day -->
+  <holiday><date>2002-09-02</date></holiday> <!-- Labor Day -->
+  <holiday><date>2002-10-14</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2002-11-11</date></holiday> <!-- Veterans Day -->
+  <holiday><date>2002-11-28</date></holiday> <!-- Thanksgiving Day -->
+  <holiday><date>2002-12-25</date></holiday> <!-- Christmas Day -->
+  <!-- 2003 -->
+  <holiday><date>2003-01-01</date></holiday> <!-- New Year's Day -->
+  <holiday><date>2003-01-20</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2003-02-17</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2003-05-26</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2003-07-04</date></holiday> <!-- Independence Day -->
+  <holiday><date>2003-09-01</date></holiday> <!-- Labor Day -->
+  <holiday><date>2003-10-13</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2003-11-11</date></holiday> <!-- Veterans Day -->
+  <holiday><date>2003-11-27</date></holiday> <!-- Thanksgiving Day -->
+  <holiday><date>2003-12-25</date></holiday> <!-- Christmas Day -->
+  <!-- 2004 -->
+  <holiday><date>2004-01-01</date></holiday> <!-- New Year's Day -->
+  <holiday><date>2004-01-19</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2004-02-16</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2004-05-31</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2004-07-05</date></holiday> <!-- Independence Day -->
+  <holiday><date>2004-09-06</date></holiday> <!-- Labor Day -->
+  <holiday><date>2004-10-11</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2004-11-11</date></holiday> <!-- Veterans Day -->
+  <holiday><date>2004-11-25</date></holiday> <!-- Thanksgiving Day -->
+  <!-- 2005 -->
+  <holiday><date>2005-01-17</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2005-02-21</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2005-05-30</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2005-07-04</date></holiday> <!-- Independence Day -->
+  <holiday><date>2005-09-05</date></holiday> <!-- Labor Day -->
+  <holiday><date>2005-10-10</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2005-11-11</date></holiday> <!-- Veterans Day -->
+  <holiday><date>2005-11-24</date></holiday> <!-- Thanksgiving Day -->
+  <holiday><date>2005-12-26</date></holiday> <!-- Christmas Day -->
+  <!-- 2006 -->
+  <holiday><date>2006-01-02</date></holiday> <!-- New Year's Day -->
+  <holiday><date>2006-01-16</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2006-02-20</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2006-05-29</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2006-07-04</date></holiday> <!-- Independence Day -->
+  <holiday><date>2006-09-04</date></holiday> <!-- Labor Day -->
+  <holiday><date>2006-10-09</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2006-11-23</date></holiday> <!-- Thanksgiving Day -->
+  <holiday><date>2006-12-25</date></holiday> <!-- Christmas Day -->
+  <!-- 2007 -->
+  <holiday><date>2007-01-01</date></holiday> <!-- New Year's Day -->
+  <holiday><date>2007-01-15</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2007-02-19</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2007-05-28</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2007-07-04</date></holiday> <!-- Independence Day -->
+  <holiday><date>2007-09-03</date></holiday> <!-- Labor Day -->
+  <holiday><date>2007-10-08</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2007-11-12</date></holiday> <!-- Veterans Day -->
+  <holiday><date>2007-11-22</date></holiday> <!-- Thanksgiving Day -->
+  <holiday><date>2007-12-25</date></holiday> <!-- Christmas Day -->
+  <!-- 2008 -->
+  <holiday><date>2008-01-01</date></holiday> <!-- New Year's Day -->
+  <holiday><date>2008-01-21</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2008-02-18</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2008-05-26</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2008-07-04</date></holiday> <!-- Independence Day -->
+  <holiday><date>2008-09-01</date></holiday> <!-- Labor Day -->
+  <holiday><date>2008-10-13</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2008-11-11</date></holiday> <!-- Veterans Day -->
+  <holiday><date>2008-11-27</date></holiday> <!-- Thanksgiving Day -->
+  <holiday><date>2008-12-25</date></holiday> <!-- Christmas Day -->
+  <!-- 2009 -->
+  <holiday><date>2009-01-01</date></holiday> <!-- New Year's Day -->
+  <holiday><date>2009-01-19</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2009-02-16</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2009-05-25</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2009-09-07</date></holiday> <!-- Labor Day -->
+  <holiday><date>2009-10-12</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2009-11-11</date></holiday> <!-- Veterans Day -->
+  <holiday><date>2009-11-26</date></holiday> <!-- Thanksgiving Day -->
+  <holiday><date>2009-12-25</date></holiday> <!-- Christmas Day -->
+  <!-- 2010 -->
+  <holiday><date>2010-01-01</date></holiday> <!-- New Year's Day -->
+  <holiday><date>2010-01-18</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2010-02-15</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2010-05-31</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2010-07-05</date></holiday> <!-- Independence Day -->
+  <holiday><date>2010-09-06</date></holiday> <!-- Labor Day -->
+  <holiday><date>2010-10-11</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2010-11-11</date></holiday> <!-- Veterans Day -->
+  <holiday><date>2010-11-25</date></holiday> <!-- Thanksgiving Day -->
+  <!-- 2011 -->
+  <holiday><date>2011-01-17</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2011-02-21</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2011-05-30</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2011-07-04</date></holiday> <!-- Independence Day -->
+  <holiday><date>2011-09-05</date></holiday> <!-- Labor Day -->
+  <holiday><date>2011-10-10</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2011-11-11</date></holiday> <!-- Veterans Day -->
+  <holiday><date>2011-11-24</date></holiday> <!-- Thanksgiving Day -->
+  <holiday><date>2011-12-26</date></holiday> <!-- Christmas Day -->
+  <!-- 2012 -->
+  <holiday><date>2012-01-02</date></holiday> <!-- New Year's Day -->
+  <holiday><date>2012-01-16</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2012-02-20</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2012-05-28</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2012-07-04</date></holiday> <!-- Independence Day -->
+  <holiday><date>2012-09-03</date></holiday> <!-- Labor Day -->
+  <holiday><date>2012-10-08</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2012-11-12</date></holiday> <!-- Veterans Day -->
+  <holiday><date>2012-11-22</date></holiday> <!-- Thanksgiving Day -->
+  <holiday><date>2012-12-25</date></holiday> <!-- Christmas Day -->
+  <!-- 2013 -->
+  <holiday><date>2013-01-01</date></holiday> <!-- New Year's Day -->
+  <holiday><date>2013-01-21</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2013-02-18</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2013-05-27</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2013-07-04</date></holiday> <!-- Independence Day -->
+  <holiday><date>2013-09-02</date></holiday> <!-- Labor Day -->
+  <holiday><date>2013-10-14</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2013-11-11</date></holiday> <!-- Veterans Day -->
+  <holiday><date>2013-11-28</date></holiday> <!-- Thanksgiving Day -->
+  <holiday><date>2013-12-25</date></holiday> <!-- Christmas Day -->
+  <!-- 2014 -->
+  <holiday><date>2014-01-01</date></holiday> <!-- New Year's Day -->
+  <holiday><date>2014-01-20</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2014-02-17</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2014-05-26</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2014-07-04</date></holiday> <!-- Independence Day -->
+  <holiday><date>2014-09-01</date></holiday> <!-- Labor Day -->
+  <holiday><date>2014-10-13</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2014-11-11</date></holiday> <!-- Veterans Day -->
+  <holiday><date>2014-11-27</date></holiday> <!-- Thanksgiving Day -->
+  <holiday><date>2014-12-25</date></holiday> <!-- Christmas Day -->
+  <!-- 2015 -->
+  <holiday><date>2015-01-01</date></holiday> <!-- New Year's Day -->
+  <holiday><date>2015-01-19</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2015-02-16</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2015-05-25</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2015-09-07</date></holiday> <!-- Labor Day -->
+  <holiday><date>2015-10-12</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2015-11-11</date></holiday> <!-- Veterans Day -->
+  <holiday><date>2015-11-26</date></holiday> <!-- Thanksgiving Day -->
+  <holiday><date>2015-12-25</date></holiday> <!-- Christmas Day -->
+  <!-- 2016 -->
+  <holiday><date>2016-01-01</date></holiday> <!-- New Year's Day -->
+  <holiday><date>2016-01-18</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2016-02-15</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2016-05-30</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2016-07-04</date></holiday> <!-- Independence Day -->
+  <holiday><date>2016-09-05</date></holiday> <!-- Labor Day -->
+  <holiday><date>2016-10-10</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2016-11-11</date></holiday> <!-- Veterans Day -->
+  <holiday><date>2016-11-24</date></holiday> <!-- Thanksgiving Day -->
+  <holiday><date>2016-12-26</date></holiday> <!-- Christmas Day -->
+  <!-- 2017 -->
+  <holiday><date>2017-01-02</date></holiday> <!-- New Year's Day -->
+  <holiday><date>2017-01-16</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2017-02-20</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2017-05-29</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2017-07-04</date></holiday> <!-- Independence Day -->
+  <holiday><date>2017-09-04</date></holiday> <!-- Labor Day -->
+  <holiday><date>2017-10-09</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2017-11-23</date></holiday> <!-- Thanksgiving Day -->
+  <holiday><date>2017-12-25</date></holiday> <!-- Christmas Day -->
+  <!-- 2018 -->
+  <holiday><date>2018-01-01</date></holiday> <!-- New Year's Day -->
+  <holiday><date>2018-01-15</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2018-02-19</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2018-05-28</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2018-07-04</date></holiday> <!-- Independence Day -->
+  <holiday><date>2018-09-03</date></holiday> <!-- Labor Day -->
+  <holiday><date>2018-10-08</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2018-11-12</date></holiday> <!-- Veterans Day -->
+  <holiday><date>2018-11-22</date></holiday> <!-- Thanksgiving Day -->
+  <holiday><date>2018-12-25</date></holiday> <!-- Christmas Day -->
+  <!-- 2019 -->
+  <holiday><date>2019-01-01</date></holiday> <!-- New Year's Day -->
+  <holiday><date>2019-01-21</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2019-02-18</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2019-05-27</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2019-07-04</date></holiday> <!-- Independence Day -->
+  <holiday><date>2019-09-02</date></holiday> <!-- Labor Day -->
+  <holiday><date>2019-10-14</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2019-11-11</date></holiday> <!-- Veterans Day -->
+  <holiday><date>2019-11-28</date></holiday> <!-- Thanksgiving Day -->
+  <holiday><date>2019-12-25</date></holiday> <!-- Christmas Day -->
+  <!-- 2020 -->
+  <holiday><date>2020-01-01</date></holiday> <!-- New Year's Day -->
+  <holiday><date>2020-01-20</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2020-02-17</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2020-05-25</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2020-09-07</date></holiday> <!-- Labor Day -->
+  <holiday><date>2020-10-12</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2020-11-11</date></holiday> <!-- Veterans Day -->
+  <holiday><date>2020-11-26</date></holiday> <!-- Thanksgiving Day -->
+  <holiday><date>2020-12-25</date></holiday> <!-- Christmas Day -->
+  <!-- 2021 -->
+  <holiday><date>2021-01-01</date></holiday> <!-- New Year's Day -->
+  <holiday><date>2021-01-18</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2021-02-15</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2021-05-31</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2021-07-05</date></holiday> <!-- Independence Day -->
+  <holiday><date>2021-09-06</date></holiday> <!-- Labor Day -->
+  <holiday><date>2021-10-11</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2021-11-11</date></holiday> <!-- Veterans Day -->
+  <holiday><date>2021-11-25</date></holiday> <!-- Thanksgiving Day -->
+  <!-- 2022 -->
+  <holiday><date>2022-01-17</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2022-02-21</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2022-05-30</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2022-06-20</date></holiday> <!-- Juneteenth -->
+  <holiday><date>2022-07-04</date></holiday> <!-- Independence Day -->
+  <holiday><date>2022-09-05</date></holiday> <!-- Labor Day -->
+  <holiday><date>2022-10-10</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2022-11-11</date></holiday> <!-- Veterans Day -->
+  <holiday><date>2022-11-24</date></holiday> <!-- Thanksgiving Day -->
+  <holiday><date>2022-12-26</date></holiday> <!-- Christmas Day -->
+  <!-- 2023 -->
+  <holiday><date>2023-01-02</date></holiday> <!-- New Year's Day -->
+  <holiday><date>2023-01-16</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2023-02-20</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2023-05-29</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2023-06-19</date></holiday> <!-- Juneteenth -->
+  <holiday><date>2023-07-04</date></holiday> <!-- Independence Day -->
+  <holiday><date>2023-09-04</date></holiday> <!-- Labor Day -->
+  <holiday><date>2023-10-09</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2023-11-23</date></holiday> <!-- Thanksgiving Day -->
+  <holiday><date>2023-12-25</date></holiday> <!-- Christmas Day -->
+  <!-- 2024 -->
+  <holiday><date>2024-01-01</date></holiday> <!-- New Year's Day -->
+  <holiday><date>2024-01-15</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2024-02-19</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2024-05-27</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2024-06-19</date></holiday> <!-- Juneteenth -->
+  <holiday><date>2024-07-04</date></holiday> <!-- Independence Day -->
+  <holiday><date>2024-09-02</date></holiday> <!-- Labor Day -->
+  <holiday><date>2024-10-14</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2024-11-11</date></holiday> <!-- Veterans Day -->
+  <holiday><date>2024-11-28</date></holiday> <!-- Thanksgiving Day -->
+  <holiday><date>2024-12-25</date></holiday> <!-- Christmas Day -->
+  <!-- 2025 -->
+  <holiday><date>2025-01-01</date></holiday> <!-- New Year's Day -->
+  <holiday><date>2025-01-20</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2025-02-17</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2025-05-26</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2025-06-19</date></holiday> <!-- Juneteenth -->
+  <holiday><date>2025-07-04</date></holiday> <!-- Independence Day -->
+  <holiday><date>2025-09-01</date></holiday> <!-- Labor Day -->
+  <holiday><date>2025-10-13</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2025-11-11</date></holiday> <!-- Veterans Day -->
+  <holiday><date>2025-11-27</date></holiday> <!-- Thanksgiving Day -->
+  <holiday><date>2025-12-25</date></holiday> <!-- Christmas Day -->
+  <!-- 2026 -->
+  <holiday><date>2026-01-01</date></holiday> <!-- New Year's Day -->
+  <holiday><date>2026-01-19</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2026-02-16</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2026-05-25</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2026-06-19</date></holiday> <!-- Juneteenth -->
+  <holiday><date>2026-09-07</date></holiday> <!-- Labor Day -->
+  <holiday><date>2026-10-12</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2026-11-11</date></holiday> <!-- Veterans Day -->
+  <holiday><date>2026-11-26</date></holiday> <!-- Thanksgiving Day -->
+  <holiday><date>2026-12-25</date></holiday> <!-- Christmas Day -->
+  <!-- 2027 -->
+  <holiday><date>2027-01-01</date></holiday> <!-- New Year's Day -->
+  <holiday><date>2027-01-18</date></holiday> <!-- Birthday of Martin Luther King, Jr. -->
+  <holiday><date>2027-02-15</date></holiday> <!-- Washington's Birthday -->
+  <holiday><date>2027-05-31</date></holiday> <!-- Memorial Day -->
+  <holiday><date>2027-07-05</date></holiday> <!-- Independence Day -->
+  <holiday><date>2027-09-06</date></holiday> <!-- Labor Day -->
+  <holiday><date>2027-10-11</date></holiday> <!-- Columbus Day -->
+  <holiday><date>2027-11-11</date></holiday> <!-- Veterans Day -->
+  <holiday><date>2027-11-25</date></holiday> <!-- Thanksgiving Day -->
+</calendar>
