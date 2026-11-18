@@ -385,17 +385,19 @@ class World:
         # well: TimeTable#refresh), so in a cycle in which a period ends between the two
         # readings one of them has a row that the other gets a cycle later.
         self.period_ns = cycle_ms * 1_000_000
-        # The first row is at a whole millisecond, so that `S` below is a whole number in
-        # every row: the aggregation keeps its sums by adding and subtracting, and a sum of
-        # fractions kept that way differs in the last bit from one made of the rows as they
-        # are now (in Java as well: DoubleChunkedSumOperator keeps a running sum).
+        # The first row is at a whole millisecond and `S` below is the row's time in whole
+        # milliseconds, as a double: the aggregation keeps its sums by adding and
+        # subtracting, and a sum of fractions kept that way differs in the last bit from one
+        # made of the rows as they are now (in Java as well: DoubleChunkedSumOperator keeps
+        # a running sum). `epochNanos(Timestamp) / 1000000` is no whole number even then:
+        # the nanoseconds of today need 61 bits and the division is of doubles.
         self.start_ns = time.time_ns() // 1_000_000 * 1_000_000
         tt = self.s.time_table(period=self.period_ns, start_time=self.start_ns)
         tb = self.s.time_table(period=self.period_ns, start_time=self.start_ns, blink_table=True)
         tb_count = tb.agg_by([agg.count_("N"), agg.min_(["First = Timestamp"]), agg.max_(["Last = Timestamp"])], by=[])
         self.time = {
             "tt": tt,
-            "tt_tail": tt.tail(600).update(["S = epochNanos(Timestamp) / 1000000", "M = S % 7"]),
+            "tt_tail": tt.tail(600).update(["S = (double) epochMillis(Timestamp)", "M = S % 7"]),
             "tt_count": tt.agg_by([agg.count_("N")], by=[]),
             "tb_count": tb_count,
         }
