@@ -495,6 +495,11 @@ pub enum AggregateError {
     /// Initial groups without group-by columns, without one of them, or with one of
     /// another type; the text is Java's.
     InvalidInitialGroups(String),
+    /// A group-by column of an array type, of elements of `element`. Java reports this
+    /// one as an `IllegalArgumentException`.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.by.ChunkedOperatorAggregationHelper#aggregation
+    ArrayKey { column: String, element: ColumnType },
     /// The table has failed, or could not be read.
     Failed(TableFailure),
 }
@@ -536,6 +541,11 @@ impl fmt::Display for AggregateError {
                 f,
                 "Blink tables do not support {spec:?}; use BlinkTableTools.blinkToAppendOnly \
                  to accumulate full history"
+            ),
+            AggregateError::ArrayKey { column, element } => write!(
+                f,
+                "Cannot aggregate using an array column: {column}, column type is an array of {}",
+                java_class(element)
             ),
             AggregateError::Failed(failure) => failure.fmt(f),
         }
@@ -1729,6 +1739,17 @@ fn aggregate_inner(
             Ok::<_, AggregateError>((initial.clone(), columns))
         })
         .transpose()?;
+    // After the initial groups are checked and before any aggregation is planned, as in
+    // Java.
+    for &index in &key_columns {
+        let key = &definition.columns()[index];
+        if let ColumnType::Array(element) = &key.column_type {
+            return Err(AggregateError::ArrayKey {
+                column: key.name.clone(),
+                element: (**element).clone(),
+            });
+        }
+    }
     let mut result_columns: Vec<ColumnDefinition> = key_columns
         .iter()
         .map(|&index| definition.columns()[index].clone())

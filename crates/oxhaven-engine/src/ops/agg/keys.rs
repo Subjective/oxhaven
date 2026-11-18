@@ -8,6 +8,36 @@ use oxhaven_contracts::table::TableFailure;
 pub(crate) use crate::ops::key_table::canonical_floats;
 use arrow::array::ArrayRef;
 
+/// Whether a group-by column of `column_type`, a vector, groups rows by the vectors'
+/// contents alone: a vector whose elements, at every depth, are integers, `char`s,
+/// `Boolean`s, `String`s, `Instant`s or vectors of these. Two such vectors are one key when
+/// both are null, or they have one size and equal elements, a null element equal only to a
+/// null element; an empty vector is a key of its own. Every vector class compares and
+/// hashes these elements by value, so the key does not depend on where the vectors came
+/// from. The row encoding of the key table compares lists in exactly this way.
+///
+/// Behavior: io.deephaven.vector.IntVector#equals and #hashCode, ObjectVector#equals
+/// (`Objects#deepEquals`), with io.deephaven.util.compare.ObjectComparisons#eq and
+/// #hashCode, which the hasher of a key of objects calls
+/// (io.deephaven.engine.table.impl.by.typed.TypedHasherFactory#make)
+fn groupable_vector(column_type: &ColumnType) -> bool {
+    match column_type {
+        ColumnType::Vector(element) => match &**element {
+            ColumnType::Boolean
+            | ColumnType::Byte
+            | ColumnType::Char
+            | ColumnType::Short
+            | ColumnType::Int
+            | ColumnType::Long
+            | ColumnType::String
+            | ColumnType::Instant => true,
+            inner @ ColumnType::Vector(_) => groupable_vector(inner),
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
 /// The slot of every key seen so far. Slots are handed out in the order keys are first
 /// seen, starting at zero, and a key keeps its slot for good, also while it has no rows.
 ///
@@ -22,13 +52,18 @@ pub(crate) struct KeyTable {
 }
 
 impl KeyTable {
+    /// A vector key column is a key like any other when [`groupable_vector`] takes its
+    /// type; an array key column is refused before this (`aggregate_inner`).
     pub fn new(key_types: &[ColumnType]) -> Result<KeyTable, TableFailure> {
-        // Java hashes a vector or an array key as an object; when two of them are one
-        // key, and what a NaN or a `-0.0` element does to that, is not ported.
-        if let Some(list) = key_types.iter().find(|t| t.list_element().is_some()) {
+        if let Some(list) = key_types
+            .iter()
+            .find(|t| t.list_element().is_some() && !groupable_vector(t))
+        {
             oxhaven_contracts::unported!(
                 "io.deephaven.engine.table.impl.by.typed.TypedHasherFactory#make",
-                "a group key column of type {list:?}"
+                "a group key column of type {list:?}: Java's groups of vectors of float or \
+                 double elements depend on the class of the vector objects (-0.0 and 0.0), \
+                 and those of vectors of arrays on the identity of the arrays"
             );
         }
         let data_types: Vec<_> = key_types.iter().map(ColumnType::arrow_type).collect();

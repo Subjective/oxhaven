@@ -317,6 +317,14 @@ fn random_updates_by_two_keys() {
 }
 
 #[test]
+fn random_updates_by_a_vector_key() {
+    for seed in test_seeds(250..270) {
+        Run::new(seed, &["V"]).run();
+        Run::new(seed, &["K", "V"]).run();
+    }
+}
+
+#[test]
 fn random_updates_by_a_floating_point_key() {
     for seed in test_seeds(200..220) {
         Run::new(seed, &["X"]).run();
