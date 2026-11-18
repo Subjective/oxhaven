@@ -197,25 +197,25 @@ fn holds_array(column_type: &ColumnType) -> bool {
 ///
 /// Behavior: `ColumnPreviewManager#isColumnTypeDisplayable`
 fn is_displayable(column_type: &ColumnType) -> bool {
-    match column_type {
+    matches!(
+        column_type,
         ColumnType::Boolean
-        | ColumnType::Byte
-        | ColumnType::Char
-        | ColumnType::Short
-        | ColumnType::Int
-        | ColumnType::Long
-        | ColumnType::Float
-        | ColumnType::Double
-        | ColumnType::String
-        | ColumnType::BigInteger
-        | ColumnType::BigDecimal
-        | ColumnType::Instant
-        | ColumnType::ZonedDateTime
-        | ColumnType::LocalDate
-        | ColumnType::LocalTime
-        | ColumnType::PrimitiveBoolean => true,
-        _ => false,
-    }
+            | ColumnType::Byte
+            | ColumnType::Char
+            | ColumnType::Short
+            | ColumnType::Int
+            | ColumnType::Long
+            | ColumnType::Float
+            | ColumnType::Double
+            | ColumnType::String
+            | ColumnType::BigInteger
+            | ColumnType::BigDecimal
+            | ColumnType::Instant
+            | ColumnType::ZonedDateTime
+            | ColumnType::LocalDate
+            | ColumnType::LocalTime
+            | ColumnType::PrimitiveBoolean
+    )
 }
 
 /// The columns Java replaces by a preview of their values, in the order of the definition.
