@@ -621,6 +621,28 @@ fn is_floating(column_type: &ColumnType) -> bool {
 /// (index 1), once a cell that shows them has been made.
 type SharedShownRows = [Option<Arc<Mutex<ShownRows>>>; 2];
 
+/// Whether the distinct values of a column of `column_type`, a vector, are served: a
+/// vector of integers, `char`s or strings, whose distinct vectors Java keeps in an
+/// `ObjectVector` that names the input's vector class as its component type.
+///
+/// Behavior: io.deephaven.engine.table.impl.by.AggregationProcessor#makeDistinctOperator,
+/// io.deephaven.engine.table.impl.by.ssmcountdistinct.distinct.ObjectChunkedDistinctOperator,
+/// which orders the vectors by io.deephaven.vector.IntVector#compareTo and its siblings
+fn distinct_vector(column_type: &ColumnType) -> bool {
+    matches!(
+        column_type,
+        ColumnType::Vector(element) if matches!(
+            **element,
+            ColumnType::Byte
+                | ColumnType::Char
+                | ColumnType::Short
+                | ColumnType::Int
+                | ColumnType::Long
+                | ColumnType::String
+        )
+    )
+}
+
 fn make_operator(
     spec: &AggSpec,
     parent: &Arc<dyn Table>,
@@ -725,8 +747,16 @@ fn make_operator(
     }
     match spec {
         AggSpec::Min | AggSpec::Max => vectors_only("makeMinOrMaxOperator", input_type),
-        // The result would be a vector of vectors.
-        AggSpec::Distinct { .. } if input_type.list_element().is_some() => {
+        // Observed: the distinct vectors of a group, ordered as vectors are (`Scalar::compare`),
+        // as a vector of vectors whose component type is the input's vector class. That
+        // holds for vectors of integers, `char`s and strings. Of a vector of Booleans or
+        // Instants Java's result loses the inner element type (a client receives strings);
+        // of a vector of floats or doubles, two vectors that differ only in the sign of a
+        // zero are one value, and which of them Java keeps depends on the order of its
+        // sorted set's history; deeper vectors and arrays are refused as for min and max.
+        AggSpec::Distinct { .. }
+            if input_type.list_element().is_some() && !distinct_vector(input_type) =>
+        {
             unported!(
                 "io.deephaven.engine.table.impl.by.AggregationProcessor",
                 "makeDistinctOperator for a column of type {input_type:?}"
@@ -1342,17 +1372,11 @@ fn count_where(
             "Error creating condition filter in CountWhereOperator".to_string(),
         ));
     }
+    // A filter of a vector or an array column counts the rows `where` keeps, and fails
+    // where `where` fails (a method of a null vector or array): Java runs the same filter
+    // over the column of objects (observed: `X.size() > 2`, `A[0] > 3`, `Q == null`,
+    // `len(A) > 1`; `Q.length > 0` of a null array fails with a NullPointerException).
     let reads = filters.columns().to_vec();
-    if let Some(list) = reads
-        .iter()
-        .map(|&column| &definition.columns()[column].column_type)
-        .find(|column_type| column_type.list_element().is_some())
-    {
-        unported!(
-            "io.deephaven.engine.table.impl.select.WhereFilter#filter",
-            "a count where filter of a column of type {list:?}"
-        );
-    }
     let op = CountWhere::new(parent.clone(), filters, keyed);
     Ok(Planned {
         reads,
