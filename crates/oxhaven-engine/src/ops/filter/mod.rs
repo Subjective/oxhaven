@@ -11,6 +11,7 @@
 //! (null lowest, NaN excluded from `>`), and a formula.
 
 mod condition;
+mod decimal_format;
 mod factory;
 mod filters;
 mod jdk_case;
