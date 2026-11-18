@@ -623,9 +623,9 @@ Task 7.5.3 (`tasks/7.5.3-kafka-cdc.md`), `oxhaven_kafka::consume_cdc` and
   `io.debezium.data.Enum` on `string`, and `connect.decimal` (`bytes` with Avro's
   `decimal`, a `BigDecimal` column) work as 7.4.7 reads them. A plain `bytes` column
   (Postgres `bytea`) is refused by 7.4.7's name, where Java's table fails. A
-  `BigDecimal` or `BigInteger` column that is not a key is refused by name in the
-  current-rows table (not in the blink or raw ones): the engine's `last_by` of a blink
-  table cannot hold it yet.
+  `BigDecimal` or `BigInteger` column that is not a key is served in the current-rows
+  table too, scale included, since task 11.5 (it was refused by name until the engine's
+  `last_by` of a blink table held these).
 - **The registry.** As Java's client: the latest metadata of a subject and a schema by id
   are fetched once per registry client, a numbered version every time it is asked.
 
@@ -1179,10 +1179,9 @@ broker under the open tables of both.
     any `cols_to_drop` but a Java list (`jcompat.j_array_list`), and `consume_raw` for
     any `TableType`, its default included (only `.j_object` works). Reproduced; this
     package has no `jcompat`, so dropping columns from Python is not reachable here.
-30. **CDC, decimals in the current rows.** A non-key `BigDecimal` or `BigInteger` column
-    of `cdc.consume` without `stream_table` is refused by name: the engine's `last_by` of
-    a blink table cannot hold these. Debezium's `connect.decimal` (any SQL `NUMERIC`) is
-    common, so the engine fix is worth sizing.
+30. **CDC, decimals in the current rows.** Closed by task 11.5: a non-key `BigDecimal` or
+    `BigInteger` column of `cdc.consume` without `stream_table`, refused by name before, is
+    served, as the engine's `last_by` of a blink table now keeps these cells.
 
 31. **TLS and SASL, what librdkafka cannot do.** Refused by name where Java connects
     (probes of task 7.4.5): JKS key and trust stores and PKCS#12 trust stores (librdkafka
@@ -1302,4 +1301,4 @@ These replace 7.4 and 7.5. Sizes: S is a day of one implementer, M two to three,
 | 7.4.8 | Protobuf specs (`prost-reflect` is in the tree), both protocols | done (`tasks/7.4.8-kafka-protobuf.md`); no new crate | 7.4.7 for the registry |
 | 7.5.1 | Produce: librdkafka's producer, simple and JSON specs, `publish_initial`, `last_by_key_columns`, how removes and modifies are published; `deephaven.stream.kafka.producer` | done (`tasks/7.5.1-kafka-produce.md`) | 7.4.4 |
 | 7.5.2 | Produce: Avro and raw specs, topic, partition and timestamp columns | done (`tasks/7.5.2-kafka-produce-avro.md`); raw spec not reachable from Python | 7.5.1, 7.4.7 |
-| 7.5.3 | `deephaven.stream.kafka.cdc` | done (`tasks/7.5.3-kafka-cdc.md`); no new crate; a non-key decimal of the current-rows table refused until the engine's blink `last_by` holds it | 7.4.7 |
+| 7.5.3 | `deephaven.stream.kafka.cdc` | done (`tasks/7.5.3-kafka-cdc.md`); no new crate; a non-key decimal of the current-rows table served since 11.5 | 7.4.7 |

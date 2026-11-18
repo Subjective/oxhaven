@@ -495,6 +495,11 @@ pub enum AggregateError {
     /// Initial groups without group-by columns, without one of them, or with one of
     /// another type; the text is Java's.
     InvalidInitialGroups(String),
+    /// A group-by column of an array type, of elements of `element`. Java reports this
+    /// one as an `IllegalArgumentException`.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.by.ChunkedOperatorAggregationHelper#aggregation
+    ArrayKey { column: String, element: ColumnType },
     /// The table has failed, or could not be read.
     Failed(TableFailure),
 }
@@ -536,6 +541,11 @@ impl fmt::Display for AggregateError {
                 f,
                 "Blink tables do not support {spec:?}; use BlinkTableTools.blinkToAppendOnly \
                  to accumulate full history"
+            ),
+            AggregateError::ArrayKey { column, element } => write!(
+                f,
+                "Cannot aggregate using an array column: {column}, column type is an array of {}",
+                java_class(element)
             ),
             AggregateError::Failed(failure) => failure.fmt(f),
         }
@@ -610,6 +620,28 @@ fn is_floating(column_type: &ColumnType) -> bool {
 /// The rows the groups of one aggregation show as their last (index 0) and as their first
 /// (index 1), once a cell that shows them has been made.
 type SharedShownRows = [Option<Arc<Mutex<ShownRows>>>; 2];
+
+/// Whether the distinct values of a column of `column_type`, a vector, are served: a
+/// vector of integers, `char`s or strings, whose distinct vectors Java keeps in an
+/// `ObjectVector` that names the input's vector class as its component type.
+///
+/// Behavior: io.deephaven.engine.table.impl.by.AggregationProcessor#makeDistinctOperator,
+/// io.deephaven.engine.table.impl.by.ssmcountdistinct.distinct.ObjectChunkedDistinctOperator,
+/// which orders the vectors by io.deephaven.vector.IntVector#compareTo and its siblings
+fn distinct_vector(column_type: &ColumnType) -> bool {
+    matches!(
+        column_type,
+        ColumnType::Vector(element) if matches!(
+            **element,
+            ColumnType::Byte
+                | ColumnType::Char
+                | ColumnType::Short
+                | ColumnType::Int
+                | ColumnType::Long
+                | ColumnType::String
+        )
+    )
+}
 
 fn make_operator(
     spec: &AggSpec,
@@ -715,8 +747,16 @@ fn make_operator(
     }
     match spec {
         AggSpec::Min | AggSpec::Max => vectors_only("makeMinOrMaxOperator", input_type),
-        // The result would be a vector of vectors.
-        AggSpec::Distinct { .. } if input_type.list_element().is_some() => {
+        // Observed: the distinct vectors of a group, ordered as vectors are (`Scalar::compare`),
+        // as a vector of vectors whose component type is the input's vector class. That
+        // holds for vectors of integers, `char`s and strings. Of a vector of Booleans or
+        // Instants Java's result loses the inner element type (a client receives strings);
+        // of a vector of floats or doubles, two vectors that differ only in the sign of a
+        // zero are one value, and which of them Java keeps depends on the order of its
+        // sorted set's history; deeper vectors and arrays are refused as for min and max.
+        AggSpec::Distinct { .. }
+            if input_type.list_element().is_some() && !distinct_vector(input_type) =>
+        {
             unported!(
                 "io.deephaven.engine.table.impl.by.AggregationProcessor",
                 "makeDistinctOperator for a column of type {input_type:?}"
@@ -737,6 +777,40 @@ fn make_operator(
             }
         }
         _ => {}
+    }
+    // Java computes these of a `BigDecimal` or `BigInteger` column with arbitrary precision
+    // (observed: the sum of `1.0`, `1.00` and `2.5` is `4.50`, their average `1.50`), and
+    // orders or compares the values by `compareTo` in some operators and by `equals` in
+    // others (observed: the distinct values of `3` and `3.000` are both, their minimum the
+    // first seen). None of this is ported; first, last, group and the formulas are.
+    let big = |column_type: &ColumnType| {
+        matches!(column_type, ColumnType::BigDecimal | ColumnType::BigInteger)
+    };
+    let sort_columns: &[String] = match spec {
+        AggSpec::SortedFirst { columns } | AggSpec::SortedLast { columns } => columns,
+        _ => &[],
+    };
+    let big_sort = sort_columns.iter().find_map(|name| {
+        let sort_type = &definition.columns()[definition.index_of(name)?].column_type;
+        big(sort_type).then_some(sort_type)
+    });
+    let reads_big = big(input_type)
+        && !matches!(
+            spec,
+            AggSpec::First
+                | AggSpec::Last
+                | AggSpec::Group
+                | AggSpec::Formula { .. }
+                | AggSpec::SortedFirst { .. }
+                | AggSpec::SortedLast { .. }
+                | AggSpec::WeightedAvg { .. }
+                | AggSpec::WeightedSum { .. }
+        );
+    if let Some(column_type) = big_sort.or(reads_big.then_some(input_type)) {
+        unported!(
+            "io.deephaven.engine.table.impl.by.AggregationProcessor",
+            "{spec:?} of a column of type {column_type:?}"
+        );
     }
     let op: Box<dyn AggOperator> = match spec {
         AggSpec::Formula { .. } => unreachable!("a formula is planned by each_formula"),
@@ -1298,17 +1372,11 @@ fn count_where(
             "Error creating condition filter in CountWhereOperator".to_string(),
         ));
     }
+    // A filter of a vector or an array column counts the rows `where` keeps, and fails
+    // where `where` fails (a method of a null vector or array): Java runs the same filter
+    // over the column of objects (observed: `X.size() > 2`, `A[0] > 3`, `Q == null`,
+    // `len(A) > 1`; `Q.length > 0` of a null array fails with a NullPointerException).
     let reads = filters.columns().to_vec();
-    if let Some(list) = reads
-        .iter()
-        .map(|&column| &definition.columns()[column].column_type)
-        .find(|column_type| column_type.list_element().is_some())
-    {
-        unported!(
-            "io.deephaven.engine.table.impl.select.WhereFilter#filter",
-            "a count where filter of a column of type {list:?}"
-        );
-    }
     let op = CountWhere::new(parent.clone(), filters, keyed);
     Ok(Planned {
         reads,
@@ -1695,6 +1763,17 @@ fn aggregate_inner(
             Ok::<_, AggregateError>((initial.clone(), columns))
         })
         .transpose()?;
+    // After the initial groups are checked and before any aggregation is planned, as in
+    // Java.
+    for &index in &key_columns {
+        let key = &definition.columns()[index];
+        if let ColumnType::Array(element) = &key.column_type {
+            return Err(AggregateError::ArrayKey {
+                column: key.name.clone(),
+                element: (**element).clone(),
+            });
+        }
+    }
     let mut result_columns: Vec<ColumnDefinition> = key_columns
         .iter()
         .map(|&index| definition.columns()[index].clone())
