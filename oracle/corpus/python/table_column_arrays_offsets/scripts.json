@@ -1,0 +1,56 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "ok"
+    },
+    {
+      "step": 2,
+      "outcome": "ok"
+    },
+    {
+      "step": 3,
+      "outcome": "ok"
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update operation failed. : For input string",
+      "operation": "table update operation failed."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update_view operation failed. : For input string",
+      "operation": "table update_view operation failed."
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table where operation failed. : For input string",
+      "operation": "table where operation failed."
+    },
+    {
+      "step": 7,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update operation failed. : RuntimeError: java.lang.IllegalArgumentException: Formula '(X_).get(longCast(minus(i, 1)))' uses i, ii, k, or column array variables, and is not safe to refresh. Note that some usages, such as on an append-only table are safe. To allow unsafe refreshing formulas, set",
+      "operation": "table update operation failed."
+    },
+    {
+      "step": 8,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update operation failed. : Cannot find method get(int) in int",
+      "operation": "table update operation failed."
+    }
+  ]
+}
