@@ -1447,3 +1447,7 @@ Seven green checks on head e144c297. Main is at 70cf9d87. Since Josh's approval 
 ## 2026-11-18 12:42 UTC: task 12.2 reported, pull request 178; task 12.3 started
 
 The Kafka corpus is 19 console scripts over fixed topics with Deephaven's 48 tables, replayed in the oracle-replay job against a broker in Docker, under its own baseline. It found no new difference; the two known ones (Protobuf enums, non-UTF-8 strings) are listed with reasons. Checked before opening the pull request: replay-baseline.json, the gate scripts and existing recordings are untouched, and the only edits to existing oracle files are additions. Task 12.3 (soak test) runs on the default model beside task 12.1.
+
+## 2026-11-18 12:51 UTC: pull request 178 merged
+
+Seven green checks on head 9838077c in the run the label started; oracle-replay took 6 min 33 s with the Kafka step, against 5 to 6 min before. Main is at 0701fe41.
