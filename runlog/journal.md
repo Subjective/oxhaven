@@ -1443,3 +1443,7 @@ Task 11.9 closed the engine leftovers of 11.7: keys, sorts and merges by big num
 ## 2026-11-18 11:40 UTC: pull request 177 merged; the refusal pass is complete
 
 Seven green checks on head e144c297. Main is at 70cf9d87. Since Josh's approval this morning: pull requests 168 to 177 merged. 91 `unported!` calls remain in the crates (125 at the start of the day by the looser count that included comments); each is listed in a task file 11.4 to 11.9 with the owner question, allowed difference or larger piece of work it waits on. Owner questions 7.9 to 7.18 are open.
+
+## 2026-11-18 12:42 UTC: task 12.2 reported, pull request 178; task 12.3 started
+
+The Kafka corpus is 19 console scripts over fixed topics with Deephaven's 48 tables, replayed in the oracle-replay job against a broker in Docker, under its own baseline. It found no new difference; the two known ones (Protobuf enums, non-UTF-8 strings) are listed with reasons. Checked before opening the pull request: replay-baseline.json, the gate scripts and existing recordings are untouched, and the only edits to existing oracle files are additions. Task 12.3 (soak test) runs on the default model beside task 12.1.
