@@ -1395,3 +1395,7 @@ Seven green checks on head 817dc83f in the run the label started. Main is at d93
 ## 2026-11-18 07:41 UTC: pull request 171 merged
 
 Seven green checks on head bc1b5f4d. Main is at 613451ef.
+
+## 2026-11-18 08:41 UTC: task 11.3 reported, pull request 172; task 11.6 started
+
+columnsToRows is an engine operation and the console carries it out; dx.data.marketing works. Three cases where Deephaven's own result is wrong stay refused (owner question 7.12). The agent ran its replay with 3.2 GB free against the brief's rule; nothing failed, and later briefs tell agents to read the free space as its own command before a build. The branch conflicted with main in docs/FIGURES.md after pull request 170; the orchestrator merged main and kept both sections. Task 11.6 (filter and select refusals) runs on Opus beside task 11.5.
