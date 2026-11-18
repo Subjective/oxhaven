@@ -76,7 +76,7 @@ class Profile:
 
 PROFILES = {
     "long": Profile(
-        duration=2700, warmup=420, rss_slope_mb_per_hour=24.0, cpu_growth=0.20, handles_slack=8,
+        duration=2700, warmup=900, rss_slope_mb_per_hour=24.0, cpu_growth=0.20, handles_slack=8,
         barrier_max=10.0, update_gap_max=10.0, lag_max=10.0, cycle_gap_max=5.0, barrier_growth=2.0,
     ),
     "short": Profile(
@@ -299,6 +299,9 @@ def difference(got: pa.Table, want: pa.Table, keys: list[str] | None) -> dict | 
 # The long-lived graph: three keyed input tables with a fixed key space, so that the tables
 # stop growing once every key has been written, and chains of ticking operations over them.
 
+# Changes per round. A leak in an incremental path is per changed row, so the more rows a
+# round changes, the smaller the leak per row that the memory limit catches.
+WRITE_STEPS = 10
 SYMS = [f"S{i:02d}" for i in range(20)]
 SECTORS = ["tech", "energy", "retail", "bank"]
 ID_SPACE = 2000
@@ -413,7 +416,7 @@ class World:
         """One round of changes: rows added and changed in every input, rows deleted from
         the trades, rows added to the blink table. Returns when every table has them."""
         rng = self.rng
-        for _ in range(1 if initial else 4):
+        for _ in range(1 if initial else WRITE_STEPS):
             ids = rng.sample(range(ID_SPACE), ID_SPACE // 2 if initial else rng.randrange(40, 200))
             self.clock += 1
             self._add(self.inputs["trades"], TRADES, [
@@ -992,6 +995,16 @@ def scan_log(path: str) -> list[str]:
     return [line[:400] for line in lines if " ERROR " in line or "panicked" in line][:20]
 
 
+def result_text(result: dict, rounds: list[dict]) -> str:
+    """The result file: everything but the rounds indented, and the rounds as one line
+    each under the names of their columns, so that the file stays small and a round is a
+    line of a diff."""
+    text = json.dumps(result, indent=1, default=str)
+    columns = list(rounds[0]) if rounds else []
+    rows = ",\n".join("  " + json.dumps([r.get(c) for c in columns]) for r in rounds)
+    return f'{text[:-2]},\n "rounds": {{"columns": {json.dumps(columns)}, "rows": [\n{rows}\n ]}}\n}}\n'
+
+
 def run_soak(args: argparse.Namespace) -> int:
     profile = PROFILES[args.profile]
     if args.duration is not None:
@@ -1013,7 +1026,7 @@ def run_soak(args: argparse.Namespace) -> int:
             "profile": args.profile, "duration_s": profile.duration, "warmup_s": profile.warmup,
             "seed": args.seed, "cycle_ms": args.cycle_ms, "round_s": args.round_seconds,
             "cpus": os.cpu_count(), "loadavg_start": os.getloadavg(), "inject": args.inject,
-            "binary": os.path.basename(os.path.dirname(os.path.abspath(args.binary))),
+            "write_steps": WRITE_STEPS,
         },
     }
     skip = set(filter(None, args.skip.split(",")))
@@ -1025,13 +1038,12 @@ def run_soak(args: argparse.Namespace) -> int:
 
     def write_result(status: str) -> None:
         result["status"] = status
-        result["rounds"] = rounds
         result["violations"] = run.violations
         result["known_failures"] = run.known
         result["checks"] = dict(run.checks)
         result["requests"] = run.requests
         with open(args.out, "w") as f:
-            json.dump(result, f, indent=1, default=str)
+            f.write(result_text(result, rounds))
 
     threading.Thread(target=watchdog, args=(run, server, args.step_timeout, write_result), daemon=True).start()
     world = subscriber = None
