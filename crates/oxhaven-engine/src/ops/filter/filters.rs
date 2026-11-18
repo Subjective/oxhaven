@@ -452,6 +452,13 @@ enum Cells {
     Object(Vec<bool>),
     /// A `ZonedDateTime` column.
     Zoned(ArrayRef),
+    /// A column declared as `Object`, whose cells are of `class` (none for a column of
+    /// nulls alone), stored as that type's cells: only the validity says which are null,
+    /// the value Java reserves for a primitive's null being a value in a box.
+    Boxed {
+        class: Option<ColumnType>,
+        values: ArrayRef,
+    },
     /// A `BigInteger` or, with `decimal`, a `BigDecimal` column: each cell as its scale
     /// (0 for a `BigInteger`) and its unscaled integer in the fewest bytes.
     Big {
@@ -489,6 +496,12 @@ fn cells(column_type: &ColumnType, chunk: ArrayRef) -> Result<Cells, TableFailur
     // filter can only hold null.
     match column_type {
         ColumnType::ZonedDateTime => return Ok(Cells::Zoned(chunk)),
+        ColumnType::Object(class) => {
+            return Ok(Cells::Boxed {
+                class: class.as_deref().cloned(),
+                values: chunk,
+            })
+        }
         // A period has no convertor of its own: a match filter holds only null. Nor has a
         // table, which Java's `ObjectChunkMatchFilterFactory` would compare by identity.
         ColumnType::Period | ColumnType::Table(_) => {
@@ -698,6 +711,19 @@ fn matches(cells: &Cells, keys: &[Key], options: MatchOptions) -> Result<Vec<boo
                 .collect::<Result<_, _>>()?;
             Ok(values.iter().map(|value| keys.contains(value)).collect())
         }
+        Cells::Boxed { class, values } => {
+            let equal = |row: usize, key: &Key| boxed_equals(class.as_ref(), values, row, key);
+            (0..values.len())
+                .map(|row| {
+                    for key in keys {
+                        if equal(row, key)? {
+                            return Ok(true);
+                        }
+                    }
+                    Ok(false)
+                })
+                .collect()
+        }
         // Behavior: ObjectChunkMatchFilterFactory: `Objects.equals` with each value, and
         // `MatchFilter.ColumnTypeConvertorFactory#getConvertor` makes no value but null
         // for such a column.
@@ -711,6 +737,41 @@ fn matches(cells: &Cells, keys: &[Key], options: MatchOptions) -> Result<Vec<boo
                 .collect())
         }
     }
+}
+
+/// Whether the cell at `row` of a column declared as `Object`, whose cells are of `class`,
+/// equals `key`, a value of the `Object` convertor: `null` equals a null cell alone; an
+/// `Integer` ([`Key::Int`]), a `Double` ([`Key::Float`]) or a `String` ([`Key::Str`])
+/// equals only a cell of its own class with the same value. Case is never ignored, the
+/// key not being a `String` column's.
+///
+/// Behavior: ObjectChunkMatchFilterFactory (`Objects.equals`, whatever the options say of
+/// case), java.lang.Integer#equals, java.lang.String#equals, and java.lang.Double#equals,
+/// which compares bits with every NaN one value, so NaN equals NaN and `-0.0` is not `0.0`
+fn boxed_equals(
+    class: Option<&ColumnType>,
+    values: &ArrayRef,
+    row: usize,
+    key: &Key,
+) -> Result<bool, TableFailure> {
+    if let Key::Null = key {
+        return Ok(values.is_null(row));
+    }
+    if values.is_null(row) {
+        return Ok(false);
+    }
+    Ok(match (key, class) {
+        (Key::Int(key), Some(ColumnType::Int)) => {
+            i64::from(values.as_primitive::<Int32Type>().value(row)) == *key
+        }
+        (Key::Float(key), Some(ColumnType::Double)) => {
+            let value = values.as_primitive::<Float64Type>().value(row);
+            value.to_bits() == key.to_bits() || (value.is_nan() && key.is_nan())
+        }
+        (Key::Str(key), Some(ColumnType::String)) => values.as_string::<i32>().value(row) == key,
+        (Key::Int(_) | Key::Float(_) | Key::Str(_), _) => false,
+        (other, _) => return Err(wrong_key(other)),
+    })
 }
 
 /// Behavior: io.deephaven.util.compare.DoubleComparisons#compare for two non-null values:
@@ -838,7 +899,9 @@ fn in_range(cells: &Cells, op: RangeOp, pivot: &Key) -> Result<Vec<bool>, TableF
                 .collect()
         }
         // `resolve_range` makes no range filter of these.
-        Cells::Object(_) => return Err(failure("a range filter of a column of objects")),
+        Cells::Object(_) | Cells::Boxed { .. } => {
+            return Err(failure("a range filter of a column of objects"))
+        }
     })
 }
 
@@ -899,7 +962,11 @@ fn between(
                 .map(|value| keep(compare_big(value, &lower), compare_big(value, &upper)))
                 .collect()
         }
-        Cells::Bool(_) | Cells::Str(_) | Cells::Object(_) | Cells::Zoned(_) => {
+        Cells::Bool(_)
+        | Cells::Str(_)
+        | Cells::Object(_)
+        | Cells::Zoned(_)
+        | Cells::Boxed { .. } => {
             return Err(failure("a range of two ends needs a column of numbers"))
         }
     })

@@ -692,6 +692,7 @@ fn convert_literal_with(
                 Ok(Key::BigDecimal { scale, unscaled })
             }
         },
+        ColumnType::Object(_) => convert_object_literal(text),
         // Behavior: the convertor of every class without one of its own: `null` alone.
         other if class_name(other).is_some() => {
             if text == "null" {
@@ -716,6 +717,44 @@ fn convert_literal_with(
             "column type {other:?}"
         ),
     }
+}
+
+/// The value of `text` for a column declared as `Object`, whose class says how the cells
+/// compare with it: `null`; text starting with a double quote or a back tick is a `String`,
+/// the text without its first and last character, whatever they are; text with a `.` in it
+/// is a `Double` ([`Key::Float`]); otherwise an `Integer` ([`Key::Int`]). Text ending in
+/// `L` is read as a `long`, which never succeeds, the `L` being no digit. No value is
+/// null for being the reserved value of a primitive.
+///
+/// Behavior: the `Object` convertor of
+/// io.deephaven.engine.table.impl.select.MatchFilter.ColumnTypeConvertorFactory#getConvertor,
+/// with java.lang.Double#parseDouble, java.lang.Long#parseLong and
+/// java.lang.Integer#parseInt
+fn convert_object_literal(text: &str) -> Result<Key, String> {
+    if text == "null" {
+        return Ok(Key::Null);
+    }
+    if text.starts_with(['"', '`']) {
+        // `str.substring(1, str.length() - 1)`, in UTF-16 units.
+        let mut chars = text.chars();
+        chars.next();
+        return match chars.next_back() {
+            None => Err(format!("begin 1, end 0, length {}", text.len())),
+            Some(last) if last.len_utf16() > 1 => unported!(
+                "io.deephaven.engine.table.impl.select.MatchFilter.ColumnTypeConvertorFactory#getConvertor",
+                "an Object literal that ends in half of a character outside the Basic \
+                 Multilingual Plane: {text}"
+            ),
+            Some(_) => Ok(Key::Str(chars.as_str().to_string())),
+        };
+    }
+    if text.contains('.') {
+        return parse_java_double(text).map(Key::Float);
+    }
+    if text.ends_with('L') {
+        return Err(format!("For input string: \"{text}\""));
+    }
+    parse_java_integer(text, i32::MIN.into(), i32::MAX.into()).map(Key::Int)
 }
 
 /// The text of a quoted string literal.
