@@ -366,9 +366,15 @@ fn create_input_table_checks_the_request_and_says_what_is_not_ported() {
     let unknown_key = refused(request(keyed(&["Nope"])));
     assert_eq!(unknown_key.code(), Code::InvalidArgument);
 
-    let not_ported = refused(request(keyed(&[])));
-    assert_eq!(not_ported.code(), Code::Unimplemented, "{not_ported:?}");
-    assert!(not_ported.message().starts_with("not ported yet: "));
+    // Seen on Deephaven 42.9: without key columns the table holds the last row added, and
+    // a delete of a row without columns removes it.
+    let table = create_input_table(graph(), &request(keyed(&[])), None).unwrap();
+    assert!(table.input_table().unwrap().key_columns().is_empty());
+    add_table(&value(&table), &value(&captured_rows())).unwrap();
+    assert_eq!(contents(&table), [(2, None)]);
+    let no_columns: Arc<dyn Table> = oxhaven_engine::table::empty_table(1);
+    delete_table(&value(&table), &value(&no_columns)).unwrap();
+    assert!(contents(&table).is_empty());
 
     // a key column of doubles: a row per value, NaN among them
     let table = create_input_table(graph(), &request(keyed(&["V"])), None).unwrap();
