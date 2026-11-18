@@ -62,11 +62,13 @@ class Profile:
     # the first rounds after the warm-up.
     handles_slack: int
     # Seconds: the longest a barrier (a requested cycle, twice) may take, the longest the
-    # subscriber may go without an update of the time table, and the furthest the newest
-    # row it has seen may be behind the clock.
+    # subscriber may go without an update of the time table, the furthest the newest
+    # row it has seen may be behind the clock, and the longest time from one cycle to the
+    # next, as a listener in the server sees it.
     barrier_max: float
     update_gap_max: float
     lag_max: float
+    cycle_gap_max: float
     # The median barrier time of the last third may be at most this many times the median
     # of the first third (plus 50 ms).
     barrier_growth: float
@@ -75,16 +77,16 @@ class Profile:
 PROFILES = {
     "long": Profile(
         duration=2700, warmup=420, rss_slope_mb_per_hour=24.0, cpu_growth=0.20, handles_slack=8,
-        barrier_max=10.0, update_gap_max=10.0, lag_max=10.0, barrier_growth=2.0,
+        barrier_max=10.0, update_gap_max=10.0, lag_max=10.0, cycle_gap_max=5.0, barrier_growth=2.0,
     ),
     "short": Profile(
         duration=120, warmup=40, rss_slope_mb_per_hour=600.0, cpu_growth=0.60, handles_slack=8,
-        barrier_max=20.0, update_gap_max=20.0, lag_max=20.0, barrier_growth=3.0,
+        barrier_max=20.0, update_gap_max=20.0, lag_max=20.0, cycle_gap_max=10.0, barrier_growth=3.0,
     ),
 }
 
 # Every unary call of the client gets this deadline; a step of the workload that does not end
-# within STEP_TIMEOUT ends the run (the watchdog), whatever kind of call it waits in.
+# within STEP_TIMEOUT (--step-timeout) ends the run (the watchdog), whatever call it waits in.
 RPC_TIMEOUT = 60.0
 STEP_TIMEOUT = 180.0
 SHUTDOWN_TIMEOUT = 15.0
@@ -259,6 +261,15 @@ def count_and_bound_client_calls(run: Run) -> None:
 # Comparing two results exactly.
 
 
+def fetch_shared(session: Session, ticket: SharedTicket) -> Table:
+    """The table another session published under `ticket`. The client's table then names the
+    shared ticket itself, which is no export of this session: releasing it is refused, by
+    the Java server as well, so the table is marked as needing no release."""
+    t = session.fetch_table(ticket)
+    t._closed = True
+    return t
+
+
 def canonical(t: pa.Table, keys: list[str] | None) -> pa.Table:
     t = t.combine_chunks()
     if keys:
@@ -383,7 +394,7 @@ class World:
         if console:
             for name, table in list(self.time.items()) + [("trades", self.inputs["trades"])]:
                 self.s.bind_table(f"soak_{name}", table)
-            self.s.run_script(CONSOLE_SETUP)
+            self.s.run_script(CONSOLE_SETUP.replace("TICK_NS", str(self.period_ns // 4)))
 
     @staticmethod
     def time_agg(t: Table) -> Table:
@@ -515,6 +526,15 @@ class World:
         if got != want:
             self.run.violate("correctness", "rollup view", {"got": sorted(got.items(), key=str), "want": sorted(want.items(), key=str)})
 
+    def cycle_stats(self) -> tuple[int, float]:
+        """How many cycles the listener in the server has been called in, and the longest
+        time between two of them since this was last asked."""
+        self.s.run_script(CONSOLE_CYCLES)
+        t = self.s.open_table("soak_cycle_stats")
+        row = self.fetch(t).to_pylist()[0]
+        t.close()
+        return row["N"], row["MaxGap"]
+
     def console_round(self, n: int) -> None:
         """A script as a user runs them: tables made and dropped in a function, a global
         assigned again (the table it held is released), and results the script checks."""
@@ -526,6 +546,29 @@ CONSOLE_SETUP = """
 from deephaven import agg as _soak_agg, ring_table as _soak_ring_table
 soak_ring = _soak_ring_table(soak_tt, 256)
 soak_rollup = soak_trades.rollup(aggs=[_soak_agg.sum_("Qty"), _soak_agg.count_("N")], by=["Grp", "Sym"])
+
+# A listener the update graph calls in every cycle in which this table has a new row, which
+# is every cycle: its period is a quarter of the cycle's. It keeps the count of cycles and
+# the longest time between two of them.
+import time as _soak_time
+from deephaven import time_table as _soak_time_table
+from deephaven.table_listener import listen as _soak_listen
+_soak_cycles = {"n": 0, "last": None, "max_gap": 0.0}
+def _soak_on_cycle(update, is_replay):
+    now = _soak_time.monotonic()
+    if _soak_cycles["last"] is not None:
+        _soak_cycles["max_gap"] = max(_soak_cycles["max_gap"], now - _soak_cycles["last"])
+    _soak_cycles["last"] = now
+    _soak_cycles["n"] += 1
+soak_tick = _soak_time_table(TICK_NS, blink_table=True)
+soak_cycle_listener = _soak_listen(soak_tick, _soak_on_cycle)
+"""
+
+CONSOLE_CYCLES = """
+from deephaven import new_table as _soak_new_table
+from deephaven.column import long_col as _soak_long_col, double_col as _soak_double_col
+soak_cycle_stats = _soak_new_table([_soak_long_col("N", [_soak_cycles["n"]]), _soak_double_col("MaxGap", [_soak_cycles["max_gap"]])])
+_soak_cycles["max_gap"] = 0.0
 """
 
 CONSOLE_SNAPSHOT = """
@@ -607,8 +650,8 @@ class Subscriber:
             def on_error(self, error: Exception) -> None:
                 outer.run.violate("requests", "subscription to the aggregation failed", str(error)[:500])
 
-        self.tt = self.s.fetch_table(world.shared["tt"])
-        self.agg = self.s.fetch_table(world.shared["agg_by_sym"])
+        self.tt = fetch_shared(self.s, world.shared["tt"])
+        self.agg = fetch_shared(self.s, world.shared["agg_by_sym"])
         self.handles = [TableListenerHandle(self.tt, Clock()), TableListenerHandle(self.agg, Replica())]
         for h in self.handles:
             h.start()
@@ -646,8 +689,6 @@ class Subscriber:
     def close(self) -> None:
         for h in self.handles:
             h.stop()
-        self.tt.close()
-        self.agg.close()
         self.s.close()
 
 
@@ -681,9 +722,8 @@ def churn_round(run: Run, url: str, world: World, rng: random.Random, n: int, le
     run.beat("churn: session")
     s = open_session(url)
     held: list[Table] = []
-    trades = s.fetch_table(world.shared["trades"])
-    dims = s.fetch_table(world.shared["dims"])
-    held += [trades, dims]
+    trades = fetch_shared(s, world.shared["trades"])
+    dims = fetch_shared(s, world.shared["dims"])
 
     # A chain of ticking operations over the shared tables, read once.
     run.beat("churn: ticking chain")
@@ -786,7 +826,7 @@ class Abandoned:
         server = parse_url(self.url)
         s = Session(host=server.host, port=server.port, auth_type=PSK_AUTH_TYPE, auth_token=server.psk, never_timeout=False)
         t = s.empty_table(STATIC_ROWS).update(["K = (int)(ii % 100)", "V = ii", 'S = "s" + (ii % 50)'])
-        self.sessions.append((time.monotonic(), s, [t, t.sort("K"), t.sum_by("K") if False else t.view(["K", "V"]).sum_by("K")]))
+        self.sessions.append((time.monotonic(), s, [t, t.sort("K"), t.view(["K", "V"]).sum_by("K")]))
         self.made += 1
 
     def forget_expired(self) -> None:
@@ -889,19 +929,34 @@ def judge(rounds: list[dict], profile: Profile, subscriber: dict, cycle_ms: int)
         violate("liveness", "barriers get slower", out["barrier_s"])
 
     seconds = rounds[-1]["t"]
-    out["cycles"] = {
-        "seen_by_subscriber": subscriber["updates"], "expected_at_most": int(seconds * 1000 / cycle_ms) + 1,
+    # The server sends a subscriber at most one update a second
+    # (BarrageRequestHelpers#DEFAULT_MIN_UPDATE_INTERVAL_MS), whatever the cycle.
+    out["subscriber"] = {
+        "updates": subscriber["updates"], "expected_about": int(seconds),
         "max_gap_s": round(subscriber["max_gap"], 3), "max_lag_s": round(subscriber["max_lag"], 3),
         "allowed_gap_s": profile.update_gap_max, "allowed_lag_s": profile.lag_max,
     }
     if subscriber["max_gap"] > profile.update_gap_max:
-        violate("liveness", "the time table went too long without an update", out["cycles"])
+        violate("liveness", "the time table went too long without an update", out["subscriber"])
     if subscriber["max_lag"] > profile.lag_max:
-        violate("liveness", "the time table fell behind the clock", out["cycles"])
-    # A cycle may add several rows, so fewer updates than periods is no failure by itself;
-    # fewer than a fifth means the cycles do not keep the period at all.
-    if subscriber["updates"] < out["cycles"]["expected_at_most"] / 5:
-        violate("liveness", "far fewer cycles than the period allows", out["cycles"])
+        violate("liveness", "the time table fell behind the clock", out["subscriber"])
+    if subscriber["updates"] < seconds / 5:
+        violate("liveness", "far fewer updates than one a second", out["subscriber"])
+    # Cycles are counted by a listener in the server, so only with a console.
+    if rounds[-1].get("cycles") is not None:
+        gaps = [r["cycle_gap_s"] for r in rounds]
+        first, last = statistics.median(third(gaps, 0)), statistics.median(third(gaps, 2))
+        out["cycles"] = {
+            "count": rounds[-1]["cycles"], "expected_about": int(seconds * 1000 / cycle_ms),
+            "max_gap_s": round(max(gaps), 3), "round_max_gap_first_third_s": round(first, 3),
+            "round_max_gap_last_third_s": round(last, 3), "allowed_gap_s": profile.cycle_gap_max,
+        }
+        if max(gaps) > profile.cycle_gap_max:
+            violate("liveness", "a cycle took too long to come", out["cycles"])
+        if last > profile.barrier_growth * first + 0.05:
+            violate("liveness", "cycles get slower", out["cycles"])
+        if rounds[-1]["cycles"] < out["cycles"]["expected_about"] / 2:
+            violate("liveness", "fewer than half the cycles the period allows", out["cycles"])
     return out, bad
 
 
@@ -909,19 +964,20 @@ def judge(rounds: list[dict], profile: Profile, subscriber: dict, cycle_ms: int)
 # The run.
 
 
-def watchdog(run: Run, server: Server, write_result: Callable[[str], None]) -> None:
-    """Ends the run when one step of the workload has not finished in STEP_TIMEOUT: a
+def watchdog(run: Run, server: Server, limit: float, write_result: Callable[[str], None]) -> None:
+    """Ends the run when one step of the workload has not finished in `limit` seconds: a
     request that never returns is a failure, not a wait."""
     while True:
         time.sleep(2)
         at, what = run.heartbeat
         if what == "done":
             return
-        if time.monotonic() - at > STEP_TIMEOUT:
+        if time.monotonic() - at > limit:
             run.violate("liveness", f"stalled in step: {what}", {"seconds": round(time.monotonic() - at, 1)})
             faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
             write_result("stalled")
             server.kill()
+            print("soak stalled: the server was killed; the stacks of the driver's threads are above", flush=True)
             os._exit(1)
 
 
@@ -941,6 +997,7 @@ def run_soak(args: argparse.Namespace) -> int:
     elif args.warmup is not None:
         profile = Profile(**{**profile.__dict__, "warmup": args.warmup})
     faulthandler.enable()
+    faulthandler.register(signal.SIGUSR1, all_threads=True)  # kill -USR1: every thread's stack
     log_path = args.server_log or os.path.join(tempfile.mkdtemp(prefix="soak-"), "server.log")
     run = Run()
     count_and_bound_client_calls(run)
@@ -968,7 +1025,7 @@ def run_soak(args: argparse.Namespace) -> int:
         with open(args.out, "w") as f:
             json.dump(result, f, indent=1, default=str)
 
-    threading.Thread(target=watchdog, args=(run, server, write_result), daemon=True).start()
+    threading.Thread(target=watchdog, args=(run, server, args.step_timeout, write_result), daemon=True).start()
     world = subscriber = None
     abandoned = Abandoned(run, server.url)
     leak: list | None = [] if args.inject == "leak" else None
@@ -1015,7 +1072,7 @@ def run_soak(args: argparse.Namespace) -> int:
             abandoned.forget_expired()
             if args.inject == "stall" and n == 3:
                 run.beat("injected stall")
-                time.sleep(STEP_TIMEOUT + 10)
+                time.sleep(args.step_timeout + 10)
             collect_garbage()
             # The quiet point: this round's tables are released and a cycle has passed.
             run.beat("barrier")
@@ -1034,13 +1091,22 @@ def run_soak(args: argparse.Namespace) -> int:
                 break
             stats = subscriber.stats()
             state["subscriber"] = stats
-            rounds.append({"t": run.now(), "work_s": round(work, 3), "barrier_s": round(barrier_s, 4),
+            cycles: dict[str, Any] = {}
+            if console:
+                try:
+                    count, gap = world.cycle_stats()
+                    cycles = {"cycles": count, "cycle_gap_s": round(gap, 4)}
+                except Exception as e:  # noqa: BLE001
+                    run.violate("requests", "reading the cycle count failed", failure(e))
+                    cycles = {"cycles": rounds[-1]["cycles"] if rounds else 0, "cycle_gap_s": 0.0}
+            rounds.append({"t": run.now(), "work_s": round(work, 3), "barrier_s": round(barrier_s, 4), **cycles,
                            "cpu_round_s": round(sample["cpu_s"] - last_cpu, 3), **sample,
                            "updates": stats["updates"], "load": os.getloadavg()[0]})
             last_cpu = sample["cpu_s"]
             if n % 15 == 0:
                 print(f"t={run.now():7.0f}s round {n} rss={sample['rss_kb'] / 1024:.1f}MB cpu={sample['cpu_s']:.0f}s "
-                      f"updates={stats['updates']} requests={run.requests} violations={len(run.violations)}", flush=True)
+                      f"cycles={cycles.get('cycles', '-')} updates={stats['updates']} requests={run.requests} "
+                      f"violations={len(run.violations)}", flush=True)
                 write_result("running")
         result["meta"]["abandoned_sessions"] = abandoned.made
     except Exception as e:  # noqa: BLE001 - the set-up itself failed
@@ -1084,11 +1150,16 @@ def print_summary(result: dict) -> None:
           f"console {'yes' if meta.get('console') else 'no'}, {meta['cpus']} cpus, "
           f"load {meta['loadavg_start'][0]:.1f} -> {meta.get('loadavg_end', [0])[0]:.1f}")
     if s.get("rss_mb"):
-        r, c, cy, b = s["rss_mb"], s["cpu"], s["cycles"], s["barrier_s"]
+        r, c, sb, b, cy = s["rss_mb"], s["cpu"], s["subscriber"], s["barrier_s"], s.get("cycles")
         print(f"  rounds {s['rounds']}, requests {result['requests']}, checks {sum(result['checks'].values())} "
               f"({len(result['checks'])} kinds), sessions abandoned {meta.get('abandoned_sessions', 0)}")
-        print(f"  cycles seen by the subscriber {cy['seen_by_subscriber']} (at most {cy['expected_at_most']}), "
-              f"longest gap {cy['max_gap_s']}s, furthest behind {cy['max_lag_s']}s")
+        if cy:
+            print(f"  cycles {cy['count']} (the period alone gives about {cy['expected_about']}; a write asks for one), longest time between two "
+                  f"{cy['max_gap_s']}s (allowed {cy['allowed_gap_s']}), per-round longest "
+                  f"{cy['round_max_gap_first_third_s']}s -> {cy['round_max_gap_last_third_s']}s")
+        else:
+            print("  cycles: not counted (the server has no console to count them in)")
+        print(f"  subscriber: {sb['updates']} updates, longest gap {sb['max_gap_s']}s, furthest behind {sb['max_lag_s']}s")
         print(f"  rss MB: start {r['start']}, after warm-up {r['after_warmup']}, end {r['end']}, peak {r['peak']}, "
               f"slope {r['slope_mb_per_hour']} MB/h (allowed {r['allowed_mb_per_hour']})")
         print(f"  cpu: {c['total_s']}s, per round {c['per_round_first_third_s']}s -> {c['per_round_last_third_s']}s "
@@ -1118,7 +1189,7 @@ def selftest(_: argparse.Namespace) -> int:
     profile = PROFILES["long"]
     rng = random.Random(7)
 
-    def series(rss_per_hour=0.0, cpu_factor=1.0, barrier_end=0.02, fds_end=40, spike=False):
+    def series(rss_per_hour=0.0, cpu_factor=1.0, barrier_end=0.02, fds_end=40, spike=False, cycle_share=1.0, cycle_gap_end=0.0):
         rows = []
         for i in range(600):
             t = i * 4.5
@@ -1128,10 +1199,11 @@ def selftest(_: argparse.Namespace) -> int:
                 "hwm_kb": 260 * 1024, "cpu_s": i * 0.5, "cpu_round_s": 0.5 * (1 + (cpu_factor - 1) * frac) + rng.uniform(-0.05, 0.05),
                 "fds": 40 + int((fds_end - 40) * frac), "threads": 12,
                 "barrier_s": 0.02 + (barrier_end - 0.02) * frac + rng.uniform(0, 0.005),
+                "cycles": int(t * 10 * cycle_share), "cycle_gap_s": 0.12 + cycle_gap_end * frac + rng.uniform(0, 0.02),
             })
         return rows
 
-    sub = {"updates": 20000, "max_gap": 0.4, "max_lag": 0.5}
+    sub = {"updates": 2700, "max_gap": 1.1, "max_lag": 0.5}
     cases = [
         ("steady", series(), sub, []),
         ("steady with spikes", series(spike=True), sub, []),
@@ -1139,9 +1211,12 @@ def selftest(_: argparse.Namespace) -> int:
         ("processor time up by half", series(cpu_factor=1.5), sub, ["processor time per round climbs"]),
         ("barriers twenty times slower", series(barrier_end=0.4), sub, ["barriers get slower"]),
         ("open files climb", series(fds_end=80), sub, ["fds do not return to their baseline"]),
-        ("subscriber starved", series(), {"updates": 20000, "max_gap": 30.0, "max_lag": 31.0},
+        ("subscriber starved", series(), {"updates": 2000, "max_gap": 30.0, "max_lag": 31.0},
          ["the time table went too long without an update", "the time table fell behind the clock"]),
-        ("cycles stopped", series(), {"updates": 900, "max_gap": 0.4, "max_lag": 0.5}, ["far fewer cycles than the period allows"]),
+        ("subscriber gets a tenth of the updates", series(), {"updates": 270, "max_gap": 1.1, "max_lag": 0.5}, ["far fewer updates than one a second"]),
+        ("one cycle in three runs", series(cycle_share=0.33), sub, ["fewer than half the cycles the period allows"]),
+        ("cycles come ever later", series(cycle_gap_end=1.0), sub, ["cycles get slower"]),
+        ("a cycle never came", series(cycle_gap_end=12.0), sub, ["a cycle took too long to come", "cycles get slower"]),
     ]
     failed = 0
     for name, rows, subscriber, want in cases:
@@ -1174,7 +1249,9 @@ def main(argv: list[str]) -> int:
     r.add_argument("--warmup", type=float, help="seconds left out of the trend fits, instead of the profile's")
     r.add_argument("--seed", type=int, default=1)
     r.add_argument("--cycle-ms", type=int, default=100, help="the server's --cycle-ms and the time tables' period")
-    r.add_argument("--round-seconds", type=float, default=4.0, help="one round of the workload starts this often")
+    r.add_argument("--round-seconds", type=float, default=2.0, help="one round of the workload starts this often")
+    r.add_argument("--step-timeout", type=float, default=STEP_TIMEOUT,
+                   help="seconds one step of the workload may take before the run is ended as stalled")
     r.add_argument("--console", choices=["auto", "python", "none"], default="auto", help="the server's --console")
     r.add_argument("--server-log", help="where the server's output goes (default: a temporary directory)")
     r.add_argument("--inject", choices=["leak", "mismatch", "stall"],
@@ -1185,7 +1262,14 @@ def main(argv: list[str]) -> int:
     rp.add_argument("file")
     sub.add_parser("selftest")
     args = p.parse_args(argv[1:])
-    return {"run": run_soak, "report": report, "selftest": selftest}[args.cmd](args)
+    code = {"run": run_soak, "report": report, "selftest": selftest}[args.cmd](args)
+    if args.cmd == "run":
+        # Not through the interpreter's shutdown: it would finalize the client's tables of
+        # sessions the server has ended, each with a call that waits for its deadline.
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(code)
+    return code
 
 
 if __name__ == "__main__":
