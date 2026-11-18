@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A calendar written for Oxhaven's tests: not a real exchange's. -->
+<calendar>
+    <name>OXTEST_NY</name>
+    <timeZone>America/New_York</timeZone>
+    <description>
+        Test calendar with a lunch break
+    </description>
+    <firstValidDate>2023-01-01</firstValidDate>
+    <lastValidDate>2025-12-31</lastValidDate>
+    <default>
+        <businessTime><open>09:30</open><close>12:00</close></businessTime>
+        <businessTime><open>13:00</open><close>16:00</close></businessTime>
+        <weekend>Saturday</weekend>
+        <weekend> sunday </weekend>
+    </default>
+    <holiday>
+        <date>2024-01-01</date>
+    </holiday>
+    <holiday>
+        <date>2024-07-03</date>
+        <businessTime><open>09:30</open><close>13:00</close></businessTime>
+    </holiday>
+    <holiday>
+        <date>20241225</date>
+    </holiday>
+    <holiday>
+        <date>2024-11-29</date>
+        <businessTime><open>09:30</open><close>12:00</close></businessTime>
+    </holiday>
+    <holiday>
+        <date>2023-12-29</date>
+    </holiday>
+</calendar>

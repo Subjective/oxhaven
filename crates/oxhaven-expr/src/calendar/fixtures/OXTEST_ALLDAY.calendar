@@ -1,0 +1,18 @@
+<calendar>
+    <name>OXTEST_ALLDAY</name>
+    <timeZone>America/New_York</timeZone>
+    <description>All day, every day</description>
+    <firstValidDate>2023-06-15</firstValidDate>
+    <lastValidDate>2026-02-10</lastValidDate>
+    <default>
+        <businessTime><open>00:00</open><close>23:59:59.999999999</close><includeClose>true</includeClose></businessTime>
+    </default>
+    <holiday>
+        <date>2024-03-10</date>
+        <businessTime><open>01:00</open><close>03:30</close></businessTime>
+    </holiday>
+    <holiday>
+        <date>2024-11-03</date>
+        <businessTime><open>00:30</open><close>01:30</close><includeClose>TRUE</includeClose></businessTime>
+    </holiday>
+</calendar>

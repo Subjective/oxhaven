@@ -49,6 +49,8 @@ protox = "0.10.0"
 # Embeds CPython for the Python console; only built with the `python` feature of the server.
 pyo3 = { version = "0.27.2", features = ["auto-initialize"] }
 regex = "1"
+# Reads the XML of business calendar files (MIT OR Apache-2.0).
+roxmltree = "0.21.2"
 serde_json = "1"
 tokio = { version = "1.54", features = ["fs", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-stream = { version = "0.1.19", features = ["net"] }

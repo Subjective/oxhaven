@@ -14,6 +14,7 @@ chrono.workspace = true
 chrono-tz.workspace = true
 oxhaven-column = { path = "../oxhaven-column" }
 oxhaven-contracts = { path = "../oxhaven-contracts" }
+roxmltree.workspace = true
 
 [dev-dependencies]
 # Exact float parsing: the recorded Java results are compared bit for bit.

@@ -1,0 +1,19 @@
+<calendar>
+    <name>oxTest_odd</name>
+    <timeZone>JP</timeZone>
+    <default>
+        <businessPeriod>08:00,17:00</businessPeriod>
+        <weekend>FRIDAY</weekend>
+    </default>
+    <holiday>
+        <date>20240105</date>
+        <businessPeriod>08:00,10:00</businessPeriod>
+        <businessPeriod>11:00,12:00</businessPeriod>
+    </holiday>
+    <holiday>
+        <date>2024-03-04</date>
+    </holiday>
+    <holiday>
+        <date>2023-12-28</date>
+    </holiday>
+</calendar>
