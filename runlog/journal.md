@@ -1423,3 +1423,7 @@ Task 11.7 found the refusal a user was most likely to hit: the web IDE's preview
 ## 2026-11-18 10:04 UTC: pull request 174 merged
 
 Seven green checks on head a5b8220d, the replay among them (it had not run locally). Main is at b121db40.
+
+## 2026-11-18 10:08 UTC: pull request 175 merged
+
+Seven green checks on head 80489e22. Main is at 89a63291. Pull requests 174 and 175 were each checked before the other merged; they merge cleanly, and tasks 11.8 and 11.9 run every gate on the combined main before they report.
