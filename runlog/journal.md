@@ -1419,3 +1419,7 @@ Task 11.6 was too large as scoped: half its context went to listing and probing 
 ## 2026-11-18 10:02 UTC: task 11.7 reported, pull request 175; task 11.9 started
 
 Task 11.7 found the refusal a user was most likely to hit: the web IDE's preview of any table with a Duration, Period, ZoneId, Object or table column. It closed 11 of 30 refusals in its scope, parked 10 on owner items (three new: 7.14 to 7.16) and handed 9 engine leftovers to task 11.9, started from its branch. All gates passed locally.
+
+## 2026-11-18 10:04 UTC: pull request 174 merged
+
+Seven green checks on head a5b8220d, the replay among them (it had not run locally). Main is at b121db40.
