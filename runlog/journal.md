@@ -1467,3 +1467,7 @@ The soak test is a Python driver beside the benchmark. Its first 45-minute run f
 ## 2026-11-18 16:10 UTC: pull request 180 merged; the approved gap-closing list is done
 
 Seven green checks on head 91d81c99; oracle-replay took 11 min 11 s with the short soak step and a cold build. Main is at fa0fd060. Everything Josh approved on 2026-11-18 05:39 UTC is merged: pull requests 168 to 180. What remains needs his answers (owner questions 7.1 to 7.21, the calendar card) or his go-ahead for larger pieces (big-number arithmetic, vectors of vectors, a backtracking regex dependency, performance).
+
+## 2026-11-18 16:15 UTC: Josh answered the calendar card; tasks 12.4 and 12.5 running
+
+Josh chose "Write all three ourselves" for Deephaven's built-in business calendars (owner question 7.9). Task 12.5 writes them from public facts; Deephaven's files (Deephaven Community License) are read only for what a user can observe and are not copied. Task 12.4 is the two-hour soak run that settles what 12.3 left open.
