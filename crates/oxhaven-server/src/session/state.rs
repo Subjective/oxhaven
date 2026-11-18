@@ -1,7 +1,7 @@
 //! One client session: its token, its export table, its export listeners and the things to
 //! close when it ends.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -45,7 +45,47 @@ pub struct OnCloseId(u64);
 struct ExportTable {
     exports: BTreeMap<i32, Export>,
     /// Ids that were released. Their exports are gone, but the ids cannot be reused.
-    released: BTreeSet<i32>,
+    released: ReleasedIds,
+}
+
+/// A set of export ids kept as ranges: each entry is the first and the last id of a run of
+/// ids that follow each other, and no two runs touch. A client numbers its exports upwards
+/// and the server its own downwards, and nearly all are released in the end, so the set
+/// stays a few ranges however many exports a session has had; one entry per id would grow
+/// for as long as the session lives.
+///
+/// Behavior: the `releasedExports` row set of `io.deephaven.server.session.SessionState`
+#[derive(Default)]
+struct ReleasedIds {
+    ranges: BTreeMap<i32, i32>,
+}
+
+impl ReleasedIds {
+    fn contains(&self, id: i32) -> bool {
+        let at_or_before = self.ranges.range(..=id).next_back();
+        at_or_before.is_some_and(|(_, &last)| id <= last)
+    }
+
+    fn insert(&mut self, id: i32) {
+        if self.contains(id) {
+            return;
+        }
+        let (mut first, mut last) = (id, id);
+        if let Some((&before, &end)) = self.ranges.range(..id).next_back() {
+            if end.checked_add(1) == Some(id) {
+                first = before;
+            }
+        }
+        let after = id.checked_add(1).and_then(|next| self.ranges.remove(&next));
+        if let Some(end) = after {
+            last = end;
+        }
+        self.ranges.insert(first, last);
+    }
+
+    fn clear(&mut self) {
+        self.ranges.clear();
+    }
 }
 
 #[derive(Default)]
@@ -157,7 +197,7 @@ impl Session {
             if let Some(export) = table.exports.get(&export_id) {
                 return Ok(export.clone());
             }
-            if table.released.contains(&export_id) {
+            if table.released.contains(export_id) {
                 return Ok(Export::released(self, export_id));
             }
             if export_id < 0 {
@@ -182,7 +222,7 @@ impl Session {
         if let Some(export) = table.exports.get(&export_id) {
             return Ok(Some(export.clone()));
         }
-        if table.released.contains(&export_id) {
+        if table.released.contains(export_id) {
             return Ok(Some(Export::released(self, export_id)));
         }
         Ok(None)
@@ -198,7 +238,7 @@ impl Session {
         {
             let mut table = lock(&self.table);
             self.check_live()?;
-            if table.released.contains(&export_id) {
+            if table.released.contains(export_id) {
                 return Ok(Export::released(self, export_id));
             }
             if let Some(existing) = table.exports.get(&export_id) {
@@ -239,7 +279,7 @@ impl Session {
         let found = {
             let table = lock(&self.table);
             self.check_live()?;
-            if table.released.contains(&export_id) {
+            if table.released.contains(export_id) {
                 Some(Export::released(self, export_id))
             } else {
                 table.exports.get(&export_id).cloned()
@@ -389,6 +429,12 @@ impl Session {
     #[cfg(test)]
     pub(super) fn export_count(&self) -> usize {
         lock(&self.table).exports.len()
+    }
+
+    /// The number of ranges the released ids are kept as, for tests.
+    #[cfg(test)]
+    pub(super) fn released_range_count(&self) -> usize {
+        lock(&self.table).released.ranges.len()
     }
 
     /// The number of registered on-close callbacks, for tests.
