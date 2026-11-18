@@ -109,6 +109,17 @@ enum KeyClass {
     /// A table, compared by identity (`Object#equals` of a table is that), so by its
     /// handle. The class the column's definition names must be the same on both sides.
     Table(TableClass),
+    /// A `java.time` class, compared by `equals`: a date, a time, a date and time, a
+    /// duration and a day by their numbers, a zone by its id (`Z` is not `UTC`), a zoned
+    /// date and time by its instant and zone, a period by its three fields.
+    LocalDate,
+    LocalTime,
+    LocalDateTime,
+    Duration,
+    DayOfWeek,
+    ZoneId,
+    ZonedDateTime,
+    Period,
 }
 
 /// Behavior: io.deephaven.engine.table.impl.sources.ReinterpretUtils#maybeConvertToPrimitive,
@@ -126,6 +137,17 @@ fn key_class(column_type: &ColumnType) -> KeyClass {
         ColumnType::Double => KeyClass::Double,
         ColumnType::String => KeyClass::Text,
         ColumnType::Table(class) => KeyClass::Table(*class),
+        // seen on Deephaven 42.9: `where_in` and `where_not_in` match these by `equals`
+        ColumnType::LocalDate => KeyClass::LocalDate,
+        ColumnType::LocalTime => KeyClass::LocalTime,
+        ColumnType::LocalDateTime => KeyClass::LocalDateTime,
+        ColumnType::Duration => KeyClass::Duration,
+        ColumnType::DayOfWeek => KeyClass::DayOfWeek,
+        ColumnType::ZoneId => KeyClass::ZoneId,
+        ColumnType::ZonedDateTime => KeyClass::ZonedDateTime,
+        ColumnType::Period => KeyClass::Period,
+        // `BigDecimal#equals` tells `1.0` from `1.00`; a vector is equal by its elements,
+        // an array only to itself
         other => unported!(
             "io.deephaven.engine.table.impl.select.DynamicWhereFilter#beginOperation",
             "a key column of type {other:?}"

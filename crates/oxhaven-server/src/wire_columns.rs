@@ -258,15 +258,6 @@ fn to_wire_at(
     Ok(Arc::new(converted))
 }
 
-/// The text Java sends for a table.
-///
-/// Behavior: `io.deephaven.engine.table.impl.QueryTable#toString`, by way of
-/// `io.deephaven.engine.table.impl.BaseTable#getDescription`. Observed for the
-/// constituents of `partitionBy` and of a transform; a table of another class (an
-/// uncoalesced source table, say) has another text, and none of them can be a constituent
-/// here yet.
-const TABLE_TEXT: &str = "QueryTable";
-
 /// The cells of a column of tables as Java sends them: the text of each table, and a null
 /// for a null. The handles the engine stores stay in the server.
 ///
@@ -277,7 +268,7 @@ fn table_texts(stored: &ArrayRef) -> Result<ArrayRef, TableFailure> {
         .ok_or_else(|| failure(format!("a column of tables holds {}", stored.data_type())))?;
     let texts: StringArray = handles
         .iter()
-        .map(|handle| handle.map(|_| TABLE_TEXT))
+        .map(|handle| handle.map(|_| java_text::TABLE_TEXT))
         .collect();
     Ok(Arc::new(texts))
 }

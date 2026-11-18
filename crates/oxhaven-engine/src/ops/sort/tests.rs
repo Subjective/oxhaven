@@ -277,6 +277,108 @@ fn zoned_date_times_sort_by_instant_then_offset_then_zone() {
 
 /// Seen on Java 42.9: `P is not a sortable type: class java.time.Period`, and likewise
 /// for a `ZoneId` and an `Object` column.
+/// `BigDecimal` cells of decimal texts (an unscaled integer of at most 127 bits).
+fn big_decimals(texts: &[Option<&str>]) -> ArrayRef {
+    use oxhaven_column::java_values::big_decimal_cell;
+    let cells = texts.iter().map(|text| {
+        text.map(|text| {
+            let (mantissa, exponent) = text.split_once('E').unwrap_or((text, "0"));
+            let scale = mantissa.split_once('.').map_or(0, |(_, f)| f.len() as i32)
+                - exponent.parse::<i32>().unwrap();
+            let unscaled: i128 = mantissa.replace('.', "").parse().unwrap();
+            big_decimal_cell(scale, &unscaled.to_be_bytes())
+        })
+    });
+    Arc::new(arrow::array::BinaryArray::from_iter(cells))
+}
+
+/// `BigInteger` cells of decimal texts.
+fn big_integers(texts: &[Option<&str>]) -> ArrayRef {
+    use oxhaven_column::java_values::big_integer_cell;
+    let cells = texts
+        .iter()
+        .map(|text| text.map(|text| big_integer_cell(text.parse().unwrap())));
+    Arc::new(arrow::array::BinaryArray::from_iter(cells))
+}
+
+/// Seen on Deephaven 42.9, sorting a table of these rows: numbers order by value whatever
+/// their scale (`1.0` and `1.00` are a tie, as are `0` and `-0.000`), ties keep the parent's
+/// order in both directions, and null is first ascending.
+#[test]
+fn big_decimals_and_big_integers_sort_by_value() {
+    let decimals = big_decimals(&[
+        Some("1.0"),
+        Some("-2.50"),
+        Some("1.00"),
+        Some("0"),
+        None,
+        Some("-0.000"),
+        Some("1E+3"),
+        Some("999.9999"),
+        Some("-2.5"),
+    ]);
+    let table = tagged(ColumnType::BigDecimal, decimals);
+    // Java's row order (by index): 4 1 8 3 5 0 2 7 6, and 6 7 0 2 3 5 1 8 4
+    assert_eq!(sorted_tags(&table, &ascending()), "ebidfachg");
+    assert_eq!(sorted_tags(&table, &descending()), "ghacdfbie");
+    let integers = big_integers(&[
+        Some("5"),
+        Some("-12345678901234567890"),
+        Some("0"),
+        Some("5"),
+        None,
+        Some("-1"),
+        Some("12345678901234567890"),
+        Some("7"),
+        Some("-2"),
+    ]);
+    let table = tagged(ColumnType::BigInteger, integers);
+    // Java's row order: 6 7 0 3 2 5 8 1 4 descending, 4 1 8 5 2 0 3 7 6 ascending
+    assert_eq!(sorted_tags(&table, &descending()), "ghadcfibe");
+    assert_eq!(sorted_tags(&table, &ascending()), "ebifcadhg");
+}
+
+/// Seen on Deephaven 42.9: the absolute sort of a `char` column orders as the plain one,
+/// null first.
+#[test]
+fn an_absolute_sort_of_chars_is_the_plain_sort() {
+    let chars = [Some(97), Some(99), Some(101), Some(98), None, Some(97)];
+    let table = tagged(
+        ColumnType::Char,
+        Arc::new(UInt16Array::from(chars.to_vec())),
+    );
+    // Java's row order: 4 0 5 3 1 2
+    assert_eq!(sorted_tags(&table, &absolute()), "eafdbc");
+}
+
+/// Seen on Deephaven 42.9 for the tables of a partition aggregation.
+#[test]
+fn tables_are_not_sortable() {
+    use arrow::array::Int64Array;
+    use oxhaven_contracts::schema::TableClass;
+    for (class, text) in [
+        (
+            TableClass::QueryTable,
+            "class io.deephaven.engine.table.impl.QueryTable",
+        ),
+        (
+            TableClass::Table,
+            "interface io.deephaven.engine.table.Table",
+        ),
+    ] {
+        let table = tagged(
+            ColumnType::Table(class),
+            Arc::new(Int64Array::from(vec![None::<i64>, None])),
+        );
+        match sort(&table, &ascending()) {
+            Err(SortError::NotSortableColumn(message)) => {
+                assert_eq!(message, format!("K is not a sortable type: {text}"));
+            }
+            other => panic!("expected an error, found {:?}", other.map(|_| ())),
+        }
+    }
+}
+
 #[test]
 fn periods_zones_and_objects_are_not_sortable() {
     use arrow::array::new_null_array;
@@ -308,6 +410,21 @@ fn an_absolute_sort_of_a_type_without_abs_is_an_error() {
         (
             ColumnType::Boolean,
             Arc::new(BooleanArray::from(vec![true])) as ArrayRef,
+        ),
+        // seen on Deephaven 42.9: `Cannot find method abs(java.math.BigDecimal)`, and the
+        // same for `java.time.LocalDate`, `java.time.Duration`, `java.time.DayOfWeek`
+        (ColumnType::BigDecimal, big_decimals(&[Some("1.5")])),
+        (
+            ColumnType::LocalDate,
+            Arc::new(arrow::array::Date32Array::from(vec![1])) as ArrayRef,
+        ),
+        (
+            ColumnType::Duration,
+            Arc::new(arrow::array::DurationNanosecondArray::from(vec![-1])) as ArrayRef,
+        ),
+        (
+            ColumnType::DayOfWeek,
+            Arc::new(Int8Array::from(vec![1])) as ArrayRef,
         ),
     ] {
         let table = tagged(column_type.clone(), values);

@@ -753,6 +753,49 @@ fn a_sorted_merge_refuses_what_java_refuses() {
                 .into()
         )
     );
+    // seen on Deephaven 42.9: a LocalDate column of the first table against a Duration
+    // column, and against an int[] column
+    let dated = |values: ArrayRef, column_type: ColumnType| {
+        static_table(&[
+            ("K", ColumnType::Int, ints(1..3)),
+            ("V", column_type, values),
+        ])
+    };
+    let dates = || {
+        dated(
+            Arc::new(arrow::array::Date32Array::from(vec![1, 1])),
+            ColumnType::LocalDate,
+        )
+    };
+    for (other, class) in [
+        (
+            dated(
+                Arc::new(arrow::array::DurationNanosecondArray::from(vec![1, 1])),
+                ColumnType::Duration,
+            ),
+            "class java.time.Duration",
+        ),
+        (
+            dated(
+                oxhaven_testkit::list_of(
+                    &ColumnType::array(ColumnType::Int),
+                    [Some(1), Some(1)],
+                    ints(0..2),
+                ),
+                ColumnType::array(ColumnType::Int),
+            ),
+            "class [I",
+        ),
+    ] {
+        assert_eq!(
+            error(merge_sorted(&[dates(), other], "K")),
+            MergeError::Runtime(format!(
+                "Requirement failed: required source.getType() == \
+                 innerSources.get(0).getType(), instead source.getType() == {class}, \
+                 innerSources.get(0).getType() == class java.time.LocalDate."
+            ))
+        );
+    }
 
     let graph = graph();
     let ticking: Arc<dyn Table> = scripted(&graph, [1], &columns([1], &["a"])).table();

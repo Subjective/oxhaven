@@ -5,8 +5,8 @@
 
 use arrow::array::{Array, ArrayRef, AsArray};
 use arrow::datatypes::{
-    Date32Type, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type,
-    Time64NanosecondType, TimestampNanosecondType, UInt16Type,
+    Date32Type, DurationNanosecondType, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type,
+    Int8Type, Time64NanosecondType, TimestampNanosecondType, UInt16Type,
 };
 use oxhaven_column::java_values;
 use oxhaven_contracts::schema::ColumnType;
@@ -148,7 +148,8 @@ pub fn instant_to_string(nanos: i64) -> String {
 /// By `unported!`, for an array: Java prints its class and identity hash (`[I@1b6d3586`).
 ///
 /// Behavior: `java.lang.Object#toString` of `Boolean`, `String`, `java.time.Instant`,
-/// the boxes of the primitives, and `io.deephaven.vector.Vector`
+/// the boxes of the primitives, the other `java.time` and `java.math` classes, a table,
+/// and `io.deephaven.vector.Vector`
 pub fn object_texts(column_type: &ColumnType, values: &ArrayRef) -> Vec<Option<String>> {
     fn each<T>(
         values: impl Iterator<Item = Option<T>>,
@@ -213,6 +214,20 @@ pub fn object_texts(column_type: &ColumnType, values: &ArrayRef) -> Vec<Option<S
         ColumnType::DayOfWeek => each(v.as_primitive::<Int8Type>().iter(), |day| {
             day_of_week_name(day).to_string()
         }),
+        ColumnType::Duration => each(
+            v.as_primitive::<DurationNanosecondType>().iter(),
+            duration_text,
+        ),
+        ColumnType::Period => period_texts(v),
+        // Behavior: `java.time.ZoneId#toString`, which is `getId`
+        ColumnType::ZoneId => each(v.as_string::<i32>().iter(), str::to_string),
+        ColumnType::ZonedDateTime => zoned_texts(v),
+        ColumnType::Table(_) => (0..v.len())
+            .map(|row| v.is_valid(row).then(|| TABLE_TEXT.to_string()))
+            .collect(),
+        // a column Java declares as `Object` holds values of one class, or nulls only
+        ColumnType::Object(Some(class)) => object_texts(class, values),
+        ColumnType::Object(None) => vec![None; v.len()],
         ColumnType::Array(_) => unported!(
             "java.lang.Object#toString",
             "the text of an array of type {column_type:?}, which holds its identity hash"
@@ -221,6 +236,144 @@ pub fn object_texts(column_type: &ColumnType, values: &ArrayRef) -> Vec<Option<S
             "java.lang.Object#toString",
             "the text of a value of type {other:?}"
         ),
+    }
+}
+
+/// The text of a table, which is its description: Java's `toString` of a table is
+/// `getDescription`. Observed for the constituents of `partitionBy` and of a transform,
+/// in a preview and on the wire; a table of another class (an uncoalesced source table,
+/// say) has another text, and none of them can be a cell here yet.
+///
+/// Behavior: `io.deephaven.engine.table.impl.BaseTable#toString`
+pub const TABLE_TEXT: &str = "QueryTable";
+
+/// The text of a duration of `nanos` nanoseconds: `PT`, then the hours, minutes and
+/// seconds that are not zero, each with its letter, the seconds with as many digits of
+/// fraction as they need; `PT0S` for zero. A negative duration has the sign on each part.
+/// Seen on Deephaven 42.9: `PT-0.000000001S`, `PT-1M-0.5S`, `PT25H1M1.000000123S`,
+/// `PT1H0.000000001S`.
+///
+/// Behavior: `java.time.Duration#toString`
+fn duration_text(nanos: i64) -> String {
+    const NANOS_PER_SECOND: u64 = 1_000_000_000;
+    if nanos == 0 {
+        return "PT0S".to_string();
+    }
+    let sign = if nanos < 0 { "-" } else { "" };
+    let magnitude = nanos.unsigned_abs();
+    let seconds = magnitude / NANOS_PER_SECOND;
+    let fraction = magnitude % NANOS_PER_SECOND;
+    let (hours, minutes, seconds) = (seconds / 3600, seconds / 60 % 60, seconds % 60);
+    let mut text = String::from("PT");
+    if hours != 0 {
+        text.push_str(&format!("{sign}{hours}H"));
+    }
+    if minutes != 0 {
+        text.push_str(&format!("{sign}{minutes}M"));
+    }
+    if seconds != 0 || fraction != 0 {
+        text.push_str(&format!("{sign}{seconds}"));
+        if fraction != 0 {
+            let digits = format!("{fraction:09}");
+            text.push('.');
+            text.push_str(digits.trim_end_matches('0'));
+        }
+        text.push('S');
+    }
+    text
+}
+
+/// The text of each `Period` of `values`, null where the cell is: `P0D` for the zero
+/// period, else `P` and each part that is not zero, years `Y`, months `M`, days `D`, as
+/// they are (`P14M`, `P-40D`, seen on Deephaven 42.9).
+///
+/// Behavior: `java.time.Period#toString`
+fn period_texts(values: &dyn Array) -> Vec<Option<String>> {
+    let cells = values.as_struct();
+    let part = |at: usize| cells.column(at).as_primitive::<Int32Type>().clone();
+    let (years, months, days) = (part(0), part(1), part(2));
+    (0..cells.len())
+        .map(|row| {
+            cells.is_valid(row).then(|| {
+                let parts = [years.value(row), months.value(row), days.value(row)];
+                if parts == [0, 0, 0] {
+                    return "P0D".to_string();
+                }
+                let mut text = String::from("P");
+                for (amount, unit) in parts.into_iter().zip(['Y', 'M', 'D']) {
+                    if amount != 0 {
+                        text.push_str(&format!("{amount}{unit}"));
+                    }
+                }
+                text
+            })
+        })
+        .collect()
+}
+
+/// The text of each `ZonedDateTime` of `values`, null where the cell is: its local date
+/// and time as `LocalDateTime#toString` prints it, its offset (`Z`, `+05:30`) and, when
+/// the zone is not that offset, the zone's id in brackets
+/// (`2024-03-10T03:30-04:00[America/New_York]`).
+///
+/// A cell is the instant and the zone's id; the offset is the zone's at that instant, from
+/// the time zone database.
+///
+/// Behavior: `java.time.ZonedDateTime#toString`, `java.time.ZoneOffset#toString`
+fn zoned_texts(values: &dyn Array) -> Vec<Option<String>> {
+    let cells = values.as_struct();
+    let instants = cells.column(0).as_primitive::<TimestampNanosecondType>();
+    let zones = cells.column(1).as_string::<i32>();
+    (0..cells.len())
+        .map(|row| {
+            cells.is_valid(row).then(|| {
+                let (nanos, id) = (instants.value(row), zones.value(row));
+                let offset = zone_offset_seconds(id, nanos);
+                let local = nanos + i64::from(offset) * 1_000_000_000;
+                let offset = offset_text(offset);
+                let mut text = java_values::local_date_time_text(local);
+                text.push_str(&offset);
+                if offset != id {
+                    text.push_str(&format!("[{id}]"));
+                }
+                text
+            })
+        })
+        .collect()
+}
+
+/// The offset from UTC, in seconds, of the zone `id` at the instant `nanos`. The ids are
+/// those a cell can hold: `UTC`, `Z` and the region ids of the IANA database.
+///
+/// Behavior: `java.time.zone.ZoneRules#getOffset(java.time.Instant)`
+fn zone_offset_seconds(id: &str, nanos: i64) -> i32 {
+    use chrono::{Offset, TimeZone};
+    if matches!(id, "UTC" | "Z") {
+        return 0;
+    }
+    let zone: chrono_tz::Tz = id
+        .parse()
+        .unwrap_or_else(|_| unreachable!("a ZonedDateTime cell holds a known zone, not {id}"));
+    let utc = chrono::DateTime::from_timestamp(nanos.div_euclid(1_000_000_000), 0)
+        .unwrap_or_else(|| unreachable!("an instant of a column is within chrono's range"))
+        .naive_utc();
+    zone.offset_from_utc_datetime(&utc).fix().local_minus_utc()
+}
+
+/// The text of a zone offset of `seconds` east of UTC: `Z`, `+hh:mm` or `+hh:mm:ss`.
+///
+/// Behavior: `java.time.ZoneOffset#toString`
+fn offset_text(seconds: i32) -> String {
+    if seconds == 0 {
+        return "Z".into();
+    }
+    let sign = if seconds < 0 { '-' } else { '+' };
+    let total = seconds.unsigned_abs();
+    let (hours, minutes, rest) = (total / 3600, total / 60 % 60, total % 60);
+    if rest == 0 {
+        format!("{sign}{hours:02}:{minutes:02}")
+    } else {
+        format!("{sign}{hours:02}:{minutes:02}:{rest:02}")
     }
 }
 
@@ -242,8 +395,15 @@ pub fn has_object_text(column_type: &ColumnType) -> bool {
         | ColumnType::LocalDate
         | ColumnType::LocalTime
         | ColumnType::LocalDateTime
-        | ColumnType::DayOfWeek => true,
+        | ColumnType::DayOfWeek
+        | ColumnType::Duration
+        | ColumnType::Period
+        | ColumnType::ZoneId
+        | ColumnType::ZonedDateTime
+        | ColumnType::Table(_)
+        | ColumnType::Object(None) => true,
         ColumnType::Vector(element) => has_object_text(element),
+        ColumnType::Object(Some(class)) => has_object_text(class),
         _ => false,
     }
 }
