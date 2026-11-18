@@ -1435,3 +1435,7 @@ Task 11.8 served the four filter items handed over by 11.6. Regular expressions 
 ## 2026-11-18 11:15 UTC: pull request 176 merged
 
 Seven green checks on head 6f7ebe47. Main is at eb4c5de3.
+
+## 2026-11-18 11:31 UTC: task 11.9 reported, pull request 177; task 12.2 started
+
+Task 11.9 closed the engine leftovers of 11.7: keys, sorts and merges by big numbers and vectors, and keyed input tables without keys. BigDecimal as an as-of stamp or range value stays refused because Deephaven orders by compareTo and equates by equals (owner question 7.18). With this the pass over refusals that no owner question covers is complete; what remains waits on review-items-2 or on larger pieces (big-number arithmetic, vectors of vectors in the formula language, a backtracking regex engine). Task 12.2 (Kafka corpus) runs on the default model beside task 12.1.
