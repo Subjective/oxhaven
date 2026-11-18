@@ -1313,3 +1313,7 @@ All gates passed, but dtoa.rs is a close port of the source of jdk.internal.math
 ## 2026-11-18 01:20 UTC: task 10.7 split, pull request 162 opened
 
 The agent confirmed the kept pieces were written from behaviour and fixtures produced by running Java 21, not translated from JDK source. Pull request 162 carries them; the DecimalFormat port waits on the decision card.
+
+## 2026-11-18 01:29 UTC: pull request 162 merged
+
+Seven green checks on head ee0a2a25. Main is at 39956454. The DecimalFormat port stays on branch task/10.7-unported-filter-literals pending the owner.
