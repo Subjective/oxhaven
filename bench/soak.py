@@ -376,17 +376,23 @@ class World:
         self._add(self.inputs["dims"], DIMS, [SYMS, [self.rng.choice(SECTORS) for _ in SYMS], [self.rng.randrange(1, 9) for _ in SYMS]])
         self.write(initial=True)
         self.live = {p.name: p.build(self.inputs) for p in self.pipes}
-        # Time tables: one that keeps its rows and one blink table, with the same first row
-        # and period, so that both make the same number of rows in any one cycle. The count
-        # over the blink table counts the rows it has shown since the count was made; the
-        # rows it showed before that, in the cycles between the two requests, it never
-        # saw, so the two counts differ by a number that must never change.
+        # Time tables: one that keeps its rows and one blink table. Each count is checked
+        # against the rows its own table has made: row k of a time table is at the first
+        # row's time plus k periods, so the count over the first is known from its last row,
+        # and the count over the blink table, which counts every row it has shown since the
+        # count was made, from the first and the last of them. The two tables are not
+        # compared with each other: each reads the clock in its own refresh (in Java as
+        # well: TimeTable#refresh), so in a cycle in which a period ends between the two
+        # readings one of them has a row that the other gets a cycle later.
         self.period_ns = cycle_ms * 1_000_000
-        self.start_ns = time.time_ns()
+        # The first row is at a whole millisecond, so that `S` below is a whole number in
+        # every row: the aggregation keeps its sums by adding and subtracting, and a sum of
+        # fractions kept that way differs in the last bit from one made of the rows as they
+        # are now (in Java as well: DoubleChunkedSumOperator keeps a running sum).
+        self.start_ns = time.time_ns() // 1_000_000 * 1_000_000
         tt = self.s.time_table(period=self.period_ns, start_time=self.start_ns)
         tb = self.s.time_table(period=self.period_ns, start_time=self.start_ns, blink_table=True)
-        tb_count = tb.agg_by([agg.count_("N")], by=[])
-        self.blink_behind: int | None = None
+        tb_count = tb.agg_by([agg.count_("N"), agg.min_(["First = Timestamp"]), agg.max_(["Last = Timestamp"])], by=[])
         self.time = {
             "tt": tt,
             "tt_tail": tt.tail(600).update(["S = epochNanos(Timestamp) / 1000000", "M = S % 7"]),
@@ -504,21 +510,23 @@ class World:
             self.run.checked(name)
             if diff is not None:
                 self.run.violate("correctness", f"time table check {name}", diff)
-        blink = self.fetch(snap["tb_count"]).column("N").to_pylist()
-        kept = self.fetch(snap["tt_count"]).column("N").to_pylist()
-        behind = kept[0] - blink[0] if len(blink) == 1 and len(kept) == 1 else None
-        if self.blink_behind is None and behind is not None and behind >= 0:
-            self.blink_behind = behind
-        self.run.checked("blink_time_count")
-        if behind is None or behind != self.blink_behind:
-            self.run.violate("correctness", "time table check blink_time_count",
-                             {"blink": blink, "kept": kept, "behind_at_first_check": self.blink_behind})
         tail = self.fetch(snap["tt_tail"])
         self.run.checked("time_tail_rows")
         stamps = tail.column("S").to_pylist()
         step = self.period_ns // 1_000_000
         if tail.num_rows > 600 or any(b - a != step for a, b in zip(stamps, stamps[1:])):
             self.run.violate("correctness", "time table tail", {"rows": tail.num_rows, "first": stamps[:3], "last": stamps[-3:]})
+        kept = self.fetch(snap["tt_count"]).column("N").to_pylist()
+        want = (int(stamps[-1]) * 1_000_000 - self.start_ns) // self.period_ns + 1 if stamps else 0
+        self.run.checked("time_count")
+        if kept != [want]:
+            self.run.violate("correctness", "time table check time_count", {"count": kept, "rows_to_the_last": want, "last": stamps[-3:]})
+        blink = self.fetch(snap["tb_count"])
+        first, last = (blink.column(c).cast(pa.int64()).to_pylist() for c in ("First", "Last"))
+        shown = blink.column("N").to_pylist()
+        self.run.checked("blink_time_count")
+        if len(shown) != 1 or shown[0] != (last[0] - first[0]) // self.period_ns + 1:
+            self.run.violate("correctness", "time table check blink_time_count", {"count": shown, "first": first, "last": last})
         expected.close()
         for t in snap.values():
             t.close()
