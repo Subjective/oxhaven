@@ -1665,6 +1665,14 @@ fn a_vector_or_array_column_matches_null_and_nothing_else() {
         // Java has no value but null for such a column, and no formula `V == 3` either.
         refused(&t, &[&format!("{column} == 3")]);
         refused(&t, &[&format!("{column} == `a`")]);
+        // Seen on Java 42.9: the range filter has no filter of a vector or an array, and
+        // its formula, `lessArray(V, null)`, is no condition ("boolean required").
+        for range in ["< null", "<= null", "> null", ">= null", "> 3"] {
+            assert!(
+                is_invalid(&refused(&t, &[&format!("{column} {range}")])),
+                "{column} {range}"
+            );
+        }
     }
     assert_eq!(kept(&t, &["V == null", "A != null"]), [] as [i64; 0]);
 }
