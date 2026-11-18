@@ -1439,3 +1439,7 @@ Seven green checks on head 6f7ebe47. Main is at eb4c5de3.
 ## 2026-11-18 11:31 UTC: task 11.9 reported, pull request 177; task 12.2 started
 
 Task 11.9 closed the engine leftovers of 11.7: keys, sorts and merges by big numbers and vectors, and keyed input tables without keys. BigDecimal as an as-of stamp or range value stays refused because Deephaven orders by compareTo and equates by equals (owner question 7.18). With this the pass over refusals that no owner question covers is complete; what remains waits on review-items-2 or on larger pieces (big-number arithmetic, vectors of vectors in the formula language, a backtracking regex engine). Task 12.2 (Kafka corpus) runs on the default model beside task 12.1.
+
+## 2026-11-18 11:40 UTC: pull request 177 merged; the refusal pass is complete
+
+Seven green checks on head e144c297. Main is at 70cf9d87. Since Josh's approval this morning: pull requests 168 to 177 merged. 91 `unported!` calls remain in the crates (125 at the start of the day by the looser count that included comments); each is listed in a task file 11.4 to 11.9 with the owner question, allowed difference or larger piece of work it waits on. Owner questions 7.9 to 7.18 are open.

@@ -805,15 +805,141 @@ fn a_sorted_merge_refuses_what_java_refuses() {
     );
 }
 
+/// A static table of the key column `K` and the tags `{prefix}0`, `{prefix}1`, ...
+fn keyed(prefix: &str, column_type: ColumnType, values: ArrayRef) -> Arc<dyn Table> {
+    let tags: Vec<String> = (0..values.len()).map(|i| format!("{prefix}{i}")).collect();
+    static_table(&[
+        ("K", column_type, values),
+        (
+            "Tag",
+            ColumnType::String,
+            strings(tags.iter().map(String::as_str)),
+        ),
+    ])
+}
+
+fn merged_tags(a: Arc<dyn Table>, b: Arc<dyn Table>) -> String {
+    tags(&*merge_sorted(&[a, b], "K").unwrap()).join(" ")
+}
+
+fn int_vectors(values: &[i32]) -> ArrayRef {
+    let column_type = ColumnType::vector(ColumnType::Int);
+    oxhaven_testkit::list_of(
+        &column_type,
+        values.iter().map(|_| Some(1)),
+        ints(values.to_vec()),
+    )
+}
+
+/// Seen on Deephaven 42.9: the keys of other `Comparable` classes merge by `compareTo`,
+/// a tie taking the earlier table first.
+#[test]
+fn a_sorted_merge_compares_other_keys_as_java_compares_them() {
+    use arrow::array::{BinaryArray, Date32Array, Float64Array, Int8Array};
+    use oxhaven_column::java_values::big_decimal_cell;
+    let decimals = |cells: &[(i128, i32)]| -> ArrayRef {
+        let cells: Vec<Vec<u8>> = cells
+            .iter()
+            .map(|(unscaled, scale)| big_decimal_cell(*scale, &unscaled.to_be_bytes()))
+            .collect();
+        Arc::new(BinaryArray::from_iter_values(cells))
+    };
+    // `1 3.0 5` and `1.00 3 4.5`
+    assert_eq!(
+        merged_tags(
+            keyed(
+                "a",
+                ColumnType::BigDecimal,
+                decimals(&[(1, 0), (30, 1), (5, 0)])
+            ),
+            keyed(
+                "b",
+                ColumnType::BigDecimal,
+                decimals(&[(100, 2), (3, 0), (45, 1)])
+            ),
+        ),
+        "a0 b0 a1 b1 b2 a2"
+    );
+    // 2020-01-01, -03, -05 and 2020-01-02, -03, -04
+    let dates = |days: [i32; 3]| -> ArrayRef { Arc::new(Date32Array::from(days.to_vec())) };
+    assert_eq!(
+        merged_tags(
+            keyed("a", ColumnType::LocalDate, dates([18262, 18264, 18266])),
+            keyed("b", ColumnType::LocalDate, dates([18263, 18264, 18265])),
+        ),
+        "a0 b0 a1 b1 b2 a2"
+    );
+    // Monday, Wednesday, Friday and Monday, Tuesday, Wednesday
+    let days = |days: [i8; 3]| -> ArrayRef { Arc::new(Int8Array::from(days.to_vec())) };
+    assert_eq!(
+        merged_tags(
+            keyed("a", ColumnType::DayOfWeek, days([1, 3, 5])),
+            keyed("b", ColumnType::DayOfWeek, days([1, 2, 3])),
+        ),
+        "a0 b0 b1 a1 b2 a2"
+    );
+    // One instant in two zones orders by the local date and time.
+    let hour = 3_600_000_000_000;
+    let zoned = |zones: [&str; 3]| -> ArrayRef {
+        crate::ops::zoned::tests::zoned(&[
+            Some((0, zones[0])),
+            Some((hour, zones[1])),
+            Some((2 * hour, zones[2])),
+        ])
+    };
+    assert_eq!(
+        merged_tags(
+            keyed(
+                "a",
+                ColumnType::ZonedDateTime,
+                zoned(["UTC", "Asia/Tokyo", "America/New_York"])
+            ),
+            keyed(
+                "b",
+                ColumnType::ZonedDateTime,
+                zoned(["Asia/Tokyo", "UTC", "Europe/London"])
+            ),
+        ),
+        "a0 b0 b1 a1 a2 b2"
+    );
+    // Vectors element by element, the tables not in order.
+    let column_type = ColumnType::vector(ColumnType::Int);
+    assert_eq!(
+        merged_tags(
+            keyed("a", column_type.clone(), int_vectors(&[1, 0, 1, 2, 3, 0])),
+            keyed("b", column_type, int_vectors(&[1, 0, 1, 1, 2, 9])),
+        ),
+        "a0 a1 a2 b0 b1 b2 b3 a3 b4 a4 a5 b5"
+    );
+    // `DoubleVector#compareTo` takes `[0.0]` and `[-0.0]` for equal, unlike `Double#compareTo`.
+    let column_type = ColumnType::vector(ColumnType::Double);
+    let doubles = |value: f64| -> ArrayRef {
+        oxhaven_testkit::list_of(
+            &column_type,
+            [Some(1)],
+            Arc::new(Float64Array::from(vec![value])),
+        )
+    };
+    assert_eq!(
+        merged_tags(
+            keyed("a", column_type.clone(), doubles(0.0)),
+            keyed("b", column_type.clone(), doubles(-0.0)),
+        ),
+        "a0 b0"
+    );
+}
+
+/// Java fails with a `ClassCastException` (`class [I cannot be cast to class
+/// java.lang.Comparable`) once two arrays meet.
 #[test]
 #[should_panic(expected = "unported: io.deephaven.engine.table.impl.util.MergeSortedHelper")]
-fn a_sorted_merge_by_a_vector_column_is_not_ported() {
-    let vectors = || {
-        let column_type = ColumnType::vector(ColumnType::Int);
+fn a_sorted_merge_by_an_array_column_is_not_ported() {
+    let arrays = || {
+        let column_type = ColumnType::array(ColumnType::Int);
         let k = oxhaven_testkit::list_of(&column_type, [Some(1), Some(1)], ints([1, 2]));
         static_table(&[("K", column_type, k)])
     };
-    let _ = merge_sorted(&[vectors(), vectors()], "K");
+    let _ = merge_sorted(&[arrays(), arrays()], "K");
 }
 
 #[test]

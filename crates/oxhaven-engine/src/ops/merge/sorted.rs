@@ -7,6 +7,7 @@
 
 use super::MergeError;
 use crate::ops::agg;
+use crate::ops::sort::ComparableCells;
 use crate::table::{QueryTable, TableSpec};
 use arrow::array::{Array, ArrayRef, AsArray};
 use arrow::compute::interleave;
@@ -14,6 +15,7 @@ use arrow::datatypes::{
     Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, TimestampNanosecondType,
     UInt16Type,
 };
+use arrow::row::Rows;
 use oxhaven_column::FlatSource;
 use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::{ColumnType, TableDefinition};
@@ -35,16 +37,21 @@ enum Keys {
     /// Float and double keys.
     Real(Vec<Option<f64>>),
     Text(ArrayRef),
-    /// Keys of a vector or an array type, which Java compares and this does not.
+    /// Keys of another `Comparable` class: dates, times, durations, days, big numbers,
+    /// zoned date-times and vectors, in Arrow's row format ordered as `compareTo`, and
+    /// whether each is null.
+    Ordered(Rows, Vec<bool>),
+    /// Keys Java fails to compare (`ClassCastException`) unless the two are one object:
+    /// periods, zones, arrays, objects, tables and vectors of these (owner item 2.2).
     Unported(ColumnType),
 }
 
 impl Keys {
-    fn of(column_type: &ColumnType, values: &ArrayRef) -> Keys {
+    fn of(column_type: &ColumnType, values: &ArrayRef) -> Result<Keys, TableFailure> {
         fn whole<T: Into<i64>>(values: impl Iterator<Item = Option<T>>) -> Keys {
             Keys::Whole(values.map(|value| value.map(Into::into)).collect())
         }
-        match column_type {
+        Ok(match column_type {
             ColumnType::Boolean => whole(values.as_boolean().iter()),
             ColumnType::Byte => whole(values.as_primitive::<Int8Type>().iter()),
             ColumnType::Char => whole(values.as_primitive::<UInt16Type>().iter()),
@@ -61,8 +68,14 @@ impl Keys {
             ),
             ColumnType::Double => Keys::Real(values.as_primitive::<Float64Type>().iter().collect()),
             ColumnType::String => Keys::Text(values.clone()),
-            other => Keys::Unported(other.clone()),
-        }
+            other => match ComparableCells::new(other) {
+                Some(cells) => {
+                    let nulls = (0..values.len()).map(|row| values.is_null(row)).collect();
+                    Keys::Ordered(cells.rows(values)?, nulls)
+                }
+                None => Keys::Unported(other.clone()),
+            },
+        })
     }
 
     fn is_null(&self, row: usize) -> bool {
@@ -70,6 +83,7 @@ impl Keys {
             Keys::Whole(values) => values[row].is_none(),
             Keys::Real(values) => values[row].is_none(),
             Keys::Text(values) => values.is_null(row),
+            Keys::Ordered(_, nulls) => nulls[row],
             Keys::Unported(column_type) => unported!(
                 "io.deephaven.engine.table.impl.util.MergeSortedHelper.TableCursor#compareTo",
                 "a key column of type {column_type:?}"
@@ -94,6 +108,9 @@ impl Keys {
                     (Some(left), Some(right)) => left.total_cmp(&right),
                     _ => panic!("a null key is refused before it is compared"),
                 }
+            }
+            (Keys::Ordered(left, _), Keys::Ordered(right, _)) => {
+                left.row(row).cmp(&right.row(other_row))
             }
             (Keys::Text(left), Keys::Text(right)) => left
                 .as_string::<i32>()
@@ -255,6 +272,17 @@ pub fn merge_sorted(
                     Some(at) => &first.columns()[at].column_type,
                     None => panic!("the tables have the same column names"),
                 };
+                if *expected != column.column_type
+                    && java_class(expected) == java_class(&column.column_type)
+                {
+                    unported!(
+                        "io.deephaven.engine.table.impl.util.MergeSortedHelper.SortedMergeColumnSource#addSource",
+                        "columns {} of the types {expected:?} and {:?}: Java takes them (one \
+                         class, ObjectVector) and compares their elements as objects",
+                        column.name,
+                        column.column_type
+                    );
+                }
                 if *expected != column.column_type {
                     return Err(MergeError::Runtime(format!(
                         "Requirement failed: required source.getType() == \
@@ -274,7 +302,7 @@ pub fn merge_sorted(
         };
         let rows = table.row_set();
         let read = |column: usize| table.column(column).chunk(&rows);
-        let table_keys = Keys::of(&definition.columns()[key].column_type, &read(key)?);
+        let table_keys = Keys::of(&definition.columns()[key].column_type, &read(key)?)?;
         keys.push(table_keys);
         chunks.push(
             first

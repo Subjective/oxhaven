@@ -12,17 +12,21 @@ use oxhaven_testkit::{
 use std::sync::Arc;
 use NaturalJoinType::{ErrorOnDuplicate, ExactlyOneMatch, FirstMatch, LastMatch};
 
-const COLUMNS: [(&str, ColumnType); 7] = [
-    ("K", ColumnType::Int),
-    ("D", ColumnType::Double),
-    ("S", ColumnType::String),
-    ("B", ColumnType::Boolean),
-    ("C", ColumnType::Char),
-    ("T", ColumnType::Instant),
-    ("V", ColumnType::Long),
-];
+/// The columns of both tables; `X` is a vector of `int`, keyed by its elements.
+fn columns() -> [(&'static str, ColumnType); 8] {
+    [
+        ("K", ColumnType::Int),
+        ("D", ColumnType::Double),
+        ("S", ColumnType::String),
+        ("B", ColumnType::Boolean),
+        ("C", ColumnType::Char),
+        ("T", ColumnType::Instant),
+        ("V", ColumnType::Long),
+        ("X", ColumnType::vector(ColumnType::Int)),
+    ]
+}
 
-const KEYS: [&[&str]; 7] = [
+const KEYS: [&[&str]; 9] = [
     &["K"],
     &["D"],
     &["S"],
@@ -30,6 +34,8 @@ const KEYS: [&[&str]; 7] = [
     &["K", "S"],
     &["B", "C"],
     &["C", "D", "B"],
+    &["X"],
+    &["B", "X"],
 ];
 
 const TYPES: [NaturalJoinType; 4] = [ErrorOnDuplicate, FirstMatch, LastMatch, ExactlyOneMatch];
@@ -83,13 +89,13 @@ fn run(seed: u64, steps: usize, live: Live, tally: &mut Tally) {
     let mut source = |index: u64| {
         let empty = (seed + index).is_multiple_of(4);
         let size = if empty { 0 } else { 6 };
-        let values = COLUMNS
+        let values = columns()
             .iter()
             .map(|(_, column_type)| random.values(column_type, size))
             .collect();
         ScriptedTable::new(
             graph.clone(),
-            definition(&COLUMNS),
+            definition(&columns()),
             RowSet::from_keys((0..size as RowKey).map(|k| 3 * k + 1)),
             values,
         )
@@ -238,13 +244,13 @@ fn rows_share_a_slot_exactly_when_their_keys_are_equal() {
     for seed in test_seeds(SEEDS) {
         let mut random = RandomUpdates::new(seed);
         let size: usize = 40;
-        let values = COLUMNS
+        let values = columns()
             .iter()
             .map(|(_, column_type)| random.values(column_type, size as u64))
             .collect();
         let script = ScriptedTable::new(
             graph(),
-            definition(&COLUMNS),
+            definition(&columns()),
             RowSet::flat(size as u64),
             values,
         );

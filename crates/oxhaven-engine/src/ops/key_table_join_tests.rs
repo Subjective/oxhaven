@@ -193,7 +193,15 @@ fn a_struct_is_a_key_by_its_fields() {
 #[test]
 #[should_panic(expected = "a match column stored as")]
 fn a_column_of_another_type_is_unported() {
-    let column: ArrayRef = Arc::new(arrow::array::BinaryArray::from_vec(vec![b"a"]));
+    // Task 11.9 made `BigDecimal` and `BigInteger` (Arrow `Binary`) keys; a list of
+    // doubles, a vector of `double`, is still not one (owner item 7.6).
+    let doubles: ArrayRef = Arc::new(arrow::array::Float64Array::from(vec![0.0]));
+    let column: ArrayRef = Arc::new(arrow::array::ListArray::new(
+        Arc::new(Field::new("", DataType::Float64, true)),
+        arrow::buffer::OffsetBuffer::from_lengths([1]),
+        doubles,
+        None,
+    ));
     slots(&mut KeyTable::new(), column);
 }
 

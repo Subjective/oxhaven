@@ -1,9 +1,11 @@
 //! The match columns of a range join, and the range of every left row.
 
-use super::search::{bucket_ranges, RangeValue, Runs, Utf16};
+use super::search::{bucket_ranges, Ordered, RangeValue, Runs, Utf16};
 use super::{RangeJoinError, RangeJoinMatch};
 use crate::ops::join::keys::{Key, KeyColumns};
 use crate::ops::join::JoinMatch;
+use crate::ops::key_table::{groupable_vector, is_ported_key};
+use crate::ops::sort::ComparableCells;
 use arrow::array::{
     Array, ArrayRef, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array,
     Int8Array, StringArray, TimestampNanosecondArray, UInt16Array,
@@ -74,6 +76,18 @@ pub(super) fn match_columns(
     if !issues.is_empty() {
         return Err(RangeJoinError::InvalidExactMatches(issues));
     }
+    if let Some(&l) = left_exact
+        .iter()
+        .find(|&&l| !is_ported_key(&left_columns[l].column_type))
+    {
+        unported!(
+            "io.deephaven.engine.table.impl.by.typed.TypedHasherFactory#make",
+            "an exact match column of type {:?}: Java keys vectors of float or double by \
+             the class of the vector objects (-0.0 and 0.0), and arrays and vectors of \
+             arrays by the identity of the arrays",
+            left_columns[l].column_type
+        );
+    }
 
     let start = left_column(range.left_start());
     let values = right_column(range.right_range());
@@ -104,11 +118,32 @@ pub(super) fn match_columns(
     else {
         return Err(RangeJoinError::InvalidRangeMatch(issues));
     };
-    // A vector and an array are neither primitive nor `Comparable` in Java. Every other
-    // column type is one or the other.
+    // An array, a `Period`, a `ZoneId`, a column of objects or of tables is neither
+    // primitive nor `Comparable` (seen on Deephaven 42.9: "Invalid range value type class
+    // java.time.Period, must be primitive or comparable"). A vector is `Comparable`.
     let range_type = &left_columns[left_start].column_type;
-    if range_type.list_element().is_some() {
-        return Err(RangeJoinError::InvalidRangeValueType(range_type.clone()));
+    match range_type {
+        ColumnType::Array(_)
+        | ColumnType::Period
+        | ColumnType::ZoneId
+        | ColumnType::Object(_)
+        | ColumnType::Table(_) => {
+            return Err(RangeJoinError::InvalidRangeValueType(range_type.clone()));
+        }
+        // Java orders `BigDecimal` range values by `compareTo` but takes a left bound for
+        // equal to a right value by `equals`: seen, right values `1 3.0 3 5` and the
+        // bounds `3 <= D <= 9` match `3 5` and not `3.0` (owner item 7.18).
+        ColumnType::BigDecimal => unported!(
+            "io.deephaven.engine.table.impl.rangejoin.RangeSearchKernelObject#eq",
+            "a range join on BigDecimal values, which Java compares by compareTo and equals"
+        ),
+        vector @ ColumnType::Vector(_) if !groupable_vector(vector) => unported!(
+            "io.deephaven.engine.table.impl.rangejoin.RangeSearchKernelObject#eq",
+            "a range join on values of type {vector:?}: Java compares vectors of float or \
+             double by compareTo and equals, which disagree on -0.0 (owner item 7.6), and \
+             fails to compare vectors of arrays, periods or zones"
+        ),
+        _ => {}
     }
     Ok(MatchColumns {
         left_exact: KeyColumns {
@@ -128,14 +163,17 @@ enum Values {
     Int(Vec<Option<i64>>),
     Float(Vec<Option<f64>>),
     Text(Vec<Option<Utf16>>),
+    Ordered(Vec<Option<Ordered>>),
 }
 
 /// Behavior: io.deephaven.engine.table.impl.rangejoin.RangeSearchKernel#makeRangeSearchKernel
 /// for the chunk type io.deephaven.engine.table.impl.sources.ReinterpretUtils#maybeConvertToPrimitive
 /// gives the column: `Boolean` is searched as its byte (false 0, true 1) and `Instant` as
 /// its nanoseconds. The kernels of the integer types are one algorithm, as are those of
-/// `float` and `double`.
-fn values(column_type: &ColumnType, array: &ArrayRef) -> Values {
+/// `float` and `double`. The other classes are objects compared by `compareTo` (and
+/// `equals`, which agrees for the classes that reach here): their cells in the sort's row
+/// format, whose bytes order as `compareTo` does.
+fn values(column_type: &ColumnType, array: &ArrayRef) -> Result<Values, RangeJoinError> {
     fn cells<A: Array + 'static, T>(
         array: &ArrayRef,
         cell: impl Fn(&A, usize) -> T,
@@ -147,7 +185,7 @@ fn values(column_type: &ColumnType, array: &ArrayRef) -> Values {
             .map(|row| (!typed.is_null(row)).then(|| cell(typed, row)))
             .collect()
     }
-    match column_type {
+    Ok(match column_type {
         ColumnType::Boolean => Values::Int(cells::<BooleanArray, _>(array, |a, row| {
             a.value(row).into()
         })),
@@ -172,11 +210,23 @@ fn values(column_type: &ColumnType, array: &ArrayRef) -> Values {
         ColumnType::String => Values::Text(cells::<StringArray, _>(array, |a, row| {
             Utf16::from(a.value(row))
         })),
-        other => unported!(
-            "io.deephaven.engine.table.impl.rangejoin.RangeJoinOperation#validateRangeMatchColumns",
-            "a range column of type {other:?}"
-        ),
-    }
+        other => match ComparableCells::new(other) {
+            Some(comparable) => {
+                let rows = comparable.rows(array)?;
+                Values::Ordered(
+                    (0..array.len())
+                        .map(|row| {
+                            (!array.is_null(row)).then(|| Ordered(rows.row(row).as_ref().into()))
+                        })
+                        .collect(),
+                )
+            }
+            None => unported!(
+                "io.deephaven.engine.table.impl.rangejoin.RangeJoinOperation#validateRangeMatchColumns",
+                "a range column of type {other:?}"
+            ),
+        },
+    })
 }
 
 /// The range of every left row.
@@ -293,7 +343,7 @@ pub(super) fn ranges(
         let rows = table.row_set();
         let source = table.column(column);
         let cells = source.chunk(&rows)?;
-        Ok::<_, RangeJoinError>(values(source.column_type(), &cells))
+        values(source.column_type(), &cells)
     };
     let starts = read(left, columns.left_start)?;
     let ends = read(left, columns.left_end)?;
@@ -321,6 +371,15 @@ pub(super) fn ranges(
             &right_row_keys,
         ),
         (Values::Text(starts), Values::Text(ends), Values::Text(values)) => ranges_of(
+            range,
+            &starts,
+            &ends,
+            &left_keys,
+            &values,
+            &right_keys,
+            &right_row_keys,
+        ),
+        (Values::Ordered(starts), Values::Ordered(ends), Values::Ordered(values)) => ranges_of(
             range,
             &starts,
             &ends,

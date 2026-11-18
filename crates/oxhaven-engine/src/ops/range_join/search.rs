@@ -97,6 +97,22 @@ impl RangeValue for Utf16 {
     }
 }
 
+/// A value of another `Comparable` class (a date, a time, a duration, a day, a
+/// `BigInteger`, a `ZonedDateTime`, a vector): its cell in the sort's row format, whose
+/// bytes order as `compareTo` orders the values. For these classes `equals` agrees with
+/// `compareTo`.
+///
+/// Behavior: io.deephaven.engine.table.impl.rangejoin.RangeSearchKernelObject#eq, #lt and
+/// #leq
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub(super) struct Ordered(pub(super) Box<[u8]>);
+
+impl RangeValue for Ordered {
+    fn order(&self, other: &Self) -> Ordering {
+        self.0.cmp(&other.0)
+    }
+}
+
 /// The right range values of a bucket, without repeats.
 pub(super) struct Runs<T> {
     /// The distinct values, ascending; of equal values the first.
