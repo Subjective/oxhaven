@@ -634,10 +634,11 @@ fn a_match_filter_of_a_list_column_takes_null_only() {
     assert!(unstructured_filter(&listed(), &["V == 1"], &Compiler).is_err());
 }
 
+/// Seen on Java 42.9: `V > null` of a vector column fails, its formula `greaterArray(V,
+/// null)` being no condition ("boolean required").
 #[test]
-#[should_panic(expected = "unported: io.deephaven.engine.table.impl.select.RangeFilter#init")]
-fn a_range_filter_of_a_list_column_is_not_ported() {
-    let _ = unstructured_filter(&listed(), &["V > null"], &Compiler);
+fn a_range_filter_of_a_list_column_is_refused() {
+    assert!(unstructured_filter(&listed(), &["V > null"], &Compiler).is_err());
 }
 
 /// Java gives the minimum, maximum, median, percentile and unique value of a vector of
