@@ -1,9 +1,9 @@
 //! Structured filter conditions: the typed form of the gRPC `filter` operation's
 //! `Condition` message, the passes that normalize it, and its translation to filters.
 
+use super::decimal_format::decimal_format;
 use super::factory::parse_filter;
 use super::filters::{FilterSpec, MatchOptions, PatternSpec, RangeOp};
-use oxhaven_contracts::unported;
 
 /// Behavior: the `Literal` message of `table.proto`
 #[derive(Clone, PartialEq, Debug)]
@@ -534,70 +534,6 @@ fn print_double(value: f64) -> String {
     }
 }
 
-/// A double as `new DecimalFormat("##0.################")` formats it, or `None` where
-/// that needs digits this port does not produce: from 2^53 up Java's formatter writes more
-/// digits than the shortest, and a value exactly half way between two results of sixteen
-/// fraction digits is rounded by rules that depend on the binary value.
-///
-/// Behavior: java.text.DecimalFormat#format(double) as called by
-/// io.deephaven.server.table.ops.filter.FilterFactory#generateNumericConditionFilter
-fn decimal_format(value: f64) -> Option<String> {
-    const FRACTION_DIGITS: i32 = 16;
-    if value.is_nan() {
-        return Some("NaN".to_string());
-    }
-    let sign = if value.is_sign_negative() { "-" } else { "" };
-    let size = value.abs();
-    if size.is_infinite() {
-        return Some(format!("{sign}\u{221E}"));
-    }
-    if size == 0.0 {
-        return Some(format!("{sign}0"));
-    }
-    if size >= 9_007_199_254_740_992.0 {
-        return None;
-    }
-    let (mut digits, mut exponent) = shortest_digits(size);
-    // How many of the digits are at or above the sixteenth fraction place.
-    let kept = exponent + 1 + FRACTION_DIGITS;
-    if kept < 0 {
-        return Some(format!("{sign}0"));
-    }
-    let kept = kept as usize;
-    if kept < digits.len() {
-        let next = digits[kept];
-        let more = kept + 1 < digits.len();
-        if next == b'5' && !more {
-            return None;
-        }
-        digits.truncate(kept);
-        if next > b'5' || (next == b'5' && more) {
-            let mut at = digits.len();
-            loop {
-                if at == 0 {
-                    digits.insert(0, b'1');
-                    exponent += 1;
-                    break;
-                }
-                at -= 1;
-                if digits[at] == b'9' {
-                    digits[at] = b'0';
-                } else {
-                    digits[at] += 1;
-                    break;
-                }
-            }
-        }
-        while digits.last() == Some(&b'0') {
-            digits.pop();
-        }
-        if digits.is_empty() {
-            return Some(format!("{sign}0"));
-        }
-    }
-    Some(format!("{sign}{}", plain(&digits, exponent)))
-}
-
 fn print_literal(literal: &Literal, escape: bool, out: &mut String) {
     match literal {
         Literal::String(text) if escape => {
@@ -808,10 +744,7 @@ fn range(op: CompareOp, lhs: &Value, rhs: &Value) -> Result<FilterSpec, String> 
     };
     let value = match literal {
         Literal::String(text) => text.clone(),
-        Literal::Double(value) => match decimal_format(*value) {
-            Some(text) => text,
-            None => unported!("java.text.DecimalFormat#format", "the double {value:?}"),
-        },
+        Literal::Double(value) => decimal_format(*value),
         Literal::Bool(value) => value.to_string(),
         Literal::Long(value) => value.to_string(),
         Literal::NanoTime(value) => format!("'{value}'"),
@@ -1282,20 +1215,15 @@ mod tests {
     #[test]
     fn doubles_print_as_the_jdk_prints_them() {
         let unescape = |text: &str| text.replace("\\u221E", "\u{221E}");
-        let (mut formatted, mut skipped) = (0, 0);
+        let mut lines = 0;
         for line in include_str!("java_doubles.txt").lines() {
             let fields: Vec<&str> = line.split(' ').collect();
             let value = f64::from_bits(u64::from_str_radix(fields[0], 16).unwrap());
             assert_eq!(print_double(value), fields[1], "{line}");
-            match decimal_format(value) {
-                Some(text) => {
-                    assert_eq!(text, unescape(fields[2]), "{line}");
-                    formatted += 1;
-                }
-                None => skipped += 1,
-            }
+            assert_eq!(decimal_format(value), unescape(fields[2]), "{line}");
+            lines += 1;
         }
-        assert!(formatted > 300, "{formatted} formatted, {skipped} skipped");
+        assert!(lines > 400, "{lines} lines");
     }
 
     /// `java_tiny_doubles.txt` holds the bits and JDK 21's `Double.toString` of positive
@@ -1312,15 +1240,6 @@ mod tests {
             lines += 1;
         }
         assert!(lines > 800);
-    }
-
-    #[test]
-    fn a_double_the_formatter_does_not_cover_is_reported() {
-        // 2^53 and above, and exact ties at the sixteenth fraction digit.
-        assert_eq!(decimal_format(9_007_199_254_740_992.0), None);
-        assert_eq!(decimal_format(5e-17), None);
-        assert_eq!(decimal_format(0.12345678901234565), None);
-        assert_eq!(decimal_format(0.3), Some("0.3".to_string()));
     }
 
     fn spec(condition: Condition) -> Result<FilterSpec, String> {
