@@ -1403,3 +1403,7 @@ columnsToRows is an engine operation and the console carries it out; dx.data.mar
 ## 2026-11-18 08:47 UTC: pull request 172 merged
 
 Seven green checks on head 6058a45f. Main is at b3dd5316. The three Python console pieces Josh approved (calendars, arrays and casts, columns to rows) are on main; the built-in calendars wait on his answer to 7.9.
+
+## 2026-11-18 08:51 UTC: task 11.5 reported, pull request 173; task 11.7 started
+
+Aggregations serve first and last of big numbers on ticking and blink tables, which lifts the refusal of decimals in Kafka change data capture (review item 4.3), and vector keys, distinct vectors and count-where over vectors. Arithmetic on big numbers is left: it needs a decimal dependency and two of Deephaven's ticking results depend on history. Owner question 7.13 (distinct of float vectors) added. Task 11.7 (rollups and trees, server handlers, small engine leftovers) runs on Opus beside task 11.6.
