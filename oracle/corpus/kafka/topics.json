@@ -1,0 +1,107 @@
+{
+ "format": 1,
+ "topics": [
+  {"name": "kc_text", "partitions": 1, "compression": null, "records": [
+   {"partition": 0, "timestamp": 1700000000000, "key": {"text": "k1"}, "value": {"text": "alpha"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000001000, "key": {"text": "k2"}, "value": {"text": ""}, "headers": []},
+   {"partition": 0, "timestamp": 1700000002000, "key": null, "value": {"text": "no key"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000003000, "key": {"text": "k4"}, "value": null, "headers": []},
+   {"partition": 0, "timestamp": 1700000004000, "key": {"text": "k5"}, "value": {"text": "héllo ✓"}, "headers": [["trace", {"text": "abc"}], ["n", {"hex": "0001"}]]}
+  ]},
+  {"name": "kc_int_double", "partitions": 1, "compression": null, "records": [
+   {"partition": 0, "timestamp": 1700000000000, "key": {"hex": "00000001"}, "value": {"hex": "3ff8000000000000"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000001000, "key": {"hex": "fffffffe"}, "value": {"hex": "7ff8000000000000"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000002000, "key": {"hex": "7fffffff"}, "value": {"hex": "7ff0000000000000"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000003000, "key": {"hex": "80000000"}, "value": {"hex": "8000000000000000"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000004000, "key": null, "value": {"hex": "4004000000000000"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000005000, "key": {"hex": "00000009"}, "value": null, "headers": []},
+   {"partition": 0, "timestamp": 1700000006000, "key": {"hex": "00000005"}, "value": {"hex": "ffefffffffffffff"}, "headers": []}
+  ]},
+  {"name": "kc_long_float", "partitions": 1, "compression": null, "records": [
+   {"partition": 0, "timestamp": 1700000000000, "key": {"hex": "0000000000000001"}, "value": {"hex": "3fa00000"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000001000, "key": {"hex": "8000000000000000"}, "value": {"hex": "7fc00000"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000002000, "key": {"hex": "0000010000000000"}, "value": {"hex": "ff7fffff"}, "headers": []}
+  ]},
+  {"name": "kc_short_long", "partitions": 1, "compression": null, "records": [
+   {"partition": 0, "timestamp": 1700000000000, "key": {"hex": "0007"}, "value": {"hex": "0000000000000046"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000001000, "key": {"hex": "8000"}, "value": {"hex": "7fffffffffffffff"}, "headers": []}
+  ]},
+  {"name": "kc_bad_int", "partitions": 1, "compression": null, "records": [
+   {"partition": 0, "timestamp": 1700000000000, "key": {"text": "a"}, "value": {"hex": "00000001"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000001000, "key": {"text": "b"}, "value": {"hex": "00000002"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000002000, "key": {"text": "c"}, "value": {"hex": "000003"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000003000, "key": {"text": "d"}, "value": {"hex": "00000004"}, "headers": []}
+  ]},
+  {"name": "kc_json", "partitions": 1, "compression": null, "records": [
+   {"partition": 0, "timestamp": 1700000000000, "key": {"text": "j1"}, "value": {"text": "{\"id\": 1, \"name\": \"ann\", \"price\": 1.5, \"ok\": true, \"when\": \"2024-01-02T03:04:05Z\", \"tags\": [\"a\", \"b\"], \"nested\": {\"deep\": {\"n\": 7}}, \"c\": \"x\"}"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000001000, "key": {"text": "j2"}, "value": {"text": "{\"id\": \"12.9\", \"name\": 15, \"price\": \"1e3\", \"ok\": \"T\", \"when\": 1700000000, \"nested\": {\"deep\": {\"n\": 2.9}}, \"c\": 65}"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000002000, "key": {"text": "j3"}, "value": {"text": "{\"id\": null, \"name\": {\"a\": [1, 2.50, \"q\"]}, \"ok\": null}"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000003000, "key": {"text": "j4"}, "value": {"text": "{\"id\": 1e19, \"name\": true, \"price\": true, \"ok\": 1, \"when\": 1700000000123, \"c\": \"\"}"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000004000, "key": {"text": "j5"}, "value": {"text": "[5, \"arr\"]"}, "headers": []}
+  ]},
+  {"name": "kc_json_bad", "partitions": 1, "compression": null, "records": [
+   {"partition": 0, "timestamp": 1700000000000, "key": {"text": "a"}, "value": {"text": "{\"n\": 1}"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000001000, "key": {"text": "b"}, "value": {"text": "{\"n\": "}, "headers": []},
+   {"partition": 0, "timestamp": 1700000002000, "key": {"text": "c"}, "value": {"text": "{\"n\": 3}"}, "headers": []}
+  ]},
+  {"name": "kc_json_tombstone", "partitions": 1, "compression": null, "records": [
+   {"partition": 0, "timestamp": 1700000000000, "key": {"text": "a"}, "value": {"text": "{\"n\": 1}"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000001000, "key": {"text": "a"}, "value": null, "headers": []}
+  ]},
+  {"name": "kc_two", "partitions": 2, "compression": null, "records": [
+   {"partition": 0, "timestamp": 1700000000000, "key": {"text": "a0"}, "value": {"text": "p0-0"}, "headers": []},
+   {"partition": 1, "timestamp": 1700000001000, "key": {"text": "b0"}, "value": {"text": "p1-0"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000002000, "key": {"text": "a1"}, "value": {"text": "p0-1"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000003000, "key": {"text": "a2"}, "value": {"text": "p0-2"}, "headers": []},
+   {"partition": 1, "timestamp": 1700000004000, "key": {"text": "b1"}, "value": {"text": "p1-1"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000005000, "key": {"text": "a3"}, "value": {"text": "p0-3"}, "headers": []},
+   {"partition": 1, "timestamp": 1700000006000, "key": {"text": "b2"}, "value": {"text": "p1-2"}, "headers": []}
+  ]},
+  {"name": "kc_gzip", "partitions": 1, "compression": "gzip", "records": [
+   {"partition": 0, "timestamp": 1700000000000, "key": {"text": "g1"}, "value": {"text": "one"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000001000, "key": {"text": "g2"}, "value": {"text": "two"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000002000, "key": {"text": "g3"}, "value": {"text": "three"}, "headers": []}
+  ]},
+  {"name": "kc_avro", "partitions": 1, "compression": null, "records": [
+   {"partition": 0, "timestamp": 1700000000000, "key": {"text": "t1"}, "value": {"hex": "000000000b0641414114000000000000f83f80a0abfef96200000258c801010000003f"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000001000, "key": {"text": "t2"}, "value": {"hex": "000000000c06424242050000104082a0abfef9620202590e000000c03f"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000002000, "key": {"text": "t3"}, "value": {"hex": "000000000b06434343ffffffff0f000000000000f87fffffffffffffffffff0102020a6ec3b674650080808080804000ffff7fff"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000003000, "key": {"text": "t4"}, "value": null, "headers": []},
+   {"partition": 0, "timestamp": 1700000004000, "key": {"text": "t5"}, "value": {"hex": "000000000b0644444400000000000000008000000200025a01010000807f"}, "headers": []}
+  ]},
+  {"name": "kc_avro_more", "partitions": 1, "compression": null, "records": [
+   {"partition": 0, "timestamp": 1700000000000, "key": null, "value": {"hex": "000000000d0602040600040261026200043039"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000001000, "key": null, "value": {"hex": "000000000d000002ff"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000002000, "key": null, "value": {"hex": "000000000d02ffffffff0f000200000200"}, "headers": []}
+  ]},
+  {"name": "kc_proto", "partitions": 1, "compression": null, "records": [
+   {"partition": 0, "timestamp": 1700000000000, "key": null, "value": {"hex": "0000000015000a03414141100a19000000000000f83f2001280732050a017810033a03010203420b0880e2cfaa0610959aef3a"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000001000, "key": null, "value": {"hex": "000000001500"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000002000, "key": null, "value": {"hex": "0000000015000a0342424210fbffffffffffffffff0119000000000000d0bf280032061080d0acf30e3a0affffffffffffffffff0142021001"}, "headers": []}
+  ]},
+  {"name": "kc_proto_raw", "partitions": 1, "compression": null, "records": [
+   {"partition": 0, "timestamp": 1700000000000, "key": null, "value": {"hex": "0a03414141100a19000000000000f83f2001280732050a017810033a03010203420b0880e2cfaa0610959aef3a"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000001000, "key": null, "value": {"text": ""}, "headers": []},
+   {"partition": 0, "timestamp": 1700000002000, "key": null, "value": {"hex": "0a0342424210fbffffffffffffffff0119000000000000d0bf280032061080d0acf30e3a0affffffffffffffffff0142021001"}, "headers": []}
+  ]},
+  {"name": "kc_proto_tombstone", "partitions": 1, "compression": null, "records": [
+   {"partition": 0, "timestamp": 1700000000000, "key": {"text": "p1"}, "value": {"hex": "0000000015000a03414141100a19000000000000f83f2001280732050a017810033a03010203420b0880e2cfaa0610959aef3a"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000001000, "key": {"text": "p1"}, "value": null, "headers": []}
+  ]},
+  {"name": "kc.inv.people", "partitions": 1, "compression": null, "records": [
+   {"partition": 0, "timestamp": 1700000000000, "key": {"hex": "000000001f02"}, "value": {"hex": "000000002000020206616e6e0002630280a0abfef962"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000001000, "key": {"hex": "000000001f04"}, "value": {"hex": "000000002000020406626f6202000000000000044002630282a0abfef962"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000002000, "key": {"hex": "000000001f02"}, "value": {"hex": "0000000020020206616e6e00020208616e6e6502000000000000224002750284a0abfef962"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000003000, "key": {"hex": "000000001f04"}, "value": {"hex": "0000000020020406626f6202000000000000044000026400"}, "headers": []},
+   {"partition": 0, "timestamp": 1700000004000, "key": {"hex": "000000001f04"}, "value": null, "headers": []},
+   {"partition": 0, "timestamp": 1700000005000, "key": {"hex": "000000001f06"}, "value": {"hex": "000000002000020604637902000000000000f0bf02720286a0abfef962"}, "headers": []}
+  ]}
+ ],
+ "subjects": [
+  {"subject": "kc_avro-value", "versions": [{"version": 1, "id": 12, "type": "AVRO", "schema": "{\"type\":\"record\",\"name\":\"Trade\",\"namespace\":\"kc\",\"fields\":[{\"name\":\"sym\",\"type\":\"string\"},{\"name\":\"qty\",\"type\":\"int\"},{\"name\":\"px\",\"type\":\"float\"},{\"name\":\"ts\",\"type\":{\"type\":\"long\",\"logicalType\":\"timestamp-millis\"}},{\"name\":\"side\",\"type\":{\"type\":\"enum\",\"name\":\"Side\",\"symbols\":[\"BUY\",\"SELL\"]}},{\"name\":\"venue\",\"type\":{\"type\":\"record\",\"name\":\"Venue\",\"fields\":[{\"name\":\"code\",\"type\":\"string\"},{\"name\":\"lot\",\"type\":\"int\"}]}},{\"name\":\"flag\",\"type\":\"boolean\"},{\"name\":\"f\",\"type\":\"float\"}]}"}, {"version": 2, "id": 11, "type": "AVRO", "schema": "{\"type\":\"record\",\"name\":\"Trade\",\"namespace\":\"kc\",\"fields\":[{\"name\":\"sym\",\"type\":\"string\"},{\"name\":\"qty\",\"type\":\"int\"},{\"name\":\"px\",\"type\":\"double\"},{\"name\":\"ts\",\"type\":{\"type\":\"long\",\"logicalType\":\"timestamp-millis\"}},{\"name\":\"side\",\"type\":{\"type\":\"enum\",\"name\":\"Side\",\"symbols\":[\"BUY\",\"SELL\"]}},{\"name\":\"note\",\"type\":[\"null\",\"string\"],\"default\":null},{\"name\":\"venue\",\"type\":{\"type\":\"record\",\"name\":\"Venue\",\"fields\":[{\"name\":\"code\",\"type\":\"string\"},{\"name\":\"lot\",\"type\":\"long\"}]}},{\"name\":\"flag\",\"type\":\"boolean\"},{\"name\":\"f\",\"type\":\"float\"}]}"}]},
+  {"subject": "kc_avro_more-value", "versions": [{"version": 1, "id": 13, "type": "AVRO", "schema": "{\"type\":\"record\",\"name\":\"More\",\"namespace\":\"kc\",\"fields\":[{\"name\":\"sizes\",\"type\":{\"type\":\"array\",\"items\":\"int\"}},{\"name\":\"names\",\"type\":{\"type\":\"array\",\"items\":\"string\"}},{\"name\":\"amount\",\"type\":{\"type\":\"bytes\",\"logicalType\":\"decimal\",\"precision\":9,\"scale\":2}}]}"}]},
+  {"subject": "kc_proto-value", "versions": [{"version": 1, "id": 21, "type": "PROTOBUF", "schema": "syntax = \"proto3\";\npackage kc;\n\nimport \"google/protobuf/timestamp.proto\";\n\nmessage Tick {\n  string sym = 1;\n  int32 qty = 2;\n  double px = 3;\n  bool live = 4;\n  optional int64 seq = 5;\n  Inner inner = 6;\n  repeated int32 sizes = 7;\n  google.protobuf.Timestamp at = 8;\n}\n\nmessage Inner {\n  string code = 1;\n  uint32 n = 2;\n}\n"}]},
+  {"subject": "kc.inv.people-key", "versions": [{"version": 1, "id": 31, "type": "AVRO", "schema": "{\"type\":\"record\",\"name\":\"Key\",\"namespace\":\"kc.inv.people\",\"fields\":[{\"name\":\"id\",\"type\":\"int\"}]}"}]},
+  {"subject": "kc.inv.people-value", "versions": [{"version": 1, "id": 32, "type": "AVRO", "schema": "{\"type\":\"record\",\"name\":\"Envelope\",\"namespace\":\"kc.inv.people\",\"fields\":[{\"name\":\"before\",\"default\":null,\"type\":[\"null\",{\"type\":\"record\",\"name\":\"Value\",\"fields\":[{\"name\":\"id\",\"type\":\"int\"},{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"score\",\"type\":[\"null\",\"double\"],\"default\":null}]}]},{\"name\":\"after\",\"type\":[\"null\",\"Value\"],\"default\":null},{\"name\":\"op\",\"type\":\"string\"},{\"name\":\"ts_ms\",\"type\":[\"null\",\"long\"],\"default\":null}]}"}]}
+ ]
+}

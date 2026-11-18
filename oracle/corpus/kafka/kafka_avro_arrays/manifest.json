@@ -1,0 +1,14 @@
+{
+  "format": 2,
+  "scenario": "kafka_avro_arrays",
+  "scenario_sha256": "5b61c929e1fe1ff83f6ec7caa89579a29cfafb759fd1e723a313858ce07c70a2",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "more",
+      "file": "step000.more.arrow",
+      "rows": 3
+    }
+  ]
+}

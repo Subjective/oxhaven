@@ -1,0 +1,26 @@
+{
+  "format": 2,
+  "scenario": "kafka_simple_numbers",
+  "scenario_sha256": "496d0d26964d473d75de2312b9c977d6b92f106a9cfd087402256f7a8d59ddaa",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "int_double",
+      "file": "step000.int_double.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "long_float",
+      "file": "step000.long_float.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "short_long",
+      "file": "step000.short_long.arrow",
+      "rows": 2
+    }
+  ]
+}

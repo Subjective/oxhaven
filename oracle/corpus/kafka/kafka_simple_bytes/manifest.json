@@ -1,0 +1,14 @@
+{
+  "format": 2,
+  "scenario": "kafka_simple_bytes",
+  "scenario_sha256": "877489b64161340ec37f91ba39f8c067d87736a79a6c3c46dedf6b90972c483a",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "raw",
+      "file": "step000.raw.arrow",
+      "rows": 5
+    }
+  ]
+}

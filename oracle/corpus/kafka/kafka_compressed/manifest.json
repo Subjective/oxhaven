@@ -1,0 +1,14 @@
+{
+  "format": 2,
+  "scenario": "kafka_compressed",
+  "scenario_sha256": "6ad0b5ccacb5440361561135fcfc5fe21f7943e58114d4244f7d6bc24c0cf7d0",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "gzip",
+      "file": "step000.gzip.arrow",
+      "rows": 3
+    }
+  ]
+}
