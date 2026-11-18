@@ -1817,3 +1817,172 @@ measurement is tasks 9.9 and 9.10.
   JVM's sizing, not the process (see above). The JVM ran with 2 warm-up repetitions per
   case and two runs per process, so its numbers are close to steady state; its cold
   start is not measured.
+
+## After task 9.12 (2026-11-18): `agg_by`, `group_by`, `last_by` and aggregations with many groups
+
+Task 9.12 (`tasks/9.12-fast-many-group-aggregations.md`) took the cases the third
+measurement found slower than Deephaven on one thread: `agg_by_multi` and `group_by` at
+both sizes, `last_by` and `avg_by_med` at 10M rows, and the high-cardinality aggregations
+at 1M rows. It also looked into why several cases at 10M rows were slower on 4 threads
+than on 1. Results, row order and incremental behaviour are unchanged: every case gave
+the same check (row count, sums, first and last rows) before and after in all four pairs
+of runs.
+
+The short reading: `agg_by_multi`, `group_by`, `last_by` and `avg_by_med` are now faster
+than Deephaven in both runs on 1 and on 4 threads (ratio 0.29 to 0.92). `sum_by_high` at
+1M rows is level (1.00 to 1.06). `avg_by_high` at 1M rows is level on 1 thread (1.09 /
+1.11) and still 1.25 / 1.26 on 4 threads; `count_by_high` at 1M is level in three runs of
+four (1.04 / 1.26 on 1 thread, 1.05 / 0.99 on 4). Every other aggregation got faster too.
+The slowdown on 4 threads did not appear again, before or after the change.
+
+**How it was measured.** End to end with `bench/bench.py run`, the whole case list, as
+the third measurement, with these differences:
+
+- **Before** is `main` at `a00a636e`, **after** is this task's branch; both built in this
+  session with `cargo build --release -p oxhaven-server`, default release profile,
+  without the `python` feature.
+- Each server ran alone on port 10958, `--threads 1` and then `--threads 4`, with the
+  whole case list twice in one server process (run 1 / run 2). The four "before" runs
+  were at 03:31 to 03:37 and the four "after" runs at 03:37 to 03:43 on 2026-11-18, so
+  the two are minutes apart, not interleaved.
+- **Deephaven was not run again.** Its columns are the third measurement's
+  (`bench/results/2026-11-18-task-9.11-dh-*.json`): B for 1 thread, A for 4 processors.
+  The ratio is Oxhaven after over that Deephaven time, run 1 over run 1 and run 2 over
+  run 2.
+- The one-minute load before each case was 0.9 to 1.5, except the first minute of the
+  first "before" run on 1 thread, which started at 3.5 (a build had just ended).
+
+Medians in milliseconds, run 1 / run 2. The full table of all 74 pairs of case and size,
+with minimum, maximum and load per case, is `bench/results/2026-11-18-task-9.12.md`; raw
+files are `bench/results/2026-11-18-task-9.12-{before,after}-{p1,p4}-run{1,2}.json`.
+
+#### 1,000,000 rows
+
+| case | 1 thread: Deephaven | before | after | ratio | 4 threads: Deephaven | before | after | ratio |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `sum_by_low` | 23.1 / 22.7 | 19.6 / 13.0 | 9.5 / 9.5 | 0.41 / 0.42 | 21.1 / 19.5 | 13.3 / 13.3 | 9.6 / 9.9 | 0.45 / 0.51 |
+| `avg_by_low` | 19.0 / 20.8 | 15.1 / 13.0 | 9.4 / 9.5 | 0.50 / 0.46 | 19.3 / 19.2 | 19.1 / 12.7 | 9.7 / 9.8 | 0.50 / 0.51 |
+| `count_by_low` | 16.0 / 14.1 | 12.9 / 9.9 | 9.8 / 6.5 | 0.61 / 0.46 | 15.2 / 14.8 | 10.2 / 8.9 | 6.4 / 6.5 | 0.42 / 0.44 |
+| `sum_by_med` | 41.7 / 32.9 | 44.1 / 39.6 | 28.1 / 25.0 | 0.67 / 0.76 | 37.8 / 41.0 | 39.1 / 36.3 | 25.1 / 24.1 | 0.66 / 0.59 |
+| `avg_by_med` | 37.2 / 40.6 | 40.5 / 42.6 | 29.4 / 31.9 | 0.79 / 0.78 | 37.3 / 44.8 | 41.1 / 42.3 | 33.5 / 28.7 | 0.90 / 0.64 |
+| `count_by_med` | 17.0 / 17.8 | 18.3 / 18.7 | 10.1 / 10.2 | 0.59 / 0.58 | 19.2 / 17.9 | 18.9 / 29.1 | 10.2 / 9.4 | 0.53 / 0.53 |
+| `sum_by_high` | 126 / 121 | 182 / 162 | 134 / 126 | 1.06 / 1.04 | 144 / 132 | 205 / 158 | 144 / 137 | 1.00 / 1.04 |
+| `avg_by_high` | 140 / 116 | 182 / 166 | 153 / 129 | 1.09 / 1.11 | 117 / 133 | 203 / 171 | 146 / 167 | 1.25 / 1.26 |
+| `count_by_high` | 88.8 / 93.8 | 106 / 109 | 92.3 / 118 | 1.04 / 1.26 | 95.4 / 93.3 | 117 / 111 | 99.9 / 92.5 | 1.05 / 0.99 |
+| `agg_by_multi` | 56.2 / 57.4 | 87.0 / 87.8 | 46.0 / 33.9 | 0.82 / 0.59 | 56.0 / 84.8 | 88.0 / 86.2 | 33.4 / 33.4 | 0.60 / 0.39 |
+| `last_by` | 18.3 / 16.6 | 20.1 / 22.0 | 13.5 / 13.9 | 0.74 / 0.84 | 17.7 / 19.5 | 37.7 / 22.3 | 13.2 / 13.0 | 0.75 / 0.67 |
+| `group_by` | 55.2 / 61.4 | 81.0 / 78.7 | 27.8 / 22.7 | 0.50 / 0.37 | 67.7 / 62.0 | 79.0 / 78.5 | 19.4 / 19.3 | 0.29 / 0.31 |
+
+#### 10,000,000 rows
+
+| case | 1 thread: Deephaven | before | after | ratio | 4 threads: Deephaven | before | after | ratio |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `sum_by_low` | 269 / 174 | 126 / 128 | 92.6 / 98.9 | 0.34 / 0.57 | 166 / 185 | 122 / 130 | 91.7 / 86.8 | 0.55 / 0.47 |
+| `avg_by_low` | 163 / 165 | 128 / 126 | 92.5 / 94.7 | 0.57 / 0.57 | 165 / 181 | 141 / 130 | 90.0 / 89.5 | 0.54 / 0.49 |
+| `count_by_low` | 117 / 115 | 106 / 88.8 | 54.5 / 56.6 | 0.46 / 0.49 | 123 / 121 | 89.5 / 89.9 | 52.6 / 87.7 | 0.43 / 0.72 |
+| `sum_by_med` | 306 / 333 | 436 / 380 | 259 / 227 | 0.85 / 0.68 | 312 / 353 | 373 / 367 | 237 / 236 | 0.76 / 0.67 |
+| `avg_by_med` | 311 / 312 | 385 / 417 | 285 / 263 | 0.92 / 0.84 | 318 / 453 | 385 / 398 | 267 / 265 | 0.84 / 0.59 |
+| `count_by_med` | 147 / 193 | 213 / 193 | 86.9 / 87.9 | 0.59 / 0.45 | 146 / 188 | 173 / 183 | 85.4 / 81.4 | 0.58 / 0.43 |
+| `sum_by_high` | 598 / 658 | 698 / 687 | 521 / 545 | 0.87 / 0.83 | 609 / 745 | 653 / 690 | 486 / 492 | 0.80 / 0.66 |
+| `avg_by_high` | 590 / 622 | 654 / 695 | 555 / 550 | 0.94 / 0.88 | 623 / 749 | 714 / 732 | 563 / 576 | 0.90 / 0.77 |
+| `count_by_high` | 388 / 394 | 383 / 408 | 301 / 289 | 0.78 / 0.73 | 495 / 388 | 431 / 412 | 298 / 316 | 0.60 / 0.82 |
+| `agg_by_multi` | 511 / 528 | 840 / 841 | 294 / 317 | 0.58 / 0.60 | 521 / 606 | 834 / 925 | 306 / 332 | 0.59 / 0.55 |
+| `last_by` | 155 / 142 | 204 / 209 | 112 / 104 | 0.72 / 0.73 | 166 / 146 | 194 / 226 | 130 / 120 | 0.78 / 0.83 |
+| `group_by` | 633 / 613 | 929 / 1038 | 407 / 381 | 0.64 / 0.62 | 739 / 654 | 860 / 870 | 308 / 291 | 0.42 / 0.45 |
+
+**Where the time went, and what changed.** Measured inside the engine first
+(`examples/aggregation-cases.rs`, under callgrind and with `getrusage`), then end to end.
+
+- *Grouping each chunk.* An aggregation reads its input 4,096 rows at a time, numbers
+  each row's key, sorts the chunk's rows by that number and hands each operator one run
+  of rows per group. With 10,000 or more groups nearly every run is one row, so the sort
+  and one call per row and operator were most of the work. Sums, averages, counts,
+  minimum, maximum and `group_by` now take a chunk's rows in row order when the parent
+  is static or add-only: each row adds to a partial for its group within the chunk, and
+  the partials are added to the groups' states once per chunk. That keeps the sums that
+  depend on chunk boundaries (a `long` sum that reaches the null value, a floating point
+  sum) bit for bit what they were.
+- *Minimum and maximum* kept a tagged value per group and compared through it; they now
+  keep a typed array of `long` or `double` for the numeric types.
+- *`group_by`* built a row set per group (a heap allocation and a container per group,
+  1M of them in `group_by` at 10M rows). For a static parent the first result now sorts
+  the row keys by group into two flat arrays, by counting.
+- *`last_by`* with six columns kept six copies of "the last row of each group", one per
+  column. The columns of one `first_by` or `last_by` now share one.
+- *The first result* wrote keys and results into a place per group one at a time and
+  noted each group as changed; it now writes each column once, and for a static parent
+  keeps no per-group places for results at all.
+- *Page faults.* About a sixth of the server's processor time over a whole run is the
+  kernel giving the process fresh memory (11 to 12.5 s of system time against 60 to 72 s
+  of user time, on 1 thread and on 4), and for `sum_by_high` at 1M rows it was about half
+  the case under `getrusage`. Touching less memory per group (the two items above) is
+  what brought the high-cardinality cases down; the rest is the allocator (below).
+
+Inside the engine (`aggregation-cases`, one thread, median, before / after; raw output
+`bench/results/2026-11-18-task-9.12-engine-*.txt`):
+
+| case | 1M rows | 10M rows |
+| --- | ---: | ---: |
+| `agg_by_multi` | 83.4 / 29.9 | 835 / 293 |
+| `group_by` | 75.9 / 17.1 | 841 / 290 |
+| `last_by` | 22.5 / 10.4 | 190 / 110 |
+| `sum_by_med` | 38.9 / 23.1 | 391 / 212 |
+| `avg_by_med` | 42.4 / 35.3 | 375 / 285 |
+| `sum_by_high` | 262 / 156 | 747 / 468 |
+| `avg_by_high` | 275 / 164 | 810 / 534 |
+| `count_by_high` | 188 / 102 | 435 / 309 |
+| `append_only_cycles` (19 cycles into three aggregations) | 1312 / 1228 | 11957 / 11594 |
+
+**Other cases.** No code outside the aggregations changed. In the full table the two
+large joins on 1 thread read slower after than before (`natural_join_large` at 1M rows
+65.3 / 84.9 ms before, 102 / 114 after; `exact_join_large` 64.3 / 81.5 against 126 /
+93.4), while on 4 threads they are the same. Measured again alone, both servers in turn,
+twice (`bench/results/2026-11-18-task-9.12-joins-alone.txt`), the two are the same:
+`natural_join_large` at 1M rows 161 / 111 ms before and 114 / 123 after, at 10M 431 / 469
+and 396 / 420; `exact_join_large` at 10M 392 / 394 and 386 / 444. A join's time on this
+machine moves by that much with what the process's heap held before it.
+
+**Four threads against one.** The third measurement had `sort_int`, `sort_string`,
+`sum_by_high` and `avg_by_high` at 10M rows 10% to 25% slower on 4 threads than on 1.
+Here, same binary, same session, they are not, before or after:
+
+| case, 10M rows | before, 1 thread | before, 4 threads | after, 1 thread | after, 4 threads |
+| --- | ---: | ---: | ---: | ---: |
+| `sort_int` | 501 / 527 | 497 / 524 | 525 / 529 | 544 / 521 |
+| `sort_string` | 1406 / 1501 | 1494 / 1524 | 1468 / 1473 | 1426 / 1560 |
+| `sum_by_high` | 698 / 687 | 653 / 690 | 521 / 545 | 486 / 492 |
+| `avg_by_high` | 654 / 695 | 714 / 732 | 555 / 550 | 563 / 576 |
+
+So the difference of the third measurement was between two runs of the machine, not
+between thread counts. None of these cases uses more than one thread, and the server's
+processor time for a whole run is the same on 1 and 4 threads. What does move these cases
+is how the allocator gets and returns memory. Two experiments, neither of them in this
+change:
+
+- With `mimalloc` as the server's allocator (three lines in `oxhaven-server`), system
+  time for a whole run fell from 11 to 12.5 s to 2.5 to 2.7 s, and at 10M rows, on 1 / 4
+  threads, `sort_int` took 403 / 405 ms, `sort_string` 1254 / 1201, `group_by` 277 / 240;
+  `sum_by_high` at 1M rows took 129 / 106 ms. Raw:
+  `bench/results/2026-11-18-task-9.12-mimalloc-p{1,4}.json` (one run each, on this
+  branch's code). The price is memory kept by the
+  process: after a short list of cases it held 840 to 917 MB against 166 to 290 MB with
+  glibc's allocator; after a whole run the two were alike (1.25 to 1.35 GB against 1.06
+  to 1.6 GB).
+- With glibc's allocator told to keep memory (`GLIBC_TUNABLES` with
+  `glibc.malloc.mmap_threshold` of 32 MB, `trim_threshold` of 4 GB, `arena_max=1`), on a
+  short list of cases on 4 threads system time fell from 4.2 to 2.7 s and `sum_by_high`
+  at 1M rows from 132 to 109 ms.
+
+Changing the allocator is a decision about the whole server's memory and a new
+dependency built from C, so it was left out; it is the largest remaining gain for the
+sorts and the high-cardinality aggregations, and would be measured on its own.
+
+**What is left.**
+
+- `avg_by_high` at 1M rows on 4 threads (1.25 / 1.26), and `count_by_high` at 1M in one
+  run of four (1.26): 1M groups of one row each, where numbering 1M new keys in the key
+  table (growing and rehashing it) and fresh memory for its columns are most of the time.
+- A refreshing parent's `group_by` still builds a row set per group in its first result,
+  because later cycles change them. The benchmark's tables are static.
+- Aggregating a cycle's added rows into an existing result (`append_only_cycles` above,
+  about 5%) was not the subject.
