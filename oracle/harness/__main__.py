@@ -15,6 +15,11 @@ No Java counterpart: harness entry point.
     record-scripts  run the script scenarios on the Java reference and store what they leave
     replay-scripts  run the script scenarios on one server and compare with the recordings
     show-scripts    run script scenarios and print what they leave
+    kafka-topics    write or check the topics file of the Kafka corpus
+    kafka-publish   create the topics of the Kafka corpus on a broker and send their records
+    kafka-registry  serve the schema registry of the Kafka corpus until interrupted
+    kafka-record    store what the Java reference answers to the Kafka scenarios
+    kafka-gate      replay the Kafka scenarios against the checked-in Kafka baseline
     formulas      record the formula corpus from Java, or compare one server with it
 
 With `ORACLE_STACKS_AFTER=<seconds>` in the environment, a command that is still running after
@@ -48,6 +53,11 @@ CORPUS = ORACLE / "corpus"
 SCRIPT_SCENARIOS = SCENARIOS / "python"
 SCRIPT_CORPUS = CORPUS / "python"
 BASELINE = ORACLE / "replay-baseline.json"
+KAFKA_SCENARIOS = SCENARIOS / "kafka"
+KAFKA_CORPUS = CORPUS / "kafka"
+KAFKA_BASELINE = ORACLE / "kafka-baseline.json"
+# Written by `kafka-record` when it records every scenario: the topic contents they saw.
+KAFKA_RECORDED_FROM = "recorded-from.json"
 FUZZ_OUT = ORACLE / ".fuzz"
 KNOWN = ORACLE / "fuzz-known-findings.json"
 REFERENCE = "42.9"  # oracle/REFERENCE.md
@@ -259,6 +269,93 @@ def cmd_replay_scripts(args: argparse.Namespace) -> int:
     if failed:
         return 2
     return 1 if different or missing else 0
+
+
+def _kafka_recorded_from(corpus: Path) -> str | None:
+    try:
+        return json.loads((corpus / KAFKA_RECORDED_FROM).read_text(encoding="utf-8"))["topics_sha256"]
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def cmd_kafka_topics(args: argparse.Namespace) -> int:
+    from . import kafka, kafka_topics
+
+    path = Path(args.corpus) / kafka.TOPICS_FILE
+    text = kafka_topics.dump(kafka_topics.fixture())
+    if args.write:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        print(f"wrote {path}")
+        return 0
+    if not path.is_file() or path.read_text(encoding="utf-8") != text:
+        print(f"{path} is not what harness/kafka_topics.py defines; write it with "
+              "`kafka-topics --write` and record the Kafka scenarios again")
+        return 1
+    doc = kafka.load_fixture(path)
+    records = sum(len(topic["records"]) for topic in doc["topics"])
+    print(f"{path}: {len(doc['topics'])} topics, {records} records, "
+          f"{len(doc['subjects'])} subjects, sha256 {kafka.digest(doc)}")
+    return 0
+
+
+def cmd_kafka_publish(args: argparse.Namespace) -> int:
+    from . import kafka
+
+    sent = kafka.publish(kafka.load_fixture(Path(args.corpus) / kafka.TOPICS_FILE), args.broker)
+    print(f"published {sent} records to {args.broker}")
+    return 0
+
+
+def cmd_kafka_registry(args: argparse.Namespace) -> int:
+    import signal
+    import threading
+
+    from . import kafka
+
+    doc = kafka.load_fixture(Path(args.corpus) / kafka.TOPICS_FILE)
+    registry = kafka.Registry(doc["subjects"], args.port)
+    print(f"REGISTRY_READY port={registry.port}", flush=True)
+    stop = threading.Event()
+    signal.signal(signal.SIGTERM, lambda *_: stop.set())
+    signal.signal(signal.SIGINT, lambda *_: stop.set())
+    stop.wait()
+    registry.close()
+    if args.log:
+        Path(args.log).write_text("".join(f"{line}\n" for line in registry.requests),
+                                  encoding="utf-8")
+    return 0
+
+
+def cmd_kafka_record(args: argparse.Namespace) -> int:
+    from . import kafka
+
+    corpus = Path(args.corpus)
+    topics = kafka.digest(kafka.load_fixture(corpus / kafka.TOPICS_FILE))
+    if args.scripts and _kafka_recorded_from(corpus) != topics:
+        print("error: the topics file is not the one the recordings were made from; record "
+              "every Kafka scenario (no --scripts)", file=sys.stderr)
+        return 2
+    status = cmd_record_scripts(args)
+    if status == 0 and not args.scripts:
+        with open(corpus / KAFKA_RECORDED_FROM, "w", encoding="utf-8") as handle:
+            json.dump({"topics_sha256": topics, "reference": REFERENCE}, handle, indent=2)
+            handle.write("\n")
+    return status
+
+
+def cmd_kafka_gate(args: argparse.Namespace) -> int:
+    from . import kafka
+
+    corpus = Path(args.corpus)
+    topics = kafka.digest(kafka.load_fixture(corpus / kafka.TOPICS_FILE))
+    if _kafka_recorded_from(corpus) != topics:
+        print("error: the topics file is not the one the recordings were made from; record "
+              "the Kafka scenarios again against the Java reference", file=sys.stderr)
+        return 2
+    select = [name.strip() for name in (args.scripts or "").split(",") if name.strip()]
+    return kafka.gate(args.url, Path(args.scenarios), corpus, Path(args.baseline),
+                      Path(args.report) if args.report else None, select)
 
 
 def cmd_show_scripts(args: argparse.Namespace) -> int:
@@ -676,6 +773,44 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("show-scripts", help="run script scenarios and print what they leave")
     scripts(p)
     p.set_defaults(run=cmd_show_scripts)
+
+    p = sub.add_parser("kafka-topics", help="check the topics file of the Kafka corpus "
+                                            "against its definition, or write it")
+    p.add_argument("--corpus", default=str(KAFKA_CORPUS))
+    p.add_argument("--write", action="store_true")
+    p.set_defaults(run=cmd_kafka_topics)
+
+    p = sub.add_parser("kafka-publish", help="create the topics of the Kafka corpus on a "
+                                             "fresh broker and send their records")
+    p.add_argument("--broker", required=True, help="host:port of the broker")
+    p.add_argument("--corpus", default=str(KAFKA_CORPUS))
+    p.set_defaults(run=cmd_kafka_publish)
+
+    p = sub.add_parser("kafka-registry", help="serve the schema registry of the Kafka corpus "
+                                              "on 127.0.0.1 until interrupted")
+    p.add_argument("--port", type=int, default=0)
+    p.add_argument("--corpus", default=str(KAFKA_CORPUS))
+    p.add_argument("--log", help="write the paths that were asked for to this file at the end")
+    p.set_defaults(run=cmd_kafka_registry)
+
+    def kafka_scripts(p: argparse.ArgumentParser) -> None:
+        p.add_argument("--url", required=True)
+        p.add_argument("--scenarios", default=str(KAFKA_SCENARIOS))
+        p.add_argument("--corpus", default=str(KAFKA_CORPUS))
+        p.add_argument("--scripts", help="comma-separated names, or starts of names: only "
+                                         "these Kafka scenarios")
+
+    p = sub.add_parser("kafka-record",
+                       help="store what the Java reference answers to the Kafka scenarios")
+    kafka_scripts(p)
+    p.set_defaults(run=cmd_kafka_record)
+
+    p = sub.add_parser("kafka-gate", help="replay the Kafka scenarios against the checked-in "
+                                          "Kafka baseline")
+    kafka_scripts(p)
+    p.add_argument("--baseline", default=str(KAFKA_BASELINE))
+    p.add_argument("--report", help="write the full outcome to this JSON file")
+    p.set_defaults(run=cmd_kafka_gate)
 
     p = sub.add_parser("client-smoke", help="exercise one area of the client protocol")
     p.add_argument("area", choices=["session", "tables", "flight", "barrage", "inputtable",

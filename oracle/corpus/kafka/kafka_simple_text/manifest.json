@@ -1,0 +1,26 @@
+{
+  "format": 2,
+  "scenario": "kafka_simple_text",
+  "scenario_sha256": "67cdbab291325317c98948b156b611200c5b06a107ddd1813315726337a4a8a1",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "named",
+      "file": "step000.named.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "defaults",
+      "file": "step000.defaults.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "value_only",
+      "file": "step000.value_only.arrow",
+      "rows": 5
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "format": 2,
+  "scenario": "kafka_simple_not_utf8",
+  "scenario_sha256": "01c47faa3ed3cebdf3dcefebb63a92ac1b3e379ac803f4b735ff1a567bd22a90",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "text",
+      "file": "step000.text.arrow",
+      "rows": 3
+    }
+  ]
+}

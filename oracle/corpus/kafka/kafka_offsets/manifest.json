@@ -1,0 +1,44 @@
+{
+  "format": 2,
+  "scenario": "kafka_offsets",
+  "scenario_sha256": "2ad4be553db3a6c9eee003ce1864cbbdb7b6d69b2bbeee95a1a81311ead15257",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "everything",
+      "file": "step000.everything.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "partition_1",
+      "file": "step000.partition_1.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "per_partition",
+      "file": "step000.per_partition.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "mixed",
+      "file": "step000.mixed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "group",
+      "file": "step000.group.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "at_end",
+      "file": "step000.at_end.arrow",
+      "rows": 0
+    }
+  ]
+}

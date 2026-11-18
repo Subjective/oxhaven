@@ -1,0 +1,14 @@
+{
+  "format": 2,
+  "scenario": "kafka_protobuf_enum",
+  "scenario_sha256": "a993006a8ac799b812c93395ac5f3b3c99f0db38b2f695ea22633717022c0f00",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "paint",
+      "file": "step000.paint.arrow",
+      "rows": 2
+    }
+  ]
+}
