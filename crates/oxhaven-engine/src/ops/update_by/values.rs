@@ -9,7 +9,7 @@
 use super::failure;
 use arrow::array::{
     Array, ArrayRef, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array,
-    Int8Array, StringArray, TimestampNanosecondArray, UInt16Array, UInt32Array,
+    Int8Array, ListArray, StringArray, TimestampNanosecondArray, UInt16Array, UInt32Array,
 };
 use arrow::compute::{concat, take};
 use oxhaven_contracts::schema::ColumnType;
@@ -25,6 +25,10 @@ pub(super) enum Values {
     /// `float` and `double`, widened.
     Float(Vec<Option<f64>>),
     Text(Vec<Option<String>>),
+    /// The cells of a vector or array column, as they are: the operators that take such a
+    /// column (forward fill, rolling count, rolling group) read only which cells are null,
+    /// and a bucket key reads the elements through [`push_list_keys`].
+    Lists(ArrayRef),
 }
 
 fn cast<A: Array + 'static>(array: &ArrayRef) -> Result<&A, TableFailure> {
@@ -71,12 +75,8 @@ impl Values {
                     .map(|v| v.map(str::to_owned))
                     .collect(),
             ),
-            // Java buckets by a vector or an array column, forward fills one and counts
-            // its rows in a window, all as a column of objects.
-            ColumnType::Vector(_) | ColumnType::Array(_) => oxhaven_contracts::unported!(
-                "io.deephaven.engine.table.impl.updateby.UpdateBy#updateBy",
-                "a bucket or input column of type {column_type:?}"
-            ),
+            // Java reads a vector or an array column as a column of objects.
+            ColumnType::Vector(_) | ColumnType::Array(_) => Values::Lists(array.clone()),
             other => {
                 return Err(failure(format!(
                     "update_by cannot read a column of type {other:?}"
@@ -90,6 +90,7 @@ impl Values {
             Values::Int(v) => v.len(),
             Values::Float(v) => v.len(),
             Values::Text(v) => v.len(),
+            Values::Lists(v) => v.len(),
         }
     }
 
@@ -98,6 +99,7 @@ impl Values {
             Values::Int(v) => v[index].is_none(),
             Values::Float(v) => v[index].is_none(),
             Values::Text(v) => v[index].is_none(),
+            Values::Lists(v) => v.is_null(index),
         }
     }
 
@@ -114,8 +116,146 @@ impl Values {
                     .encode_utf16()
                     .cmp(v[b].as_deref()?.encode_utf16()),
             ),
+            // No operator that orders values is given a vector or an array column.
+            Values::Lists(_) => None,
         }
     }
+}
+
+/// Whether the buckets of a vector column of type `column_type` are well defined: whether
+/// two vectors are one bucket in Java whatever classes of vector hold them. They are when
+/// the elements, at every depth, are integers, `char`s, `Boolean`s, `String`s, `Instant`s
+/// or vectors of these: every class compares those elements by value, and hashes them
+/// consistently.
+///
+/// They are not for elements of `float` or `double`: `DoubleVectorDirect#equals` compares
+/// two direct vectors with `Arrays#equals`, for which `-0.0` and `0.0` differ, but any other
+/// pair (a vector of a group-by result is a `DoubleVectorColumnWrapper`) with
+/// `DoubleComparisons#eq`, for which they are equal. Nor for an array inside a vector:
+/// `ObjectVector#equals` compares arrays by value but `ObjectVector#hashCode` hashes them by
+/// identity, so equal vectors of arrays fall in one bucket or apart as their hashes happen
+/// to agree (seen on Deephaven 42.9: each in its own bucket).
+///
+/// Behavior: io.deephaven.vector.IntVector#equals and #hashCode, and those of the other
+/// vector interfaces and of their `Direct` classes, which
+/// io.deephaven.util.compare.ObjectComparisons#eq and #hashCode call for a key of objects
+pub(super) fn bucketable_vector(column_type: &ColumnType) -> bool {
+    use ColumnType::*;
+    match column_type {
+        Vector(element) => match &**element {
+            Boolean | Byte | Char | Short | Int | Long | String | Instant => true,
+            inner @ Vector(_) => bucketable_vector(inner),
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+/// The elements of a list array, its type resolved once for all its cells.
+enum Elements<'a> {
+    Boolean(&'a BooleanArray),
+    Byte(&'a Int8Array),
+    Char(&'a UInt16Array),
+    Short(&'a Int16Array),
+    Int(&'a Int32Array),
+    Long(&'a Int64Array),
+    Instant(&'a TimestampNanosecondArray),
+    String(&'a StringArray),
+    Lists(&'a ListArray, Box<Elements<'a>>),
+}
+
+impl<'a> Elements<'a> {
+    /// The cells of `array`, of type `element`; only the types [`bucketable_vector`] takes.
+    fn of(array: &'a ArrayRef, element: &ColumnType) -> Result<Elements<'a>, TableFailure> {
+        Ok(match element {
+            ColumnType::Boolean => Elements::Boolean(cast(array)?),
+            ColumnType::Byte => Elements::Byte(cast(array)?),
+            ColumnType::Char => Elements::Char(cast(array)?),
+            ColumnType::Short => Elements::Short(cast(array)?),
+            ColumnType::Int => Elements::Int(cast(array)?),
+            ColumnType::Long => Elements::Long(cast(array)?),
+            ColumnType::Instant => Elements::Instant(cast(array)?),
+            ColumnType::String => Elements::String(cast(array)?),
+            ColumnType::Vector(inner) => {
+                let lists: &ListArray = cast(array)?;
+                Elements::Lists(lists, Box::new(Elements::of(lists.values(), inner)?))
+            }
+            other => {
+                return Err(failure(format!(
+                    "update_by cannot bucket by vectors of {other:?}"
+                )))
+            }
+        })
+    }
+
+    /// Appends the cell at `index` to `key`: whether it is null, then its value, so that
+    /// two cells append the same bytes exactly when they are equal.
+    fn push(&self, index: usize, key: &mut Vec<u8>) {
+        macro_rules! fixed {
+            ($array:expr) => {{
+                let valid = $array.is_valid(index);
+                key.push(u8::from(valid));
+                if valid {
+                    key.extend($array.value(index).to_le_bytes());
+                }
+            }};
+        }
+        match self {
+            Elements::Boolean(a) => key.push(if a.is_null(index) {
+                0
+            } else {
+                1 + u8::from(a.value(index))
+            }),
+            Elements::Byte(a) => fixed!(a),
+            Elements::Char(a) => fixed!(a),
+            Elements::Short(a) => fixed!(a),
+            Elements::Int(a) => fixed!(a),
+            Elements::Long(a) => fixed!(a),
+            Elements::Instant(a) => fixed!(a),
+            Elements::String(a) => {
+                let valid = a.is_valid(index);
+                key.push(u8::from(valid));
+                if valid {
+                    let text = a.value(index);
+                    key.extend((text.len() as u64).to_le_bytes());
+                    key.extend(text.as_bytes());
+                }
+            }
+            Elements::Lists(a, inner) => {
+                let valid = a.is_valid(index);
+                key.push(u8::from(valid));
+                if valid {
+                    let offsets = a.value_offsets();
+                    let (start, end) = (offsets[index] as usize, offsets[index + 1] as usize);
+                    key.extend(((end - start) as u64).to_le_bytes());
+                    for element in start..end {
+                        inner.push(element, key);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Appends to each of `keys` the bucket key of the cell of the same position in `array`, a
+/// vector column of type `column_type`, which [`bucketable_vector`] takes. Two cells
+/// append the same bytes exactly when Java's `equals` holds between their vectors: both
+/// null, or of one size with equal elements, a null element equal only to a null element.
+///
+/// Behavior: io.deephaven.vector.IntVector#equals, ObjectVector#equals (whose
+/// `Objects#deepEquals` is `equals` for these elements), with
+/// io.deephaven.util.compare.ObjectComparisons#eq for the key of objects that
+/// io.deephaven.engine.table.impl.updateby.BucketedPartitionedUpdateByManager buckets by
+pub(super) fn push_list_keys(
+    keys: &mut [Vec<u8>],
+    array: &ArrayRef,
+    column_type: &ColumnType,
+) -> Result<(), TableFailure> {
+    let cells = Elements::of(array, column_type)?;
+    for (index, key) in keys.iter_mut().enumerate() {
+        cells.push(index, key);
+    }
+    Ok(())
 }
 
 /// A `long` result of Java arithmetic: the reserved value is null.

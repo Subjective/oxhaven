@@ -374,6 +374,7 @@ fn show(values: &Values) -> String {
         Values::Int(v) => format!("{v:?}"),
         Values::Float(v) => format!("{v:?}"),
         Values::Text(v) => format!("{v:?}"),
+        Values::Lists(v) => format!("{v:?}"),
     }
 }
 

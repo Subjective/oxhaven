@@ -50,6 +50,8 @@ mod corpus;
 mod oracle_corpus;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod vector_tests;
 
 use crate::table::{tracked_source, QueryTable, TableSpec};
 use crate::update::{modified_pre_shift, ModifiedColumnTransformer};
@@ -526,8 +528,9 @@ fn applicable(kernel: Kernel, input: &ColumnType) -> bool {
     let numeric = matches!(input, Byte | Short | Int | Long | Float | Double);
     let character = *input == Char;
     let boolean = *input == Boolean;
-    // `String` and `Instant` are `Comparable`; so is `Boolean`, which Java excludes.
-    let comparable = matches!(input, String | Instant);
+    // `String`, `Instant` and every vector are `Comparable`; so is `Boolean`, which Java
+    // excludes. An array is not.
+    let comparable = matches!(input, String | Instant | Vector(_));
     match kernel {
         Kernel::Cumulative(Cumulative::Sum)
         | Kernel::Rolling(Rolling::Sum | Rolling::Avg | Rolling::Product) => {
@@ -701,6 +704,21 @@ impl Plan {
                     .index_of(&input_name)
                     .ok_or_else(|| invalid(format!("Column {input_name} does not exist")))?;
                 let input_type = declared[input].column_type.clone();
+                // Behavior: CumMinMaxSpec#applicableTo and RollingMinMaxSpec#applicableTo: a
+                // vector is `Comparable`, so Java orders vectors with `compareTo`
+                // (io.deephaven.vector.IntVector#compareTo and its siblings), which is not
+                // ported.
+                if matches!(
+                    kernel,
+                    Kernel::Cumulative(Cumulative::Min | Cumulative::Max)
+                        | Kernel::Rolling(Rolling::Min | Rolling::Max)
+                ) && matches!(input_type, ColumnType::Vector(_))
+                {
+                    oxhaven_contracts::unported!(
+                        "io.deephaven.engine.table.impl.updateby.minmax.ComparableCumMinMaxOperator",
+                        "minimum or maximum of vector column {input_name} of type {input_type:?}"
+                    );
+                }
                 // Behavior: UpdateByOperatorFactory.OperationVisitor#makeRollingWAvgOperator,
                 // which looks at the weight column before the input column
                 let weight = match &operation.spec {
@@ -804,7 +822,7 @@ impl Plan {
                 missing.join(", ")
             )));
         }
-        let by = by
+        let by: Vec<usize> = by
             .iter()
             .filter_map(|name| parent.definition().index_of(name))
             .collect();
@@ -828,6 +846,35 @@ impl Plan {
                 }
             }
         };
+        // Behavior: io.deephaven.engine.table.impl.by.ChunkedOperatorAggregationHelper
+        // #aggregation, which refuses an array key column when
+        // io.deephaven.engine.table.impl.updateby.BucketedPartitionedUpdateByManager buckets
+        // by `partitionedAggBy`
+        for &index in &by {
+            let column = &declared[index];
+            if let ColumnType::Array(element) = &column.column_type {
+                return Err(invalid(format!(
+                    "Cannot aggregate using an array column: {}, column type is an array of {}",
+                    column.name,
+                    crate::ops::agg::java_class(element)
+                )));
+            }
+        }
+        for &index in &by {
+            let column = &declared[index];
+            if column.column_type.list_element().is_some()
+                && !values::bucketable_vector(&column.column_type)
+            {
+                oxhaven_contracts::unported!(
+                    "io.deephaven.engine.table.impl.updateby.UpdateBy#updateBy",
+                    "bucket column {} of type {:?}: Java's buckets of vectors of float or \
+                     double elements depend on the class of the vector objects (-0.0 and 0.0), \
+                     and those of vectors of arrays on the identity of the arrays",
+                    column.name,
+                    column.column_type
+                );
+            }
+        }
         let definition = match TableDefinition::new(result) {
             Ok(definition) => definition,
             Err(e) => panic!("replacing columns by name keeps names distinct: {e}"),
@@ -924,6 +971,8 @@ impl Plan {
                         key.extend(text.as_bytes());
                     }
                 }
+                // `Plan::new` lets only the vectors whose equality is well defined through.
+                Values::Lists(cells) => values::push_list_keys(&mut keys, &cells, column_type)?,
             }
         }
         Ok(keys)
@@ -992,7 +1041,9 @@ impl Plan {
         )? {
             Values::Int(v) => v.into_iter().map(|v| v.map(|v| v as f64)).collect(),
             Values::Float(v) => v,
-            Values::Text(_) => return Err(failure("update_by: an exponential operator on text")),
+            Values::Text(_) | Values::Lists(_) => {
+                return Err(failure("update_by: an exponential operator on objects"))
+            }
         };
         let counts = |i: usize| stamps[i].is_some() && em.valid(values[i]);
         let last = position as usize;

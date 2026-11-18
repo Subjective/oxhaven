@@ -357,7 +357,9 @@ impl Rolling {
         let doubles = |values: &Values| match values {
             Values::Int(v) => Ok(v.iter().map(|v| v.map(|v| v as f64)).collect()),
             Values::Float(v) => Ok(v.clone()),
-            Values::Text(_) => Err(failure("no rolling operator for this column type")),
+            Values::Text(_) | Values::Lists(_) => {
+                Err(failure("no rolling operator for this column type"))
+            }
         };
         Ok(match (self, &values) {
             (Rolling::Std, _) => double_array(stds(&doubles(&values)?, window)),
@@ -402,7 +404,7 @@ impl Rolling {
                 };
                 return pick(None, influencers, extremes(&values, window, wanted));
             }
-            (_, Values::Text(_)) => {
+            (_, Values::Text(_) | Values::Lists(_)) => {
                 return Err(failure("no rolling operator for this column type"))
             }
         })
