@@ -215,6 +215,7 @@
   "rollup_ticking": {"state": "clean"},
   "rollup_update_view": {"state": "clean"},
   "table_column_arrays": {"state": "clean"},
+  "table_column_arrays_offsets": {"state": "clean"},
   "table_creation": {"state": "clean"},
   "table_error": {"state": "clean"},
   "table_first_steps": {"state": "clean"},
