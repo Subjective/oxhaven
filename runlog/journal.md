@@ -1301,3 +1301,7 @@ The refusals were in the server, not the engine as the brief said. Two rows of t
 ## 2026-11-18 00:26 UTC: pull request 161 merged
 
 Seven green checks on head 8fc19a47. Main is at 17dcd9f5.
+
+## 2026-11-18 00:27 UTC: task 10.8 started
+
+The update_by family (U16). Briefs now warn that the container can restart: push every 20 minutes, long commands in the foreground.
