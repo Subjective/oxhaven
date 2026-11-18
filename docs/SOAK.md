@@ -184,6 +184,13 @@ which is what the short profile fits, the slopes of the first long run ranged fr
 range from -280 to +440. A run with `--inject leak`,
 which keeps every round's tables, measured 16,700 MB per hour.
 
+Without huge pages the long limit has more room than it needs: the seven windows of 30
+minutes measured so far, on two servers, are between +0.7 and +4.2 MB per hour, and the
+medians of five minutes wander by 1.5 MB around a level, which is what a slope of that
+size over half an hour is. Half the limit would hold on this machine. It stays at 24 until
+the nightly runs have shown what the machines of CI measure; and a leak below about 4 MB
+per hour (2 KB a round) is not found by 45 minutes at any limit.
+
 The warm-up of the long profile is long because resident memory takes long to level:
 about ten minutes without huge pages (82 to 110 MB, as the long-lived tables fill and the
 allocator's pools reach their size), and 9 to 13 minutes in steps with them.
