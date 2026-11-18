@@ -1411,3 +1411,7 @@ Aggregations serve first and last of big numbers on ticking and blink tables, wh
 ## 2026-11-18 09:00 UTC: pull request 173 merged
 
 Seven green checks on head 30fd6340. Main is at 85206959.
+
+## 2026-11-18 09:56 UTC: task 11.6 reported, pull request 174; task 11.8 started
+
+Task 11.6 was too large as scoped: half its context went to listing and probing 15 refusals across two directories. It delivered big-number comparisons in the formula language and Java's refusal of range filters on vector columns. Its handover (Object-column literals, long-year instants, the cheap regex constructs, the parser annotation) is task 11.8, started from its branch. Big-number arithmetic stays a task of its own, with owner questions first. Lesson: a refusal task should be one directory, not two.
