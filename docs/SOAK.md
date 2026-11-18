@@ -134,7 +134,11 @@ Checked every round, so a result is compared about 1,300 times in a long run.
   against values known in advance.
 - **The Barrage copy.** After the barrier, the copy the subscriber has built from updates
   must come to equal a snapshot of the aggregation (within 15 seconds; an update is sent at
-  most once a second).
+  most once a second). The copy takes the modified cells column by column, as the update
+  names them (`modified_rows` and `after_modifies` of the client's update), and not from
+  `TableUpdate.modified()`: that reads the rows of the client's `all_modified_rows`, which
+  leaves a row out when only some columns modify it and a later column's rows have a gap
+  there ("What it has found" below).
 - **The rollup**, with a console: its root row and first level, read through a view as the
   web client reads them, against the aggregation of a snapshot of `trades`.
 
@@ -324,6 +328,21 @@ the recomputation. And the counts over the two time tables were compared with ea
 but each time table reads the clock itself: twice in two hours the blink table was a row
 ahead for one cycle. Both are how Java behaves too. "The tables fed by the clock" above
 says what is checked instead.
+
+**The Barrage copy lost a modified row, and the server had sent it** (fixed with task
+12.4; it failed the short run of a pull request once, after passing in every run
+before). Not a race: the copy stayed wrong for the 15 seconds and was right again after
+the next write. The Deephaven client computes the union of the columns' modified rows with
+`RowSequenceBuilder::AddInterval` (cpp-client, dhcore `row_sequence.cc`), which replaces an
+interval it already has by a shorter one that starts inside it. So when the first columns
+modify rows 0 to 19 and the last modifies 0 to 6 and 8 to 19, the union lacks row 7, and
+`TableUpdate.modified()` of `pydeephaven_ticking` does not report it. A message has such
+rows when it holds several cycles that modify different columns: here a delete that
+changed a symbol's sum and count, an add that did not touch the symbol but changed other
+symbols' minima, maxima and times, and another delete. A Java server builds its messages
+the same way (`BarrageMessageProducer#aggregateUpdatesInRange`). With seed 1 it is round 33, when one message ends just before the delete of the
+ninth write; `bench/results/2026-11-18-task-12.4-soak-replica-union.txt` has the forced
+run. The copy now takes the cells per column and does not use the union.
 
 ## In CI
 

@@ -688,19 +688,45 @@ class Subscriber:
                 outer.run.violate("requests", "subscription to the time table failed", str(error)[:500])
 
         class Replica(TableListener):
-            """Keeps the rows of the aggregation by `Sym` as the updates give them."""
+            """Keeps the rows of the aggregation by `Sym` as the updates give them.
+
+            A Barrage update names the modified rows per column, and the modified cells are
+            taken per column here, from the update itself. `update.modified()` is not used:
+            it reads the rows of `all_modified_rows`, which is meant to be the union of the
+            columns' rows and is not. The client's `RowSequenceBuilder::AddInterval`
+            (cpp-client, dhcore `row_sequence.cc`) replaces an interval it already has by a
+            shorter one that starts inside it, so a row that only some columns modify is
+            lost from the union when a later column's rows have a gap at it, and
+            `modified()` then leaves that row out. A message that holds several cycles
+            can be such an update, from a Java server as well (docs/SOAK.md, "What it has
+            found")."""
 
             def on_update(self, update) -> None:
-                removed, added, modified = update.removed(), update.added(), update.modified()
+                removed, added = update.removed(), update.added()
+                raw = update.update
+                after = raw.after_modifies
+                names = list(after.schema.names)
+                key = after.get_column_by_name("Sym", True)
+                cells = []
+                for index, rows in enumerate(raw.modified_rows):
+                    if not rows.empty:
+                        cells.append((index, key.get_chunk(rows).to_pylist(),
+                                      after.get_column(index).get_chunk(rows).to_pylist()))
                 with outer.lock:
                     for sym in (removed.get("Sym").to_pylist() if removed else []):
                         outer.replica.pop(sym, None)
-                    for part in (added, modified):
-                        if part:
-                            names = list(part.keys())
-                            outer.columns = names
-                            for row in zip(*(part[n].to_pylist() for n in names)):
-                                outer.replica[row[names.index("Sym")]] = row
+                    if added:
+                        outer.columns = names
+                        for row in zip(*(added[n].to_pylist() for n in names)):
+                            outer.replica[row[names.index("Sym")]] = row
+                    for index, syms, values in cells:
+                        for sym, value in zip(syms, values):
+                            row = list(outer.replica.get(sym, ()))
+                            if not row:
+                                outer.run.violate("correctness", "barrage update modifies a row that was never added", sym)
+                                continue
+                            row[index] = value
+                            outer.replica[sym] = tuple(row)
 
             def on_error(self, error: Exception) -> None:
                 outer.run.violate("requests", "subscription to the aggregation failed", str(error)[:500])

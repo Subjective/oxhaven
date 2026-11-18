@@ -1,0 +1,61 @@
+Task 12.4: the violation of `barrage replica of agg_by_sym` in the short soak of pull request 182.
+
+== the violation, from the job's soak-short.json (round 33 of seed 1, t=90.0 s)
+{"t": 90.003, "invariant": "correctness", "what": "barrage replica of agg_by_sym", "detail": {"differs_for": ["S03"], "got": [["S03", 30345, 60, 15.75, 199.0, 505.75, 330154]], "want": [["S03", 27899, 54, 15.75, 199.0, 516.6481481481482, 330154]]}}
+
+== the row of S03 after each change to `trades` in round 33, recomputed from the seed alone
+   (columns: Sym, SumQty, N, MinPx, MaxPx, AvgQty, MaxTs; 'columns' numbers the columns that changed in any row)
+round 33 step 0 clock 322 ADD    S03: ('S03', 41549, 76, 19.0, 199.0, 546.6973684210526, 322058)  changed 20 syms, columns [1, 2, 3, 4, 5, 6], S03 changed True
+round 33 step 0 clock 322 DELETE S03: ('S03', 38571, 72, 19.0, 199.0, 535.7083333333334, 322058)  changed 11 syms, columns [1, 2, 5], S03 changed True
+round 33 step 1 clock 323 ADD    S03: ('S03', 38306, 72, 19.0, 199.0, 532.0277777777778, 323172)  changed 20 syms, columns [1, 2, 3, 4, 5, 6], S03 changed True
+round 33 step 1 clock 323 DELETE S03: ('S03', 35771, 68, 19.0, 199.0, 526.0441176470588, 323172)  changed 19 syms, columns [1, 2, 3, 4, 5], S03 changed True
+round 33 step 2 clock 324 ADD    S03: ('S03', 35595, 70, 19.0, 199.0, 508.5, 324125)  changed 20 syms, columns [1, 2, 3, 4, 5, 6], S03 changed True
+round 33 step 2 clock 324 DELETE S03: ('S03', 32968, 65, 19.0, 199.0, 507.2, 324125)  changed 19 syms, columns [1, 2, 3, 5, 6], S03 changed True
+round 33 step 3 clock 325 ADD    S03: ('S03', 30860, 59, 19.0, 199.0, 523.0508474576271, 325003)  changed 20 syms, columns [1, 2, 3, 4, 5, 6], S03 changed True
+round 33 step 3 clock 325 DELETE S03: ('S03', 30184, 56, 19.0, 199.0, 539.0, 325003)  changed 20 syms, columns [1, 2, 3, 4, 5, 6], S03 changed True
+round 33 step 4 clock 326 ADD    S03: ('S03', 31346, 57, 19.0, 199.0, 549.9298245614035, 326130)  changed 20 syms, columns [1, 2, 3, 4, 5, 6], S03 changed True
+round 33 step 4 clock 326 DELETE S03: ('S03', 31026, 56, 19.0, 199.0, 554.0357142857143, 326130)  changed 13 syms, columns [1, 2, 4, 5, 6], S03 changed True
+round 33 step 5 clock 327 ADD    S03: ('S03', 32753, 62, 17.0, 199.0, 528.2741935483871, 327147)  changed 20 syms, columns [1, 2, 3, 4, 5, 6], S03 changed True
+round 33 step 5 clock 327 DELETE S03: ('S03', 31595, 60, 17.0, 199.0, 526.5833333333334, 327147)  changed 20 syms, columns [1, 2, 3, 5, 6], S03 changed True
+round 33 step 6 clock 328 ADD    S03: ('S03', 31545, 62, 15.75, 199.0, 508.7903225806452, 328163)  changed 20 syms, columns [1, 2, 3, 4, 5, 6], S03 changed True
+round 33 step 6 clock 328 DELETE S03: ('S03', 30953, 60, 15.75, 199.0, 515.8833333333333, 328163)  changed 20 syms, columns [1, 2, 4, 5, 6], S03 changed True
+round 33 step 7 clock 329 ADD    S03: ('S03', 30072, 60, 11.0, 199.0, 501.2, 329047)  changed 20 syms, columns [1, 2, 3, 5, 6], S03 changed True
+round 33 step 7 clock 329 DELETE S03: ('S03', 28922, 58, 15.75, 199.0, 498.6551724137931, 329047)  changed 20 syms, columns [1, 2, 3, 4, 5, 6], S03 changed True
+round 33 step 8 clock 330 ADD    S03: ('S03', 30345, 60, 15.75, 199.0, 505.75, 330154)  changed 20 syms, columns [1, 2, 3, 4, 5, 6], S03 changed True
+round 33 step 8 clock 330 DELETE S03: ('S03', 29167, 57, 15.75, 199.0, 511.70175438596493, 330154)  changed 18 syms, columns [1, 2, 5], S03 changed True
+round 33 step 9 clock 331 ADD    S03: ('S03', 29167, 57, 15.75, 199.0, 511.70175438596493, 330154)  changed 19 syms, columns [1, 2, 3, 4, 5, 6], S03 changed False
+round 33 step 9 clock 331 DELETE S03: ('S03', 27899, 54, 15.75, 199.0, 516.6481481481482, 330154)  changed 11 syms, columns [1, 2, 5], S03 changed True
+
+   The replica had the row as of the add of clock 330; the table had it as of the delete of clock 331.
+
+== forced: 1.3 s of pause before the delete of clock 330, so that one Barrage message ends with the add
+   of clock 330 and the next holds the delete of 330 and the add and delete of 331; debug server, old check
+server 28865 <scratch>/tmp/part-dbg-oz_2xg5r/server.log
+round 32 clock 321: replica check took 0.30s, ok
+replica history written to <scratch>/rep/hist-part-28860-1795038241.json
+VIOLATION [correctness] barrage replica of agg_by_sym: {"differs_for": ["S03"], "got": [["S03", 30345, 60, 15.75, 199.0, 505.75, 330154]], "want": [["S03", 27899, 54, 15.75, 199.0, 516.6481481481482, 330154]]}
+round 33 clock 331: replica check took 4.04s, VIOLATION
+{'clean': True, 'exit_code': 0, 'seconds': 0.016, 'how': 'SIGINT'}
+violations 1
+
+== the last three updates the client's listener was given in that run
+   columns: Sym, SumQty, N, MinPx, MaxPx, AvgQty, MaxTs
+   -6.01 s: rows in modified_rows per column [0, 20, 20, 20, 20, 20, 20]; rows in all_modified_rows 20
+      rows of update.modified(): S16 S17 S06 S10 S12 S18 S15 S03 S04 S14 S00 S09 S05 S11 S13 S02 S01 S08 S07 S19
+   -5.01 s: rows in modified_rows per column [0, 20, 20, 20, 20, 20, 20]; rows in all_modified_rows 20
+      rows of update.modified(): S16 S17 S06 S10 S12 S18 S15 S03 S04 S14 S00 S09 S05 S11 S13 S02 S01 S08 S07 S19
+   -4.01 s: rows in modified_rows per column [0, 20, 20, 19, 19, 20, 19]; rows in all_modified_rows 19
+      rows of update.modified(): S16 S17 S06 S10 S12 S18 S15 S04 S14 S00 S09 S05 S11 S13 S02 S01 S08 S07 S19
+
+   The server named 20 modified rows for SumQty, N and AvgQty (S03 among them) and 19 for MinPx, MaxPx and
+   MaxTs. The union the client computed has 19 rows, and update.modified() has no row for S03.
+
+== the same forced run with the replica built per column from modified_rows, three more rounds after it
+server 32529 <scratch>/tmp/part-dbg-ogfgik77/server.log
+round 32 clock 321: replica check took 0.20s, ok
+round 33 clock 331: replica check took 0.96s, ok
+round 34 clock 341: replica check took 0.20s, ok
+round 35 clock 351: replica check took 0.20s, ok
+round 36 clock 361: replica check took 0.61s, ok
+{'clean': True, 'exit_code': 0, 'seconds': 0.016, 'how': 'SIGINT'}
+violations 0
