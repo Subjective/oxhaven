@@ -185,16 +185,52 @@ impl Builder<'_> {
         }
     }
 
-    /// The type of `expression` if it is a window, or a condition each of whose sides is
-    /// a window or such a condition, all of one type.
-    fn windows_of_type(&self, expression: &Expr) -> Option<&ColumnType> {
+    /// The type of `expression` if it is a window, a slice of one (`subVector` with two
+    /// arguments), or a condition each of whose sides is one of these, all of one type.
+    fn views_of_type(&self, expression: &Expr) -> Option<&ColumnType> {
         match expression {
             Expr::Column(name) => self.window(name).map(|input| &self.inputs[input].1),
+            Expr::MethodCall {
+                receiver,
+                method,
+                arguments,
+            } if method == "subVector" && arguments.len() == 2 => self.views_of_type(receiver),
             Expr::Ternary {
                 if_true, if_false, ..
             } => {
-                let column_type = self.windows_of_type(if_true)?;
-                (self.windows_of_type(if_false)? == column_type).then_some(column_type)
+                let column_type = self.views_of_type(if_true)?;
+                (self.views_of_type(if_false)? == column_type).then_some(column_type)
+            }
+            _ => None,
+        }
+    }
+
+    /// `expression`, a condition between windows and slices of one type or a slice of
+    /// such a condition, as a condition between windows and slices: `(c ? x : y)
+    /// .subVector(a, b)` is `c ? x.subVector(a, b) : y.subVector(a, b)`. `None` for any
+    /// other expression.
+    ///
+    /// Java evaluates the condition, then the arguments of what reads the vector it chose,
+    /// then reads it; and every window of a formula holds the same rows. So a read of a
+    /// condition reads as the condition between the reads of its sides, with the same
+    /// order of evaluation and the same failures.
+    fn hoisted(&self, expression: &Expr) -> Option<Expr> {
+        match expression {
+            Expr::Ternary { .. } => self
+                .views_of_type(expression)
+                .is_some()
+                .then(|| expression.clone()),
+            Expr::MethodCall {
+                receiver,
+                method,
+                arguments,
+            } if method == "subVector" && arguments.len() == 2 => {
+                let condition = self.hoisted(receiver)?;
+                Some(on_sides(&condition, &|side| Expr::MethodCall {
+                    receiver: Box::new(side.clone()),
+                    method: method.clone(),
+                    arguments: arguments.clone(),
+                }))
             }
             _ => None,
         }
@@ -368,20 +404,22 @@ impl Builder<'_> {
                 arguments,
             } if matches!(method.as_str(), "get" | "[]") && arguments.len() == 1 => {
                 // Java evaluates the condition, then the position, then reads the window
-                // the condition chose; every window of a formula has the same rows, so the
-                // read is the one of that window.
-                if matches!(**receiver, Expr::Ternary { .. })
-                    && self.windows_of_type(receiver).is_some()
-                {
-                    let read = distribute(receiver, method, &arguments[0]);
+                // or slice the condition chose: see `hoisted`.
+                if let Some(condition) = self.hoisted(receiver) {
+                    let read = on_sides(&condition, &|side| Expr::MethodCall {
+                        receiver: Box::new(side.clone()),
+                        method: method.clone(),
+                        arguments: arguments.clone(),
+                    });
                     return self.walk(&read, gate);
                 }
                 let Some((receiver, view)) = self.view(receiver, gate)? else {
                     if self.may_be_window(receiver) {
                         unported!(
                             "io.deephaven.engine.table.impl.updateby.rollingformula.ringbuffervectorwrapper.IntRingBufferVectorWrapper#get",
-                            "{method} of a window chosen by a condition or a cast in a \
-                             rolling formula: outside a window Java throws NoSuchElementException"
+                            "{method} of a window chosen by a cast, or by a condition with a \
+                             side that is not a window or a slice of one, in a rolling \
+                             formula: outside a window Java throws NoSuchElementException"
                         );
                     }
                     return Ok(Expr::MethodCall {
@@ -417,10 +455,14 @@ impl Builder<'_> {
                 if let Some((rewritten, _)) = self.view(expression, gate)? {
                     return Ok(rewritten);
                 }
+                if let Some(condition) = self.hoisted(expression) {
+                    return self.walk(&condition, gate);
+                }
                 if method == "subVector" && self.may_be_window(receiver) {
                     unported!(
                         "io.deephaven.vector.IntVectorSlice#get",
-                        "subVector of a window chosen by a condition or a cast in a rolling formula"
+                        "subVector of a window chosen by a cast, or by a condition with a side \
+                         that is not a window or a slice of one, in a rolling formula"
                     );
                 }
                 Expr::MethodCall {
@@ -465,11 +507,26 @@ impl Builder<'_> {
                 arguments: walk_all(self, arguments)?,
             });
         };
+        // A function of a condition between windows or slices: see `hoisted`. Java
+        // evaluates the arguments before the vector's first (`nth`, `diff`) before the
+        // condition; a failure of either fails the operation all the same.
+        if let Some(condition) = self.hoisted(&arguments[at]) {
+            let call = on_sides(&condition, &|side| {
+                let mut arguments = arguments.to_vec();
+                arguments[at] = side.clone();
+                Expr::Call {
+                    function: function.to_owned(),
+                    arguments,
+                }
+            });
+            return self.walk(&call, gate);
+        }
         let Some((rewritten, view)) = self.view(&arguments[at], gate)? else {
             if self.may_be_window(&arguments[at]) {
                 unported!(
                     "io.deephaven.engine.table.impl.updateby.rollingformula.ringbuffervectorwrapper.IntRingBufferVectorWrapper#get",
-                    "{function} of a window chosen by a condition or a cast in a rolling formula"
+                    "{function} of a window chosen by a cast, or by a condition with a side \
+                     that is not a window or a slice of one, in a rolling formula"
                 );
             }
             return Ok(Expr::Call {
@@ -516,24 +573,20 @@ impl Builder<'_> {
     }
 }
 
-/// `receiver.method(position)` with the read moved into each side of the conditions
-/// `receiver` is made of: `(c ? x : y)[i]` is `c ? x[i] : y[i]`.
-fn distribute(receiver: &Expr, method: &str, position: &Expr) -> Expr {
-    match receiver {
+/// `condition` with `f` applied to each of the sides of the conditions it is made of:
+/// with `f` reading at `i`, `c ? x : y` is `c ? x[i] : y[i]`.
+fn on_sides(condition: &Expr, f: &dyn Fn(&Expr) -> Expr) -> Expr {
+    match condition {
         Expr::Ternary {
             condition,
             if_true,
             if_false,
         } => Expr::Ternary {
             condition: condition.clone(),
-            if_true: Box::new(distribute(if_true, method, position)),
-            if_false: Box::new(distribute(if_false, method, position)),
+            if_true: Box::new(on_sides(if_true, f)),
+            if_false: Box::new(on_sides(if_false, f)),
         },
-        window => Expr::MethodCall {
-            receiver: Box::new(window.clone()),
-            method: method.to_owned(),
-            arguments: vec![position.clone()],
-        },
+        side => f(side),
     }
 }
 

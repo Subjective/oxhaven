@@ -51,8 +51,9 @@ use crate::table::support::not_ported;
 /// The name the Arrow PyCapsule interface gives the capsule of a C stream.
 const STREAM_CAPSULE: &std::ffi::CStr = c"arrow_array_stream";
 
-/// What the package has in place of jpy's Java objects: the classes of an instant and of
-/// a Java array, and the function that gives the `DType` of a Java class name.
+/// What the package has in place of jpy's Java objects: the class of an instant, the
+/// function that makes a Java array of the module `jpy` (`python/jpy.py`), and the function
+/// that gives the `DType` of a Java class name.
 struct Wrappers<'py> {
     instant: Bound<'py, PyAny>,
     array: Bound<'py, PyAny>,
@@ -64,7 +65,7 @@ impl<'py> Wrappers<'py> {
         let dtypes = py.import("deephaven.dtypes")?;
         Ok(Self {
             instant: py.import("deephaven._java_time")?.getattr("Instant")?,
-            array: dtypes.getattr("JArray")?,
+            array: dtypes.getattr("_java_array")?,
             dtype: dtypes.getattr("_from_java_name")?,
         })
     }
@@ -73,8 +74,8 @@ impl<'py> Wrappers<'py> {
 /// The cells of `values` as the Python values jpy gives for the elements of a Java array
 /// of `column_type`: a primitive is its Java value, so a null is the null constant of its
 /// type and a `char` is its code unit; a `Boolean` or `String` is the value or `None`; an
-/// `Instant` is the package's instant or `None`; an array is the package's `JArray` of
-/// its elements, converted the same way, or `None`.
+/// `Instant` is the package's instant or `None`; an array is a Java array of the module
+/// `jpy` of its elements, converted the same way, or `None`.
 ///
 /// A vector is refused: Java hands out the `io.deephaven.vector.Vector` object, which the
 /// package has no class for.

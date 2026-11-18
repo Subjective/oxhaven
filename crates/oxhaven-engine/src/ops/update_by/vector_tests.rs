@@ -9,7 +9,7 @@ use super::{
 };
 use crate::ops::sort::testing::{cells, static_table, Ticking};
 use arrow::array::{
-    ArrayRef, BooleanArray, Float64Array, Int32Array, Int64Array, StringArray,
+    ArrayRef, BooleanArray, Float32Array, Float64Array, Int32Array, Int64Array, StringArray,
     TimestampNanosecondArray, UInt16Array,
 };
 use oxhaven_contracts::schema::ColumnType;
@@ -316,19 +316,325 @@ fn a_bucket_column_of_vectors_of_arrays_is_unported() {
     bucket_by(vectors, cells);
 }
 
+/// A vector column of cells of `lengths` (`None` a null cell), of the elements `elements`.
+fn vector_column<A: arrow::array::Array + 'static>(
+    element: ColumnType,
+    lengths: &[Option<usize>],
+    elements: A,
+) -> (ColumnType, ArrayRef) {
+    let column_type = ColumnType::vector(element);
+    let cells = list_of(&column_type, lengths.iter().copied(), Arc::new(elements));
+    (column_type, cells)
+}
+
+/// The cells, as text, of the columns `names` of `update_by(source, operations, by)`; each
+/// has the type of the column its name ends with.
+fn columns_of(
+    source: &Arc<dyn Table>,
+    operations: &[UpdateByOperation],
+    by: &[&str],
+    names: &[&str],
+) -> Vec<Vec<String>> {
+    let result = update_by(source, operations, by).unwrap();
+    let type_of = |table: &dyn Table, name: &str| {
+        let index = table.definition().index_of(name).unwrap();
+        table.definition().columns()[index].column_type.clone()
+    };
+    names
+        .iter()
+        .map(|name| {
+            assert_eq!(type_of(&*result, name), type_of(&**source, &name[1..]));
+            let index = result.definition().index_of(name).unwrap();
+            cells(&*result, index)
+        })
+        .collect()
+}
+
+fn texts(cells: &[&str]) -> Vec<String> {
+    cells.iter().map(|cell| cell.to_string()).collect()
+}
+
+/// Seen on Deephaven 42.9: `E` is `[5, 1] [3, 7, 2] [1] [5, 1] [0]` (a `group_by` of
+/// `int`s, before and after `select()`), with `cum_max`, `cum_min`, and
+/// `rolling_max_tick`/`rolling_min_tick` with `rev_ticks=2`. Vectors are ordered element by
+/// element (`[5, 1]` is greater than `[3, 7, 2]`), and the results keep the vector type.
+///
+/// Behavior: io.deephaven.vector.IntVector#compareTo
+#[test]
+fn the_minimum_and_maximum_of_int_vectors_order_them_element_by_element() {
+    let (ints, cells) = vector_column(
+        ColumnType::Int,
+        &[Some(2), Some(3), Some(1), Some(2), Some(1)],
+        Int32Array::from(vec![5, 1, 3, 7, 2, 1, 5, 1, 0]),
+    );
+    let source = static_table(&[("E", ints, cells)]);
+    let cumulative = columns_of(
+        &source,
+        &[
+            op(UpdateBySpec::CumMax, &["XE = E"]),
+            op(UpdateBySpec::CumMin, &["NE = E"]),
+        ],
+        &[],
+        &["XE", "NE"],
+    );
+    assert_eq!(cumulative[0], ["[5, 1]"; 5]);
+    assert_eq!(cumulative[1], ["[5, 1]", "[3, 7, 2]", "[1]", "[1]", "[0]"]);
+    let window = RollingWindow::ticks(2, 0);
+    let rolling = columns_of(
+        &source,
+        &[
+            op(UpdateBySpec::RollingMax(window.clone()), &["XE = E"]),
+            op(UpdateBySpec::RollingMin(window), &["NE = E"]),
+        ],
+        &[],
+        &["XE", "NE"],
+    );
+    assert_eq!(
+        rolling[0],
+        ["[5, 1]", "[5, 1]", "[3, 7, 2]", "[5, 1]", "[5, 1]"]
+    );
+    assert_eq!(rolling[1], ["[5, 1]", "[3, 7, 2]", "[1]", "[1]", "[0]"]);
+}
+
+/// Seen on Deephaven 42.9: `S` is `[b, b] [a, c] [null, a] [ab, null]` and `D` (and `F`,
+/// the same as `float`s) `[1.5, 0.0] [NaN, 1.5] [-0.0, 3.0] [2.0, NaN]`, with `cum_max`,
+/// `cum_min`, and for `S` `rolling_max_tick`/`rolling_min_tick` with `rev_ticks=2`. A null
+/// element is less than every other, a NaN greater, and strings compare by `compareTo`.
+///
+/// Behavior: io.deephaven.vector.ObjectVector#compareTo with
+/// io.deephaven.util.compare.ObjectComparisons#compare, and DoubleVector#compareTo and
+/// FloatVector#compareTo with DoubleComparisons#compare and FloatComparisons#compare
+#[test]
+fn the_minimum_and_maximum_of_string_and_double_vectors_follow_java_comparisons() {
+    let two = [Some(2); 4];
+    let (strings, s) = vector_column(
+        ColumnType::String,
+        &two,
+        StringArray::from(vec![
+            Some("b"),
+            Some("b"),
+            Some("a"),
+            Some("c"),
+            None,
+            Some("a"),
+            Some("ab"),
+            None,
+        ]),
+    );
+    let d = [1.5, 0.0, f64::NAN, 1.5, -0.0, 3.0, 2.0, f64::NAN];
+    let (doubles, dc) = vector_column(ColumnType::Double, &two, Float64Array::from(d.to_vec()));
+    let f: Vec<f32> = d.iter().map(|&v| v as f32).collect();
+    let (floats, fc) = vector_column(ColumnType::Float, &two, Float32Array::from(f));
+    let source = static_table(&[("S", strings, s), ("D", doubles, dc), ("F", floats, fc)]);
+    let cumulative = columns_of(
+        &source,
+        &[
+            op(UpdateBySpec::CumMax, &["XS = S", "XD = D", "XF = F"]),
+            op(UpdateBySpec::CumMin, &["NS = S", "ND = D", "NF = F"]),
+        ],
+        &[],
+        &["XS", "XD", "XF", "NS", "ND", "NF"],
+    );
+    assert_eq!(cumulative[0], ["[b, b]"; 4]);
+    let max = ["[1.5, 0.0]", "[NaN, 1.5]", "[NaN, 1.5]", "[NaN, 1.5]"];
+    assert_eq!(cumulative[1], max);
+    assert_eq!(cumulative[2], max);
+    assert_eq!(
+        cumulative[3],
+        ["[b, b]", "[a, c]", "[null, a]", "[null, a]"]
+    );
+    let min = ["[1.5, 0.0]", "[1.5, 0.0]", "[-0.0, 3.0]", "[-0.0, 3.0]"];
+    assert_eq!(cumulative[4], min);
+    assert_eq!(cumulative[5], min);
+    let window = RollingWindow::ticks(2, 0);
+    let rolling = columns_of(
+        &source,
+        &[
+            op(UpdateBySpec::RollingMax(window.clone()), &["XS = S"]),
+            op(UpdateBySpec::RollingMin(window), &["NS = S"]),
+        ],
+        &[],
+        &["XS", "NS"],
+    );
+    assert_eq!(rolling[0], ["[b, b]", "[b, b]", "[a, c]", "[ab, null]"]);
+    assert_eq!(rolling[1], ["[b, b]", "[a, c]", "[null, a]", "[null, a]"]);
+}
+
+/// Seen on Deephaven 42.9, in buckets `K` of `0 1 0 1 0 1 0`: `C` is `[b, a] [b, c]
+/// [a, a] null [b, a] [c, c] [a, b]` (`char`s) and `L` is `[3, 1] [null, 2] null [1, 1]
+/// [5, null] [] [2, 2]` (`long`s); `cum_max`, `cum_min`, `rolling_max_tick` with
+/// `rev_ticks=3`, and `rolling_min_tick` with `rev_ticks=3, fwd_ticks=1`. Null cells are
+/// skipped, and an empty vector is less than every other. A `char` shows as its code unit.
+#[test]
+fn the_minimum_and_maximum_of_vectors_skip_null_cells_by_bucket() {
+    let chars: Vec<u16> = "babcaabaccab".bytes().map(u16::from).collect();
+    let (char_type, c) = vector_column(
+        ColumnType::Char,
+        &[Some(2), Some(2), Some(2), None, Some(2), Some(2), Some(2)],
+        UInt16Array::from(chars),
+    );
+    let (long_type, l) = vector_column(
+        ColumnType::Long,
+        &[Some(2), Some(2), None, Some(2), Some(2), Some(0), Some(2)],
+        Int64Array::from(vec![
+            Some(3),
+            Some(1),
+            None,
+            Some(2),
+            Some(1),
+            Some(1),
+            Some(5),
+            None,
+            Some(2),
+            Some(2),
+        ]),
+    );
+    let k: ArrayRef = Arc::new(Int32Array::from(vec![0, 1, 0, 1, 0, 1, 0]));
+    let source = static_table(&[
+        ("K", ColumnType::Int, k),
+        ("C", char_type, c),
+        ("L", long_type, l),
+    ]);
+    let cumulative = columns_of(
+        &source,
+        &[
+            op(UpdateBySpec::CumMax, &["XC = C", "XL = L"]),
+            op(UpdateBySpec::CumMin, &["NC = C", "NL = L"]),
+        ],
+        &["K"],
+        &["XC", "XL", "NC", "NL"],
+    );
+    let max_c = texts(&[
+        "[98, 97]", "[98, 99]", "[98, 97]", "[98, 99]", "[98, 97]", "[99, 99]", "[98, 97]",
+    ]);
+    let max_l = texts(&[
+        "[3, 1]",
+        "[null, 2]",
+        "[3, 1]",
+        "[1, 1]",
+        "[5, null]",
+        "[1, 1]",
+        "[5, null]",
+    ]);
+    let min_c = texts(&[
+        "[98, 97]", "[98, 99]", "[97, 97]", "[98, 99]", "[97, 97]", "[98, 99]", "[97, 97]",
+    ]);
+    assert_eq!(cumulative[0], max_c);
+    assert_eq!(cumulative[1], max_l);
+    assert_eq!(cumulative[2], min_c);
+    assert_eq!(
+        cumulative[3],
+        texts(&[
+            "[3, 1]",
+            "[null, 2]",
+            "[3, 1]",
+            "[null, 2]",
+            "[3, 1]",
+            "[]",
+            "[2, 2]"
+        ])
+    );
+    let rolling = columns_of(
+        &source,
+        &[
+            op(
+                UpdateBySpec::RollingMax(RollingWindow::ticks(3, 0)),
+                &["XC = C", "XL = L"],
+            ),
+            op(
+                UpdateBySpec::RollingMin(RollingWindow::ticks(3, 1)),
+                &["NC = C", "NL = L"],
+            ),
+        ],
+        &["K"],
+        &["XC", "XL", "NC", "NL"],
+    );
+    assert_eq!(rolling[0], max_c);
+    assert_eq!(rolling[1], max_l);
+    assert_eq!(
+        rolling[2],
+        texts(&[
+            "[97, 97]", "[98, 99]", "[97, 97]", "[98, 99]", "[97, 97]", "[98, 99]", "[97, 97]"
+        ])
+    );
+    assert_eq!(
+        rolling[3],
+        texts(&[
+            "[3, 1]",
+            "[null, 2]",
+            "[3, 1]",
+            "[]",
+            "[2, 2]",
+            "[]",
+            "[2, 2]"
+        ])
+    );
+}
+
+/// Of two vectors that compare equal, the cumulative minimum and maximum keep the first: a
+/// later one replaces it only when it is strictly less or greater. Seen on Deephaven 42.9:
+/// `[-0.0] [0.0] [-0.0]` gives `[-0.0]` for every row, for both.
+///
+/// Behavior: io.deephaven.engine.table.impl.updateby.minmax.ComparableCumMinMaxOperator#doOperation
+#[test]
+fn a_cumulative_minimum_keeps_the_first_of_equal_vectors() {
+    let (doubles, cells) = vector_column(
+        ColumnType::Double,
+        &[Some(1), Some(1), Some(1)],
+        Float64Array::from(vec![-0.0, 0.0, -0.0]),
+    );
+    let source = static_table(&[("D", doubles, cells)]);
+    let both = columns_of(
+        &source,
+        &[
+            op(UpdateBySpec::CumMin, &["ND = D"]),
+            op(UpdateBySpec::CumMax, &["XD = D"]),
+        ],
+        &[],
+        &["ND", "XD"],
+    );
+    assert_eq!(both[0], ["[-0.0]"; 3]);
+    assert_eq!(both[1], ["[-0.0]"; 3]);
+}
+
+/// Seen on Deephaven 42.9: the cumulative minimum and maximum of a vector of `Instant`s or
+/// of `Boolean`s is a column of `ObjectVector` with the component type `String`, which a
+/// client receives as text. Owner question 3.3 of the second batch.
 #[test]
 #[should_panic(
     expected = "unported: io.deephaven.engine.table.impl.updateby.minmax.ComparableCumMinMaxOperator: \
-                minimum or maximum of vector column V"
+                minimum or maximum of vector column V of type Vector(Boolean)"
 )]
-fn a_minimum_of_vectors_is_unported() {
-    let ints = ColumnType::vector(ColumnType::Int);
-    let source = static_table(&[(
-        "V",
-        ints.clone(),
-        singles(&ints, Int32Array::from(vec![0, 1])),
-    )]);
+fn a_minimum_of_boolean_vectors_is_unported() {
+    let (booleans, cells) = vector_column(
+        ColumnType::Boolean,
+        &[Some(1), Some(1)],
+        BooleanArray::from(vec![true, false]),
+    );
+    let source = static_table(&[("V", booleans, cells)]);
     let _ = update_by(&source, &[op(UpdateBySpec::CumMin, &[])], &[] as &[&str]);
+}
+
+/// A rolling minimum of `[0.0]` and `[-0.0]`, which compare equal, keeps the one that the
+/// layout of Java's ring buffer favours. Seen on Deephaven 42.9: over 400 rows that
+/// alternate `[-0.0]` and `[0.0]`, `rolling_min_tick` with `rev_ticks=3` keeps the earliest
+/// vector of the window except at rows 128, 256 and 384. Owner question 7.10 of the second
+/// batch.
+#[test]
+#[should_panic(
+    expected = "unported: io.deephaven.engine.table.impl.updateby.rollingminmax.ComparableRollingMinMaxOperator: \
+                rolling minimum or maximum of vector column V of type Vector(Double)"
+)]
+fn a_rolling_minimum_of_double_vectors_is_unported() {
+    let (doubles, cells) = vector_column(
+        ColumnType::Double,
+        &[Some(1), Some(1)],
+        Float64Array::from(vec![0.0, -0.0]),
+    );
+    let source = static_table(&[("V", doubles, cells)]);
+    let window = RollingWindow::ticks(2, 0);
+    let operation = op(UpdateBySpec::RollingMin(window), &["M = V"]);
+    let _ = update_by(&source, &[operation], &[] as &[&str]);
 }
 
 /// Seen on Deephaven 42.9: `N` is `[0] null [2] [3] null [5]`, a vector column of a
@@ -390,6 +696,7 @@ fn random_updates_of_vector_columns_match_a_recompute() {
         ("V", ColumnType::vector(ColumnType::Int)),
         ("A", ColumnType::array(ColumnType::Char)),
         ("I", ColumnType::Int),
+        ("D", ColumnType::vector(ColumnType::Double)),
     ];
     let window = RollingWindow::ticks(2, 1);
     let operations = vec![
@@ -399,7 +706,35 @@ fn random_updates_of_vector_columns_match_a_recompute() {
             UpdateBySpec::RollingCount(window.clone()),
             &["CV = V", "CA = A"],
         ),
-        op(UpdateBySpec::RollingGroup(window), &["GV = V", "GA = A"]),
+        op(
+            UpdateBySpec::RollingGroup(window.clone()),
+            &["GV = V", "GA = A"],
+        ),
+        op(UpdateBySpec::CumMin, &["NV = V", "NS = S", "ND = D"]),
+        op(UpdateBySpec::CumMax, &["XV = V", "XS = S", "XD = D"]),
+        op(
+            UpdateBySpec::RollingMin(window.clone()),
+            &["RNV = V", "RNS = S"],
+        ),
+        op(
+            UpdateBySpec::RollingMax(window.clone()),
+            &["RXV = V", "RXS = S"],
+        ),
+        op(
+            UpdateBySpec::CumCountWhere {
+                result_column: "CW".into(),
+                filters: vec!["V != null".into(), "A == null".into()],
+            },
+            &[],
+        ),
+        op(
+            UpdateBySpec::RollingCountWhere {
+                window,
+                result_column: "RW".into(),
+                filters: vec!["len(V) > 1".into()],
+            },
+            &[],
+        ),
     ];
     for by in [&["K"][..], &["K", "S"], &["V"]] {
         for seed in test_seeds(0..16) {
@@ -413,7 +748,7 @@ fn random_updates_of_vector_columns_match_a_recompute() {
             let operations = operations.clone();
             let by: Vec<&'static str> = by.to_vec();
             let t = Ticking::new([0, 2, 4, 6, 8, 10, 12, 14], &columns, move |source| {
-                update_by(source, &operations, &by).unwrap()
+                update_by_with(source, &operations, &by, &oxhaven_expr::Compiler).unwrap()
             });
             for _ in 0..30 {
                 let change = random.next_change(&*t.script.table(), 5);
@@ -475,15 +810,6 @@ fn objects_formula(text: &str, token: Option<&str>, columns: &[&str]) -> Result<
     }
 }
 
-/// Seen on Deephaven 42.9 over the table of [`objects_formula`]: `len` of a condition
-/// between two windows of strings throws `ClassCastException` for the `Object[]` the
-/// window gives, for every row.
-#[test]
-#[should_panic(expected = "ObjectRingBufferVectorWrapper#toArray")]
-fn len_of_a_condition_between_windows_of_objects_is_unported() {
-    let _ = objects_formula("R = len(I[0] > 1 ? S : T)", None, &[]);
-}
-
 /// Seen on Deephaven 42.9 over the table of [`objects_formula`]: `(S.size() > 1 ? I :
 /// J)[0]` is `0 0 0 1 2`, `(S.size() < 2 ? I : J).get(0)` `0 0 0 10 20`, the nested
 /// condition `0 0 0 1 2`, and the guarded `[1]` `-1 1 1 2 3`; `[1]` and `.get(2)` without
@@ -522,4 +848,145 @@ fn a_read_of_a_window_chosen_by_a_condition_reads_the_chosen_window() {
         ),
         Ok("-1 1 1 2 3".to_string())
     );
+}
+
+/// Seen on Deephaven 42.9 over the table of [`objects_formula`]: a read of a condition
+/// between a window and a slice of one, a slice of a condition between windows, and a
+/// library function of a condition read the vector the condition chose, and fail where a
+/// read of it fails (`NoSuchElementException`); `len` of a condition between windows of
+/// strings fails as `len` of one does (`ClassCastException`).
+///
+/// Behavior: IntRingBufferVectorWrapper#get, IntVectorSlice#get, Basic#first and Basic#last
+/// over the vector a condition chose
+#[test]
+fn a_read_of_a_condition_between_windows_and_slices_reads_the_chosen_one() {
+    let read = |text: &str| objects_formula(text, None, &[]);
+    for (text, expected) in [
+        ("R = (I[0] > 1 ? I : I.subVector(0, 1))[0]", "0 0 0 1 2"),
+        ("R = (I[0] > 1 ? I : J).subVector(0, 1)[0]", "0 0 0 10 2"),
+        (
+            "R = (I[0] > 1 ? I : (I[0] > 0 ? J : I.subVector(0, 1)))[0]",
+            "0 0 0 10 2",
+        ),
+        ("R = (I[0] > 1 ? I : I.subVector(0, 1)).size()", "1 1 1 1 3"),
+        ("R = max(I[0] > 1 ? I : I.subVector(0, 2))", "0 1 1 2 4"),
+        (
+            "R = sum((I[0] > 1 ? I : J).subVector(1, 3))",
+            "null 10 30 50 7",
+        ),
+        ("R = first(I[0] > 1 ? I : J)", "0 0 0 10 2"),
+        ("R = last(I[0] > 1 ? I : J)", "0 10 20 30 4"),
+    ] {
+        assert_eq!(read(text), Ok(expected.to_string()), "{text}");
+    }
+    let outside = read("R = J[1]");
+    assert!(outside.is_err());
+    for text in [
+        "R = (I[0] > 1 ? I : J).subVector(1, 2)[0]",
+        "R = (I[0] > 0 ? I : I.subVector(1, 2))[0]",
+        "R = first(I[0] > 1 ? I : I.subVector(1, 3))",
+        "R = (I[0] > 1 ? S : T)[1]",
+    ] {
+        assert_eq!(read(text), outside, "{text}");
+    }
+    let array_cast = read("R = len(S)");
+    assert!(array_cast.is_err());
+    for text in [
+        "R = len(I[0] > 1 ? S : T)",
+        "R = len(I[0] > 1 ? S : (I[0] > 0 ? T : S))",
+    ] {
+        assert_eq!(read(text), array_cast, "{text}");
+    }
+}
+
+/// The table of the count-where tests, `group_by("B")` of nine rows in Java: `E` is
+/// `[5, 1] [3, 7, 2] [1] [5, 1] [0]`, `S` `[s0, s1] [s2, s0, s1] [s2] [s0, s1] [s2]`, `V`
+/// is `E` with a null third cell, `A` (an `int[]`) is `[B, 1]` with a null fourth cell, and
+/// `K` is 1.
+fn count_where_source() -> Arc<dyn Table> {
+    let (ints, e) = vector_column(
+        ColumnType::Int,
+        &[Some(2), Some(3), Some(1), Some(2), Some(1)],
+        Int32Array::from(vec![5, 1, 3, 7, 2, 1, 5, 1, 0]),
+    );
+    let (_, v) = vector_column(
+        ColumnType::Int,
+        &[Some(2), Some(3), None, Some(2), Some(1)],
+        Int32Array::from(vec![5, 1, 3, 7, 2, 5, 1, 0]),
+    );
+    let (strings, s) = vector_column(
+        ColumnType::String,
+        &[Some(2), Some(3), Some(1), Some(2), Some(1)],
+        StringArray::from(vec!["s0", "s1", "s2", "s0", "s1", "s2", "s0", "s1", "s2"]),
+    );
+    let arrays = ColumnType::array(ColumnType::Int);
+    let a = list_of(
+        &arrays,
+        [Some(2), Some(2), Some(2), None, Some(2)],
+        Arc::new(Int32Array::from(vec![0, 1, 1, 1, 2, 1, 4, 1])),
+    );
+    static_table(&[
+        ("E", ints.clone(), e),
+        ("S", strings, s),
+        ("V", ints, v),
+        ("A", arrays, a),
+        ("K", ColumnType::Int, Arc::new(Int32Array::from(vec![1; 5]))),
+    ])
+}
+
+/// The cumulative count by `K`, and the rolling count over the row and the one before it,
+/// of the rows that pass `filter`, as text; or the refusal.
+fn vector_counts(filter: &str) -> Result<[String; 2], UpdateByError> {
+    let filters = vec![filter.to_string()];
+    let cumulative = UpdateBySpec::CumCountWhere {
+        result_column: "C".into(),
+        filters: filters.clone(),
+    };
+    let rolling = UpdateBySpec::RollingCountWhere {
+        window: RollingWindow::ticks(2, 0),
+        result_column: "C".into(),
+        filters,
+    };
+    let source = count_where_source();
+    let count = |spec: UpdateBySpec, by: &[&str]| {
+        let table = update_by_with(&source, &[op(spec, &[])], by, &oxhaven_expr::Compiler)?;
+        let column = table.definition().index_of("C").unwrap();
+        Ok::<_, UpdateByError>(cells(&*table, column).join(" "))
+    };
+    Ok([count(cumulative, &["K"])?, count(rolling, &[])?])
+}
+
+/// Seen on Deephaven 42.9 over the table of [`count_where_source`], with
+/// `cum_count_where("C", filter)` by `K` and `rolling_count_where_tick("C", filter,
+/// rev_ticks=2)`: the same rows pass as in `where(filter)`, and a filter that `where` fails
+/// on a null vector or array (`NullPointerException`) fails the `update_by`.
+///
+/// Behavior: io.deephaven.engine.table.impl.updateby.countwhere.CountWhereOperator.Context#applyFilters
+#[test]
+fn a_count_where_filters_vector_and_array_columns_as_where_does() {
+    let counts = |cumulative: &str, rolling: &str| Ok([cumulative.into(), rolling.into()]);
+    for (filter, expected) in [
+        ("V == null", counts("0 0 1 1 1", "0 0 1 1 0")),
+        ("V = null", counts("0 0 1 1 1", "0 0 1 1 0")),
+        ("V != null", counts("1 2 2 3 4", "1 2 1 1 2")),
+        ("!isNull(V)", counts("1 2 2 3 4", "1 2 1 1 2")),
+        ("len(V) > 1", counts("1 2 2 3 3", "1 2 1 1 1")),
+        ("sum(V) > 5", counts("1 2 2 3 3", "1 2 1 1 1")),
+        ("A == null", counts("0 0 0 1 1", "0 0 0 1 1")),
+        ("S.size() > 2", counts("0 1 1 1 1", "0 1 1 0 0")),
+    ] {
+        assert_eq!(vector_counts(filter), expected, "{filter}");
+    }
+    for filter in ["V.size() > 1", "V[0] > 2", "V.get(1) == 1", "A.length > 1"] {
+        match vector_counts(filter) {
+            Err(UpdateByError::Failed(_)) => {}
+            other => panic!("{filter}: {other:?}"),
+        }
+    }
+    // Java: `Failed to convert value <E> for column "V" of type
+    // io.deephaven.vector.IntVector; it is a column name`.
+    match vector_counts("V == E") {
+        Err(UpdateByError::InvalidArgument(_)) => {}
+        other => panic!("V == E: {other:?}"),
+    }
 }

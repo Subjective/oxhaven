@@ -7,6 +7,7 @@
 //! value, so the outcome is the same without storing sentinels.
 
 use super::failure;
+use crate::ops::agg::{Scalar, Values as Decoded};
 use arrow::array::{
     Array, ArrayRef, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array,
     Int8Array, ListArray, StringArray, TimestampNanosecondArray, UInt16Array, UInt32Array,
@@ -29,6 +30,9 @@ pub(super) enum Values {
     /// column (forward fill, rolling count, rolling group) read only which cells are null,
     /// and a bucket key reads the elements through [`push_list_keys`].
     Lists(ArrayRef),
+    /// The cells of a vector column read for an operator that orders them (minimum and
+    /// maximum), each a [`Scalar::List`] or a null.
+    Ordered(Vec<Scalar>),
 }
 
 fn cast<A: Array + 'static>(array: &ArrayRef) -> Result<&A, TableFailure> {
@@ -85,12 +89,27 @@ impl Values {
         })
     }
 
+    /// [`Values::read`], with the cells of a vector column decoded to be ordered.
+    pub(super) fn read_ordered(
+        array: &ArrayRef,
+        column_type: &ColumnType,
+    ) -> Result<Values, TableFailure> {
+        if !matches!(column_type, ColumnType::Vector(_)) {
+            return Values::read(array, column_type);
+        }
+        match Decoded::decode(column_type, array)? {
+            Decoded::Cells(cells) => Ok(Values::Ordered(cells)),
+            _ => Err(failure("a vector column must decode to cells")),
+        }
+    }
+
     pub(super) fn len(&self) -> usize {
         match self {
             Values::Int(v) => v.len(),
             Values::Float(v) => v.len(),
             Values::Text(v) => v.len(),
             Values::Lists(v) => v.len(),
+            Values::Ordered(v) => v.len(),
         }
     }
 
@@ -100,12 +119,14 @@ impl Values {
             Values::Float(v) => v[index].is_none(),
             Values::Text(v) => v[index].is_none(),
             Values::Lists(v) => v.is_null(index),
+            Values::Ordered(v) => v[index].is_null(),
         }
     }
 
     /// How the non-null values at `a` and `b` compare, as Java's `<`, `>` and `==` on
-    /// primitives or `compareTo` on a `String` do. `None` when a NaN is involved, for which
-    /// all three primitive comparisons are false.
+    /// primitives or `compareTo` on a `String` or a vector do. `None` when a NaN is
+    /// involved, for which all three primitive comparisons are false; a NaN inside a vector
+    /// is ordered, as `DoubleComparisons#compare` orders it.
     pub(super) fn compare(&self, a: usize, b: usize) -> Option<Ordering> {
         match self {
             Values::Int(v) => v[a].partial_cmp(&v[b]),
@@ -116,8 +137,12 @@ impl Values {
                     .encode_utf16()
                     .cmp(v[b].as_deref()?.encode_utf16()),
             ),
-            // No operator that orders values is given a vector or an array column.
+            // No operator that orders values is given an array column, nor a vector column
+            // not read by `read_ordered`.
             Values::Lists(_) => None,
+            // Behavior: io.deephaven.vector.IntVector#compareTo, ObjectVector#compareTo and
+            // their siblings: element by element, a null element first, then the shorter.
+            Values::Ordered(v) => Some(v[a].compare(&v[b])),
         }
     }
 }

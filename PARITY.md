@@ -253,19 +253,21 @@ that name they fail to import and the server does not start with them installed.
 no Java VM.
 
 Rule: Oxhaven's Python holds a `jpy` module with the public names of jpy 2.2.0 and no Java
-class behind any of them (`crates/oxhaven-server/python/jpy.py`).
+VM behind them (`crates/oxhaven-server/python/jpy.py`). The module carries out the Java
+classes and members that `docs/CONSOLE.md` lists ("The jpy module", "Java arrays") and
+refuses the rest.
 
 - `jpy.get_type` answers a class for any name that is not empty, where jpy refuses a class
   Java does not have. The class can be held, compared and printed.
-- Every use of such a class (calling it, reading a member, `jpy.array`, `jpy.cast` of an
+- Every other use of a class (calling it, reading a member, `jpy.array`, `jpy.cast` of an
   object, `jpy.convert`) raises `NotPorted` naming the Java class and member, where Java
   carries the call out.
 - `jpy.has_jvm()` is false, `jpy.create_jvm` is refused, and `jpy.destroy_jvm()` does
   nothing, where on Java it ends the server's VM.
 
-No Java class is implemented behind the module. The call-by-call table is in
-`docs/CONSOLE.md`, "The jpy module", and the recorded cases are in
-`crates/oxhaven-server/src/console/python/jpy_tests.rs`.
+The call-by-call table is in `docs/CONSOLE.md`, "The jpy module" and "Java arrays", and
+the recorded cases are in `jpy_tests.rs`, `jpy_array_tests.rs` and `calendar_tests.rs` of
+`crates/oxhaven-server/src/console/python/`.
 
 ### A11. A table after it failed in an update cycle
 

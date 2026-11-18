@@ -297,6 +297,7 @@ impl Rolling {
                 Byte | Char | Short | Int | Long | Instant | Float | Double | String | Boolean => {
                     Some(input.clone())
                 }
+                Vector(element) if super::orderable_vector(element) => Some(input.clone()),
                 _ => None,
             },
             // An Instant column reaches ObjectRollingCountOperator as a chunk of longs and
@@ -337,6 +338,8 @@ impl Rolling {
                     .map(|i| influencers.is_valid(i).then_some(0))
                     .collect(),
             )
+        } else if matches!(self, Rolling::Min | Rolling::Max) {
+            Values::read_ordered(influencers, input)?
         } else {
             Values::read(influencers, input)?
         };
@@ -357,7 +360,7 @@ impl Rolling {
         let doubles = |values: &Values| match values {
             Values::Int(v) => Ok(v.iter().map(|v| v.map(|v| v as f64)).collect()),
             Values::Float(v) => Ok(v.clone()),
-            Values::Text(_) | Values::Lists(_) => {
+            Values::Text(_) | Values::Lists(_) | Values::Ordered(_) => {
                 Err(failure("no rolling operator for this column type"))
             }
         };
@@ -404,7 +407,7 @@ impl Rolling {
                 };
                 return pick(None, influencers, extremes(&values, window, wanted));
             }
-            (_, Values::Text(_) | Values::Lists(_)) => {
+            (_, Values::Text(_) | Values::Lists(_) | Values::Ordered(_)) => {
                 return Err(failure("no rolling operator for this column type"))
             }
         })

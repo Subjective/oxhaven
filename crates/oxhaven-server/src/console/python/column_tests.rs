@@ -13,7 +13,7 @@ use super::tests::Python;
 
 /// `name: type = cell, ...` of each column of the scope variable `name`; a null cell is empty,
 /// and an instant is its nanoseconds since the epoch.
-fn described(python: &Python, name: &str) -> Vec<String> {
+pub(super) fn described(python: &Python, name: &str) -> Vec<String> {
     let table = python.table(name);
     let snapshot = TableSnapshot::current(table.as_ref()).unwrap();
     let columns = table.definition().columns().iter();
@@ -38,7 +38,7 @@ fn described(python: &Python, name: &str) -> Vec<String> {
 }
 
 /// The error of code that must fail.
-fn error(python: &Python, code: &str) -> String {
+pub(super) fn error(python: &Python, code: &str) -> String {
     let changes = python.console.evaluate(code);
     changes
         .error

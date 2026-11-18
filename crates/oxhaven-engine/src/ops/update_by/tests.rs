@@ -1058,19 +1058,6 @@ fn a_slice_of_a_window_as_the_result_is_unported() {
 }
 
 #[test]
-#[should_panic(expected = "of a window chosen by a condition or a cast")]
-fn an_element_of_a_window_chosen_by_a_condition_is_unported() {
-    formula_request(
-        formula(
-            "(len(x) > 1 ? x : x.subVector(0, 1))[0]",
-            &["R = I"],
-            RollingWindow::ticks(2, 0),
-        ),
-        &[],
-    );
-}
-
-#[test]
 #[should_panic(expected = "which are 0 in Java")]
 fn a_row_variable_in_a_formula_with_a_token_is_unported() {
     formula_request(
@@ -1326,6 +1313,11 @@ fn everything() -> Vec<UpdateByOperation> {
         formula_of(
             "Fm12 = (len(L) > 2 ? L : (L[0] > 0 ? L : L))[len(L) - 1]",
             window(2, 1),
+        ),
+        formula_of(
+            "Fm13 = len(I) > 1 ? (I[0] > 0 ? I : I.subVector(1, 2))[0] \
+             + first(L[0] > 0 ? L : L.subVector(0, 1)) : 0",
+            window(3, 0),
         ),
     ]
 }
