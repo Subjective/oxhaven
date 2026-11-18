@@ -6,11 +6,12 @@
 
 use super::filters::{MatchOptions, Resolved};
 use super::literal::{
-    java_equals_ignore_case, parse_big_decimal, parse_big_integer, parse_instant,
+    java_equals_ignore_case, parse_big_decimal, parse_big_integer, parse_instant_with,
     parse_java_double, parse_java_float, parse_java_integer, Decimal, Key,
 };
 use super::pattern::Matcher;
 use oxhaven_column::sentinel::{NULL_CHAR, NULL_DOUBLE, NULL_FLOAT, NULL_LONG};
+use oxhaven_contracts::expr::FormulaCompiler;
 use oxhaven_contracts::schema::{ColumnType, TableDefinition};
 use oxhaven_contracts::unported;
 
@@ -34,6 +35,7 @@ pub(super) fn expand(
     definition: &TableDefinition,
     text: &str,
     columns: &[String],
+    compiler: &dyn FormulaCompiler,
 ) -> Result<Resolved, String> {
     if text.is_empty() {
         return Ok(Resolved::Nothing);
@@ -47,7 +49,7 @@ pub(super) fn expand(
             continue;
         }
         let filter = match column.column_type.list_element() {
-            None => quick_filter(index, &column.column_type, text)?,
+            None => quick_filter(index, &column.column_type, text, compiler)?,
             // Behavior: WhereFilterFactory#createVectorQuickFilter and
             // VectorComponentFilterWrapper#maybeCreateFilterWrapper: the element type's
             // filter, which every quick filter exposes as a chunk filter, applied to the
@@ -66,7 +68,7 @@ pub(super) fn expand(
                             | ColumnType::Float
                             | ColumnType::Double
                     );
-                quick_filter(index, element, text)?.map(|filter| Resolved::AnyElement {
+                quick_filter(index, element, text, compiler)?.map(|filter| Resolved::AnyElement {
                     column: index,
                     element_type: element.clone(),
                     element: Box::new(filter),
@@ -100,6 +102,7 @@ fn quick_filter(
     column: usize,
     column_type: &ColumnType,
     text: &str,
+    compiler: &dyn FormulaCompiler,
 ) -> Result<Option<Resolved>, String> {
     let integer = |min: i64, max: i64| {
         parse_java_integer(text, min, max).ok().map(|value| {
@@ -190,7 +193,7 @@ fn quick_filter(
             (is_true || java_equals_ignore_case(text, "false"))
                 .then(|| matching(column, Key::Bool(is_true)))
         }
-        ColumnType::Instant => match instant(text) {
+        ColumnType::Instant => match instant(text, compiler) {
             None => None,
             Some(lower) => {
                 let upper = match precision(text) {
@@ -336,14 +339,16 @@ fn may_be_duration(text: &str) -> bool {
 /// server's time zone.
 ///
 /// Behavior: io.deephaven.engine.table.impl.select.WhereFilterFactory.InferenceResult
-fn instant(text: &str) -> Option<i64> {
+fn instant(text: &str, compiler: &dyn FormulaCompiler) -> Option<i64> {
     let digits = text.strip_prefix('-').unwrap_or(text);
     let integer = (1..=19).contains(&digits.len()) && digits.bytes().all(|b| b.is_ascii_digit());
     // A date time has a `T` and an offset after its date, or a space and a time zone.
     let date_time = after_iso_date(text).is_some_and(|rest| rest.contains(['T', 't', ' ']));
     if integer || date_time {
         // an integer that is the null of a long is no instant
-        return parse_instant(text).ok().filter(|nanos| *nanos != NULL_LONG);
+        return parse_instant_with(text, compiler)
+            .ok()
+            .filter(|nanos| *nanos != NULL_LONG);
     }
     if may_be_duration(text) {
         unported!(
@@ -364,24 +369,40 @@ enum Precision {
     Day,
 }
 
-/// The finest unit of the forms [`parse_instant`] reads. Java finds it with a pattern of
-/// its own, which knows an integer of two digits as an hour, takes any fraction for
-/// milliseconds, and does not know a date time that ends in `Z`.
+/// The finest unit of a date time. Java finds it with a pattern of its own: a date with an
+/// optional upper case `T`, a time of one or two digits of hour and optional minutes,
+/// seconds and fraction, and a zone of ASCII letters after a space. So it knows an integer
+/// of two digits as an hour, takes any fraction for milliseconds, and finds no unit in a
+/// date time that ends in `Z`, an offset, a lower case `t` or a zone with a `/` or `_`.
 ///
-/// Behavior: io.deephaven.time.DateTimeUtils#parseTimePrecisionQuiet
+/// Behavior: io.deephaven.time.DateTimeUtils#parseTimePrecisionQuiet and its
+/// `CAPTURING_DATETIME_PATTERN`
 fn precision(text: &str) -> Precision {
     const SECOND: i64 = 1_000_000_000;
-    if text.len() == 2 && text.bytes().all(|b| b.is_ascii_digit()) {
-        return Precision::Nanos(3600 * SECOND);
+    // Java's text is longer than one UTF-16 unit; any shorter text is one byte here.
+    if text.len() <= 1 {
+        return Precision::None;
     }
-    let Some(local) = text.strip_suffix(" UTC") else {
+    let pattern = regex::Regex::new(
+        r"^(?:[0-9]{4}-[0-9]{2}-([0-9]{2})T?)?(?:([0-9][0-9]?)(?::([0-9][0-9])(?::([0-9][0-9]))?(?:\.([0-9]{1,9}))?)?)?(?: [a-zA-Z]+)?$",
+    )
+    .expect("a valid pattern");
+    let Some(parts) = pattern.captures(text) else {
         return Precision::None;
     };
-    match local.split_once(['T', 't']) {
-        None => Precision::Day,
-        Some((_, time)) if time.contains('.') => Precision::Nanos(SECOND / 1000),
-        Some((_, time)) if time.matches(':').count() == 2 => Precision::Nanos(SECOND),
-        Some(_) => Precision::Nanos(60 * SECOND),
+    let has = |group: usize| parts.get(group).is_some_and(|part| !part.is_empty());
+    if has(5) {
+        Precision::Nanos(SECOND / 1000)
+    } else if has(4) {
+        Precision::Nanos(SECOND)
+    } else if has(3) {
+        Precision::Nanos(60 * SECOND)
+    } else if has(2) {
+        Precision::Nanos(3600 * SECOND)
+    } else if has(1) {
+        Precision::Day
+    } else {
+        Precision::None
     }
 }
 
@@ -1157,5 +1178,64 @@ mod tests {
     )]
     fn a_search_for_a_time_of_day_in_an_instant_column_is_not_ported() {
         let _ = filter(&mixed(), &[search("PT1H", &["T"])], &Compiler);
+    }
+
+    /// Every expectation was observed on Deephaven 42.9 with the same rows.
+    #[test]
+    fn a_search_for_a_date_time_in_a_named_zone_spans_its_finest_unit() {
+        // 2023-11-14 at these times, UTC
+        let at = |hour: i64, minute: i64, millis: i64| {
+            Some(1_699_920_000 * SECOND + (hour * 3600 + minute * 60) * SECOND + millis * 1_000_000)
+        };
+        let instants = vec![
+            at(15, 0, 0),
+            at(15, 0, 30_000),
+            at(15, 0, 59_999),
+            at(15, 1, 0),
+            at(1, 0, 30_500),
+            at(1, 0, 30_600),
+            at(10, 0, 0),
+            at(9, 0, 0),
+            at(1, 0, 31_000),
+        ];
+        let t = TimestampNanosecondArray::from(instants).with_timezone("UTC");
+        let table = static_table(vec![("T", ColumnType::Instant, Arc::new(t) as ArrayRef)]);
+        let found = |text: &str| {
+            let result = filter(&table, &[search(text, &["T"])], &Compiler)
+                .unwrap_or_else(|e| panic!("{text:?}: {e}"));
+            result
+                .row_set()
+                .iter()
+                .map(|key| key / 10)
+                .collect::<Vec<i64>>()
+        };
+        assert_eq!(found("2023-11-14T10:00 ET"), [0, 1, 2]);
+        assert_eq!(found("2023-11-14T10:00:30 ET"), [1]);
+        assert_eq!(found("2023-11-14T10:00:30.5 JP"), [4]);
+        assert_eq!(found("2023-11-14T10:00:30 PT"), [0i64; 0]);
+        assert_eq!(found("2023-11-14T10:00 UTC"), [6]);
+        assert_eq!(found("2023-11-14T01:00:30.5 UTC"), [4]);
+        // Java's pattern of units knows no zone with a `/`, no offset, no `Z` and no lower
+        // case `t`: the range ends where it starts.
+        for text in [
+            "2023-11-14T10:00 America/New_York",
+            "2023-11-14T10:00 Asia/Tokyo",
+            "2023-11-14T10:00 Etc/GMT+5",
+            "2023-11-14t10:00 UTC",
+            "2023-11-14T10:00+01:00",
+            "2023-11-14T10:00:00Z",
+            "2023-11-14T10:00:00-05:00[America/New_York]",
+        ] {
+            assert_eq!(found(text), [0i64; 0], "{text}");
+        }
+        // no instant: Java reads no zone `NY`, `Z` after a space or `jp`, nor an hour alone
+        for text in [
+            "2023-11-14T10:00 NY",
+            "2023-11-14T10 NY",
+            "2023-11-14T10:00:30 Z",
+            "2023-11-14T10:00:30.5 jp",
+        ] {
+            assert_eq!(found(text), [0i64; 0], "{text}");
+        }
     }
 }

@@ -1305,3 +1305,15 @@ Seven green checks on head 8fc19a47. Main is at 17dcd9f5.
 ## 2026-11-18 00:27 UTC: task 10.8 started
 
 The update_by family (U16). Briefs now warn that the container can restart: push every 20 minutes, long commands in the foreground.
+
+## 2026-11-18 00:50 UTC: task 10.7 reported; held for a licence question
+
+All gates passed, but dtoa.rs is a close port of the source of jdk.internal.math.FloatingDecimal (GPLv2 with the Classpath exception). The licence rule covers dependencies; ported source is a new case, so it went to the owner as a decision card (recommended: keep it out). The agent is splitting the rest into task/10.7a-filter-literals and reporting how the other pieces were written. Lesson for briefs: the JDK may be read for behaviour, but its source must not be translated; implement from documented behaviour and fixtures produced by running Java.
+
+## 2026-11-18 01:20 UTC: task 10.7 split, pull request 162 opened
+
+The agent confirmed the kept pieces were written from behaviour and fixtures produced by running Java 21, not translated from JDK source. Pull request 162 carries them; the DecimalFormat port waits on the decision card.
+
+## 2026-11-18 01:29 UTC: pull request 162 merged
+
+Seven green checks on head ee0a2a25. Main is at 39956454. The DecimalFormat port stays on branch task/10.7-unported-filter-literals pending the owner.

@@ -211,6 +211,159 @@ fn float_columns_compare_like_double_columns() {
     assert_eq!(kept(&t, &["F != NaN"]), [0, 1, 2, 3, 4]);
 }
 
+/// Every expectation was observed on Deephaven 42.9 with the same rows.
+#[test]
+fn hexadecimal_float_literals_are_read_as_java_reads_them() {
+    let p = Int32Array::from((0..6).collect::<Vec<i32>>());
+    let d = Float64Array::from(vec![8.0, -3.0, 0.5, 1.0, 5e-324, 4.9e-324 * 3.0]);
+    let f = Float32Array::from(vec![8.0, -3.0, 0.5, 1.0, 1.000_000_1, 1.4e-45]);
+    let t = static_table(vec![
+        ("P", ColumnType::Int, Arc::new(p)),
+        ("D", ColumnType::Double, Arc::new(d)),
+        ("F", ColumnType::Float, Arc::new(f)),
+    ]);
+    assert_eq!(kept(&t, &["D in 0x1p3"]), [0]);
+    assert_eq!(kept(&t, &["D in -0x1.8p1, 0x.8p0"]), [1, 2]);
+    assert_eq!(kept(&t, &["D == 0X1P3"]), [0]);
+    assert_eq!(kept(&t, &["D in 0x1p3f"]), [0]);
+    assert_eq!(kept(&t, &["D in 0x1p0d"]), [3]);
+    assert_eq!(kept(&t, &["D in 0x1p-1074"]), [4]);
+    assert_eq!(kept(&t, &["D in 0x1.8p-1073"]), [5]);
+    assert_eq!(kept(&t, &["D > 0x1p1"]), [0]);
+    assert_eq!(kept(&t, &["D <= 0x1p-1"]), [1, 2, 4, 5]);
+    assert_eq!(kept(&t, &["F in 0x1p3"]), [0]);
+    // a float literal is rounded once, to a float's bits, ties to even
+    assert_eq!(kept(&t, &["F in 0x1.000001p0"]), [3]);
+    assert_eq!(kept(&t, &["F in 0x1.0000010000001p0"]), [4]);
+    assert_eq!(kept(&t, &["F in 0x1p-149"]), [5]);
+    assert_eq!(kept(&t, &["F > 0x1p1"]), [0]);
+    assert_eq!(kept(&t, &["F < 0x1p-1"]), [1, 5]);
+    for bad in ["D in 0x1p", "D in 0x1p0L", "F in 0xgp1"] {
+        assert!(is_invalid(&refused(&t, &[bad])), "{bad}");
+    }
+    let found = |text: &str| {
+        let search = Condition::Search {
+            search_string: text.to_string(),
+            columns: vec!["P".into(), "D".into(), "F".into()],
+        };
+        kept_by(&t, &[search])
+    };
+    assert_eq!(found("0x1p3"), [0]);
+    assert_eq!(found("-0x1.8p1"), [1]);
+    assert_eq!(found("0x1p-1074"), [4]);
+    assert_eq!(found("0x1.000001p0"), [3]);
+    // No column takes the text, and `FilterFactory#onSearch` then keeps no row.
+    assert_eq!(found("0x1p"), [0i64; 0]);
+}
+
+/// Every expectation was observed on Deephaven 42.9 with the same rows.
+#[test]
+fn integer_and_big_number_literals_read_every_decimal_digit_java_reads() {
+    let p = Int32Array::from(vec![0, 1, 2, 3]);
+    let i = Int32Array::from(vec![12, -12, 5, 0]);
+    let l = Int64Array::from(vec![12, -12, 5, 0]);
+    let t = static_table(vec![
+        ("P", ColumnType::Int, Arc::new(p)),
+        ("I", ColumnType::Int, Arc::new(i)),
+        ("L", ColumnType::Long, Arc::new(l)),
+    ]);
+    assert_eq!(kept(&t, &["I in \u{661}\u{662}"]), [0]);
+    assert_eq!(kept(&t, &["I in -\u{661}\u{662}"]), [1]);
+    assert_eq!(kept(&t, &["I in +\u{ff11}\u{ff12}"]), [0]);
+    assert_eq!(kept(&t, &["L in \u{661}\u{662}, \u{665}"]), [0, 2]);
+    // a digit outside the Basic Multilingual Plane, a superscript and a Roman numeral are
+    // not decimal digits
+    for bad in [
+        "I in \u{1d7cf}\u{1d7d0}",
+        "I in \u{b2}",
+        "I in \u{2167}",
+        // Java compiles these as formulas, which fail
+        "I == \u{966}",
+        "I > \u{665}",
+    ] {
+        refused(&t, &[bad]);
+    }
+    let found = |text: &str| {
+        let search = Condition::Search {
+            search_string: text.to_string(),
+            columns: vec!["P".into(), "I".into(), "L".into()],
+        };
+        kept_by(&t, &[search])
+    };
+    assert_eq!(found("\u{661}\u{662}"), [0]);
+    assert_eq!(found("-\u{661}\u{662}"), [1]);
+    assert_eq!(found("\u{665}"), [2]);
+}
+
+/// Every expectation was observed on Deephaven 42.9 (on JDK 21) with the same rows, the
+/// filters sent over gRPC.
+#[test]
+fn a_case_insensitive_match_maps_supplementary_characters_as_jdk_21_does() {
+    let s = StringArray::from(vec![
+        "\u{10400}",
+        "\u{10428}",
+        "\u{104D8}",
+        "\u{10D70}",
+        "\u{A7DC}",
+        "\u{1C6}",
+        "x\u{10400}y",
+        "abc",
+    ]);
+    let t = static_table(vec![("S", ColumnType::String, Arc::new(s))]);
+    assert_eq!(kept(&t, &["S icase in `\u{10428}`"]), [0, 1]);
+    assert_eq!(kept(&t, &["S icase in `\u{104B0}`"]), [2]);
+    // Garay and the Latin letters of Unicode 16 have no case in JDK 21
+    assert_eq!(kept(&t, &["S icase in `\u{10D50}`"]), [0i64; 0]);
+    assert_eq!(kept(&t, &["S icase in `\u{19B}`"]), [0i64; 0]);
+    assert_eq!(kept(&t, &["S icase in `\u{1C4}`"]), [5]);
+    assert_eq!(kept(&t, &["S icase in `X\u{10428}Y`"]), [6]);
+    assert_eq!(
+        kept(&t, &["S icase not in `\u{10428}`"]),
+        [2, 3, 4, 5, 6, 7]
+    );
+    let five = "`\u{10428}`, `\u{104B0}`, `\u{10D50}`, `\u{19B}`, `\u{1C5}`";
+    assert_eq!(kept(&t, &[&format!("S icase in {five}")]), [0, 1, 2, 5]);
+    assert_eq!(kept(&t, &[&format!("S icase not in {five}")]), [3, 4, 6, 7]);
+}
+
+/// Every expectation was observed on Deephaven 42.9 with the same rows.
+#[test]
+fn instant_literals_in_a_named_zone_or_at_an_offset_are_read() {
+    const SECOND: i64 = 1_000_000_000;
+    // 2023-11-14 at these times, UTC
+    let at = |hour: i64, minute: i64, millis: i64| {
+        1_699_920_000 * SECOND + (hour * 3600 + minute * 60) * SECOND + millis * 1_000_000
+    };
+    let p = Int32Array::from((0..9).collect::<Vec<i32>>());
+    let t = TimestampNanosecondArray::from(vec![
+        at(15, 0, 0),
+        at(15, 0, 30_000),
+        at(15, 0, 59_999),
+        at(15, 1, 0),
+        at(1, 0, 30_500),
+        at(1, 0, 30_600),
+        at(10, 0, 0),
+        at(9, 0, 0),
+        at(1, 0, 31_000),
+    ])
+    .with_timezone("UTC");
+    let t = static_table(vec![
+        ("P", ColumnType::Int, Arc::new(p)),
+        ("T", ColumnType::Instant, Arc::new(t)),
+    ]);
+    assert_eq!(kept(&t, &["T in '2023-11-14T10:00:30.5 JP'"]), [4]);
+    assert_eq!(
+        kept(&t, &["T > '2023-11-14T10:00 America/New_York'"]),
+        [1, 2, 3]
+    );
+    assert_eq!(
+        kept(&t, &["T in '2023-11-14T10:00:00-05:00[America/New_York]'"]),
+        [0]
+    );
+    assert_eq!(kept(&t, &["T in '2023-11-14T10:00+01:00'"]), [7]);
+    refused(&t, &["T == '2023-11-14T10:00 NY'"]);
+}
+
 #[test]
 fn integer_filters_treat_the_sentinel_as_null() {
     let t = ints_table();
