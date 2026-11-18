@@ -1329,3 +1329,7 @@ The machine is quiet (no other agent builds), so the benchmark rerun that remove
 ## 2026-11-18 02:01 UTC: pull requests 163 and 164 merged
 
 Seven green checks each (164 on the run after the label). Main is at ca839513. The refusal passes 10.1 to 10.8 are done for every operator family; what remains refused is listed in the task files and waits mostly on owner answers (review-items-2.md 7.1 to 7.8).
+
+## 2026-11-18 02:22 UTC: task 9.11 reported (pull request 165), task 9.12 started
+
+The old two-processor caveat changed few ratios: Deephaven on four processors is about as fast as on two. Task 9.12 (design judgment, so on the default model) takes the remaining slower cases.
