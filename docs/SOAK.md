@@ -38,7 +38,8 @@ VIRTUAL_ENV=/tmp/soak-venv /tmp/soak-venv/bin/python bench/soak.py run \
 `--token-expire-ms 30000`, and stops it with SIGINT at the end. Options: `--duration` and
 `--warmup` (seconds, instead of the profile's), `--seed` (default 1), `--cycle-ms`,
 `--round-seconds` (default 2), `--console python|none` (default: what the server was built
-with), `--server-log <file>`, `--step-timeout`, `--inject` and `--skip` (both below). A server
+with), `--huge-pages off|keep` (default off; "Memory" below), `--server-log <file>`,
+`--step-timeout`, `--inject` and `--skip` (both below). A server
 built without the `python` feature can be soaked too; the checks that need the console say
 that they did not run.
 
@@ -111,10 +112,23 @@ Checked every round, so a result is compared about 1,300 times in a long run.
   takes static snapshots of the time-table chain's input and its result, of the two counts,
   and of the ring table and `tail(256)` of its source. The aggregation is recomputed from the
   input's snapshot; the ring table must equal the tail; the tail's timestamps must be one
-  period apart; and the count over the blink table must stay exactly as far behind the other
-  count as it was at the first check. (It is behind by the rows the blink table showed before
-  its count existed: none when the two requests fall in one cycle, one on a slow server.)
-  Without a console these tables are only read.
+  period apart; and each count must be the number of rows its own table has made. Row `k`
+  of a time table is at the first row's time plus `k` periods, so the count over the table
+  that keeps its rows follows from its last row, and the count over the blink table, which
+  counts every row the table has shown since the count was made, from the first and the
+  last of them (kept by the same aggregation). The two time tables are not compared with
+  each other: each reads the clock in its own refresh, in Java as well
+  (`TimeTable#refresh`), so in a cycle in which a period ends between the two readings one
+  has a row that the other gets a cycle later. Without a console these tables are only read.
+
+  The aggregation over the tail sums whole milliseconds: `(double) epochMillis(Timestamp)`.
+  It keeps a sum by adding the rows that come and subtracting the rows that leave (in Java
+  as well: `DoubleChunkedSumOperator`); with fractions that sum and one made of the rows as
+  they are now round differently and differ in the last bit after some thousands of
+  cycles. With whole numbers both are exact. `epochNanos(Timestamp) / 1000000` is not
+  whole, although the first row of the time tables is at a whole millisecond: the division
+  is of doubles, and the nanoseconds of today need 61 bits, so they are rounded to a
+  multiple of 256 before they are divided.
 - **What the driver knows.** The blink input table's aggregation against the sums of every
   row ever added; the churn session's aggregation against its 60,000 rows; the static tables
   against values known in advance.
@@ -141,18 +155,38 @@ samples), which a few high samples do not move. Its slope must not exceed the pr
 | `long` | 15 min | 24 MB per hour | 13 KB kept per round: a table of a few hundred rows, a session, a subscription, or 11 bytes per trade written |
 | `short` | 40 s | 1,500 MB per hour | 830 KB kept per round: one of the churn's 50,000-row tables |
 
-The limits come from the noise. Between two quiet points the resident size moves by 10 to
-20 MB without any trend, as the allocator returns freed pages to the system late and in
-pieces. Over the 30 minutes the long profile fits, two runs side by side, with the same
+**The server runs without transparent huge pages** (`--huge-pages off`, the default: the
+driver sets `MIMALLOC_ALLOW_THP=0` in the server's environment, which makes the allocator
+turn them off for the process and changes nothing else). With them the resident size
+measures the kernel more than the server. The allocator reserves one gigabyte of address
+space and asks for huge pages in it (`madvise`), which a machine whose setting is `madvise`
+or `always` grants. The kernel then makes 2 MB resident where a table touches a fresh
+region, splits it when the allocator returns the freed part a second later, and every
+eleven minutes or so `khugepaged` passes over the gigabyte and joins regions that are
+partly resident into huge pages, absent pages included. In the two-hour run of task 12.4
+the resident size moved by 8 to 18 MB from minute to minute, rose by 30 MB in 30 seconds
+more than once, and its median went from 148 to 176 MB, all of it in `AnonHugePages`
+(42 to 82 MB; correlation with the resident size 0.86), while the part in small pages
+stayed between 33 and 51 MB. Over the windows of 30 minutes of that run the fitted slope
+was between -11 and +38 MB per hour, and above the limit in 3 of 16. Without huge pages,
+over an hour on the same server: 111 MB after the warm-up, 113 at the end, a standard
+deviation of 3 MB, and a slope between +0.7 and +3.2 MB per hour in every window.
+`--huge-pages keep` leaves the server as a deployment has it; each round records the part
+of the resident size that is in huge pages (`huge_kb`) either way, and the summary prints
+it when there is any.
+
+The limits come from the noise, and were set before that was known. Over the 30 minutes
+the long profile fits, two runs side by side, with the same
 seed, measured -9 MB per hour on the server as it is and +54 on the server with the leak
 described below: 24 is between the two with room on both sides. Over windows of 80 seconds,
 which is what the short profile fits, the slopes of the first long run ranged from -790 to
-+1,200 MB per hour, so the short limit is above the largest. A run with `--inject leak`,
++1,200 MB per hour, so the short limit is above the largest; without huge pages they
+range from -280 to +440. A run with `--inject leak`,
 which keeps every round's tables, measured 16,700 MB per hour.
 
-The warm-up of the long profile is long because resident memory takes long to level: it
-rises in steps for the first 9 to 13 minutes (155 to about 173 MB in the run above) and
-then stays.
+The warm-up of the long profile is long because resident memory takes long to level:
+about ten minutes without huge pages (82 to 110 MB, as the long-lived tables fill and the
+allocator's pools reach their size), and 9 to 13 minutes in steps with them.
 
 Open file descriptors and threads of the process are sampled with it: the median of the last
 third of the run may be at most 8 above the median of the first third after the warm-up. A
@@ -188,6 +222,19 @@ is why the churn's tables are large.
   of the median. Processor time is used, not elapsed time, so that other work on the machine
   does not count.
 
+  It still counts a little. The processor time of the same work moves with the machine: in
+  the two-hour run of task 12.4, on a machine with nothing else on it, a round cost 0.29 to
+  0.31 s for the first 45 minutes, 0.32 s from minute 50 to minute 80 and 0.31 s after
+  that, and a server started beside it after 105 minutes cost the same as the one that was
+  105 minutes old (0.318 and 0.317 s). What changed at minute 45 was the machine: a fixed
+  loop in another process needed about a third more processor time from then on. Over the
+  16 windows of 30 minutes of that run the growth was between -7% and +15%, so the limit of
+  20% stays where
+  it is, and a growth of that size alone says nothing about the server. To tell the two
+  apart, each round also times a fixed piece of work in the driver (`control_s` of
+  `rounds`; the summary prints it beside the processor time). It is reported, not judged:
+  the two do not move in proportion.
+
 ### Shutdown
 
 After the last round the long-lived sessions are closed and the server gets SIGINT. It must
@@ -210,9 +257,10 @@ exit with code 0 within 15 seconds.
 
 The summary names each violation; the JSON file has the same with full detail, and one line
 per round under `rounds` (`columns` names the values of a row: time, work time, barrier
-time, cycle count and longest cycle gap, processor time of the round, resident size, peak
-resident size, threads, file descriptors, processor time so far, subscriber updates, load
-average).
+time, cycle count and longest cycle gap, processor time of the round, resident size, the
+part of it in transparent huge pages, peak resident size, threads, file descriptors,
+processor time so far, subscriber updates, load average, and the processor time of the
+driver's fixed work).
 
 To find which part of a round a trend comes from, leave parts out: `--skip` takes any of
 `write`, `check`, `script`, `churn`, `abandon`, and with `--round-seconds 0.05` the parts that
@@ -229,10 +277,10 @@ the long-lived graph and not in what comes and goes.
 | `[correctness] churn …`, `blink input aggregation` | a result differs from what the driver computed itself | the operations named in the detail |
 | `[requests] <step> failed` | a request the workload expects to succeed failed; the detail has the gRPC code and message | the server log (`--server-log`) at that time |
 | `[requests] the server logged errors` | an `ERROR` line or a panic in the log | the log |
-| `[memory] resident memory grows` | the fitted slope is above the limit | plot `rss_kb` of `rounds`; a staircase points at the abandoned sessions (every eighth round), a ramp at the churn or the long-lived graph. Rerun with `--console none` to take the console out |
+| `[memory] resident memory grows` | the fitted slope is above the limit | plot `rss_kb` of `rounds`; a staircase points at the abandoned sessions (every eighth round), a ramp at the churn or the long-lived graph. Rerun with `--console none` to take the console out. With `--huge-pages keep`, look at `huge_kb` first: if it rose as much as `rss_kb`, the kernel gave huge pages and the server holds no more than before |
 | `[memory] fds …`, `threads …` | connections or threads are not given back | sessions and subscriptions |
 | `[liveness] a cycle took too long to come`, `cycles get slower`, `a barrier took too long`, `barriers get slower` | the update graph falls behind | `cycle_gap_s` and `barrier_s` of `rounds` against `load`: a single spike with a high load average is the machine |
-| `[liveness] processor time per round climbs` | the same work costs more as the run goes on | `cpu_round_s` of `rounds` |
+| `[liveness] processor time per round climbs` | the same work costs more as the run goes on | `cpu_round_s` of `rounds` against `control_s`: if the driver's fixed work rose at the same time, it is the machine. A server started beside the old one settles it: the same cost for both is the machine |
 | `[liveness] stalled in step: <step>` | a request never returned | the stacks printed above it, and the server log |
 | `[shutdown] the server did not stop cleanly` | no exit, or a non-zero one, after SIGINT | the end of the server log |
 
@@ -251,6 +299,24 @@ had left again, so the arrays it indexes by row key grew with every row there ev
 (`crates/oxhaven-engine/src/ops/sort/gapped.rs`, test
 `rows_appended_while_others_leave_keep_the_key_space_in_proportion`). The measurements are
 in `tasks/12.3-soak-test.md`.
+
+**A session remembered every export it had released** (fixed with task 12.4). Not found by
+a limit: by reading what grows, while looking for the cause of a rise in processor time
+that turned out to be the machine's. An export id cannot be used again after its release,
+and the session kept the released ids one by one, 13 to 15 bytes each, for as long as it
+lived; Java keeps them as ranges. The session of a service that makes and frees a hundred
+tables a second grew by about 120 MB a day. The long-lived session of this workload
+releases on the order of a hundred exports a round, 2 to 3 MB an hour, far below the
+memory limit. Now ranges here as well (`crates/oxhaven-server/src/session/state.rs`, test
+`released_ids_are_remembered_as_ranges_however_many_there_were`).
+
+**Two of its own checks were wrong** (fixed with task 12.4), and failed on a correct server
+once a run was longer than 45 minutes. The sum over the tail of the time table was a sum of
+fractions, and after 32 minutes of adding and subtracting it differed in the last bit from
+the recomputation. And the counts over the two time tables were compared with each other,
+but each time table reads the clock itself: twice in two hours the blink table was a row
+ahead for one cycle. Both are how Java behaves too. "The tables fed by the clock" above
+says what is checked instead.
 
 ## In CI
 
