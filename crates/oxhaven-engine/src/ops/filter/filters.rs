@@ -209,8 +209,9 @@ fn resolve_condition(
 /// formula compiles; otherwise the original problem is the error.
 ///
 /// The formula of a filter on a `BigInteger` or `BigDecimal` `column`, which Java compiles
-/// (`Y == 1.5`, `Y > 1 - 2`), may read the column in a way the formula compiler does not
-/// have yet: that is refused as not ported, and not as an error.
+/// (`Y == 1.5`, `Y > 1 - 2`, `Y < D`), compares the column by value. A formula that reads
+/// the column in a way the formula compiler does not have yet (arithmetic of a big number,
+/// `Y > X + Y`) is refused as not ported, and not as an error.
 fn or_failover(
     simple: Result<Resolved, String>,
     failover: Option<&String>,

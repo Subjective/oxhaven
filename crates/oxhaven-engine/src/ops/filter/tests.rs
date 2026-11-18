@@ -2021,15 +2021,68 @@ fn a_big_number_literal_that_java_cannot_read_is_refused() {
     }
 }
 
-/// Java compiles the formula of a match that does not fit the column (`Y == 1.5` becomes
-/// the formula `Y == 1.5`, which compares as numbers), which the formula compiler does not
-/// do for a big number yet.
+/// A comparison that does not fit a big number column, or that names a column as its
+/// value, becomes its formula, which compares by value as
+/// `QueryLanguageFunctionUtils#compareTo` of the two types does.
+///
+/// The table is the one of the formula tests of `oxhaven-expr` (`objects.rs`,
+/// `big_numbers`); each count is what Java 42.9 kept with the same filter.
 #[test]
-#[should_panic(expected = "unported: io.deephaven.engine.table.impl.select.ConditionFilter#init")]
-fn the_formula_of_a_big_number_filter_is_not_ported() {
-    let y = big_integers(&[Some(5)]);
-    let t = static_table(vec![("Y", ColumnType::BigInteger, y)]);
-    let _ = unstructured_filter(&t, &["Y == 1.5"], &Compiler);
+fn the_formula_of_a_big_number_filter_compares_by_value() {
+    let bd = big_decimals(&[
+        Some((-150, 2)),
+        Some((10, 2)),
+        None,
+        Some((1, -20)),
+        Some((100_000_000_000_000_000_000_000, 3)),
+        Some((1_000_000_014_901_161_193_847_656_250, 28)),
+        Some((97, 0)),
+        Some((0, 3)),
+    ]);
+    let bi = big_integers(&[
+        Some(-2),
+        Some(0),
+        None,
+        Some(100_000_000_000_000_000_000),
+        Some(1 << 63),
+        Some(1),
+        Some(97),
+        Some(i128::from(i64::MIN)),
+    ]);
+    let d = Float64Array::from(vec![
+        Some(0.1),
+        Some(0.1),
+        None,
+        Some(1e20),
+        Some(f64::NAN),
+        Some(0.1),
+        Some(97.0),
+        Some(-0.0),
+    ]);
+    let l = Int64Array::from(vec![
+        Some(-2),
+        Some(0),
+        None,
+        Some(1),
+        Some(i64::MAX),
+        Some(1),
+        Some(97),
+        None,
+    ]);
+    let i = Int32Array::from((0..8).map(Some).collect::<Vec<_>>());
+    let t = static_table(vec![
+        ("BD", ColumnType::BigDecimal, bd),
+        ("BI", ColumnType::BigInteger, bi),
+        ("D", ColumnType::Double, Arc::new(d)),
+        ("L", ColumnType::Long, Arc::new(l)),
+        ("I", ColumnType::Int, Arc::new(i)),
+    ]);
+    assert_eq!(kept(&t, &["BD > D"]), [5]);
+    assert_eq!(kept(&t, &["D < BD"]), [5]);
+    assert_eq!(kept(&t, &["BI == 1.5"]), [0i64; 0]);
+    assert_eq!(kept(&t, &["BI < 0.5"]), [0, 1, 2, 7]);
+    assert_eq!(kept(&t, &["BD == I"]), [0i64; 0]);
+    assert_eq!(kept(&t, &["BI != L"]), [3, 4, 7]);
 }
 
 fn search_of(table: &Arc<dyn Table>, text: &str) -> Result<Vec<i64>, FilterError> {
