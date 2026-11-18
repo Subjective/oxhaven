@@ -600,14 +600,17 @@ public method of Java's `BusinessCalendar` and `Calendar`, with Java's overloads
   taken from the holidays), the same refusals (no `name`, `timeZone` or `default`, a close of
   `24:00`, both `businessTime` and `businessPeriod`, overlapping ranges, a name that is no
   valid query name, a name already taken), and the legacy `businessPeriod` form.
-- **The calendars Deephaven ships are not here.** `UTC`, `USNYSE_EXAMPLE` and
-  `USBANK_EXAMPLE` are read from files under the Deephaven Community License, which is
-  neither Apache-2.0 nor MIT, so they were not copied. Their names are in
-  `calendar_names()`, `calendar_name()` is `UTC` as in Java, and asking for one of them
-  (`calendar()` among them, while the default is `UTC`) is refused as `not ported:
-  io.deephaven.time.calendar.Calendars#calendar`. Adding a calendar of one of those names is
-  refused as Java refuses a second calendar of a name. A calendar added from a file, and
-  any name set as the default with `set_calendar`, work.
+- **The server starts with the three calendars Deephaven starts with** (task 12.5): `UTC`,
+  the default, `USNYSE_EXAMPLE` and `USBANK_EXAMPLE`, with Deephaven's zones, hours,
+  weekends and valid dates. Deephaven's files are under the Deephaven Community License, so
+  these are our own, written by `crates/oxhaven-expr/src/calendar/shipped/generate.py` from
+  public sources it cites: the NYSE's holiday rule (Rule 7.2), its announced early closes
+  and its unscheduled closings for the exchange; the legal public holidays of 5 U.S.C.
+  6103(a), observed as the Federal Reserve Banks observe them, for the banks. Like
+  Deephaven's, the two are examples, not for trading. `UTC` is the same as Deephaven's on
+  every date; where the other two differ is in the table below. Adding a calendar of one of
+  those names is refused as Java refuses a second calendar of a name, and `remove_calendar`
+  removes one as in Java.
 - **The methods of a calendar** are chosen among Java's overloads by the Python types of the
   arguments, as jpy chooses: `str` for `String`, the values of `deephaven.time` for
   `LocalDate`, `Instant`, `ZonedDateTime`, `LocalTime` and `ZoneId`, `None` for any of them,
@@ -634,6 +637,12 @@ Not the same as Java 42.9:
 | `hashCode()`, `getClass()` | the Java values | refused by name |
 | The texts of errors | Java's; for a calendar file, the message of the root cause | the same class and message for every failure probed, except: an invalid date in a file names `DateTimeParseException: Cannot parse local date` where Java's root cause is `DateTimeException: Invalid value for MonthOfYear`, an unknown weekend day is `Invalid day of week` where Java's root cause is `No enum constant java.time.DayOfWeek.X`, and a malformed file names `roxmltree`'s error |
 | A calendar file that is not UTF-8, or that names an external entity | read | refused |
+| `USNYSE_EXAMPLE`: 1999-11-26, 2000-07-03, 2000-11-24, 2001-07-03, 2001-11-23, 2001-12-24 | full days | early closes at 13:00, as the NYSE held them |
+| `USNYSE_EXAMPLE`: 2022-06-20 (Juneteenth observed), 2025-01-09 (national day of mourning) | business days | closed, as the NYSE was |
+| `USNYSE_EXAMPLE`: 2024-12-24, 2025-12-24 | 10:30 to 14:00 | 09:30 to 13:00, the NYSE's hours |
+| `USBANK_EXAMPLE`: 2019-11-26 and 2019-11-28 | the 26th closed, Thanksgiving (the 28th) a business day | the 26th a business day, the 28th closed |
+| `USBANK_EXAMPLE`: 2009-01-19, before the valid range (only `holidays()` and a figure's calendar show it) | not listed | listed: Martin Luther King, Jr. Day |
+| The description of `USNYSE_EXAMPLE` and `USBANK_EXAMPLE` (`description()`, `str()`) | Deephaven's text | our own |
 
 Reproduced from Java, though they look like defects: `remove_calendar` is case-sensitive
 while names are kept in upper case, so a lower-case name removes nothing; `set_calendar`
@@ -645,8 +654,10 @@ fails the day it falls on (`Start is after end`); `includeClose` is true only fo
 `diffBusinessYears` does not put a later start after the end and fails;
 `isLastBusinessDayOfMonth` compares the month only.
 
-Not ported, each refused by its name: the shipped calendars, as above; the business
-calendar of a `deephaven.plot` figure (`Figure#businessTime`, "Business time and transforms
+The sources of each of the calendar rows are in `tasks/12.5-shipped-calendars.md`; whether
+to keep them is owner question 7.22.
+
+Not ported, each refused by its name: the business calendar of a `deephaven.plot` figure (`Figure#businessTime`, "Business time and transforms
 of an axis" in `docs/FIGURES.md`); the calendar functions of the formula language
 (`io.deephaven.time.calendar.StaticCalendarMethods`), which are not in the formula library.
 
