@@ -1415,3 +1415,7 @@ Seven green checks on head 30fd6340. Main is at 85206959.
 ## 2026-11-18 09:56 UTC: task 11.6 reported, pull request 174; task 11.8 started
 
 Task 11.6 was too large as scoped: half its context went to listing and probing 15 refusals across two directories. It delivered big-number comparisons in the formula language and Java's refusal of range filters on vector columns. Its handover (Object-column literals, long-year instants, the cheap regex constructs, the parser annotation) is task 11.8, started from its branch. Big-number arithmetic stays a task of its own, with owner questions first. Lesson: a refusal task should be one directory, not two.
+
+## 2026-11-18 10:02 UTC: task 11.7 reported, pull request 175; task 11.9 started
+
+Task 11.7 found the refusal a user was most likely to hit: the web IDE's preview of any table with a Duration, Period, ZoneId, Object or table column. It closed 11 of 30 refusals in its scope, parked 10 on owner items (three new: 7.14 to 7.16) and handed 9 engine leftovers to task 11.9, started from its branch. All gates passed locally.
