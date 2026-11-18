@@ -1427,3 +1427,7 @@ Seven green checks on head a5b8220d, the replay among them (it had not run local
 ## 2026-11-18 10:08 UTC: pull request 175 merged
 
 Seven green checks on head 80489e22. Main is at 89a63291. Pull requests 174 and 175 were each checked before the other merged; they merge cleanly, and tasks 11.8 and 11.9 run every gate on the combined main before they report.
+
+## 2026-11-18 11:10 UTC: task 11.8 reported, pull request 176; task 12.1 started
+
+Task 11.8 served the four filter items handed over by 11.6. Regular expressions that need backtracking (lookaround, back references) stay refused: they would need a new dependency (fancy-regex, MIT, within the licence rule), not added without a decision on whether it is wanted. Owner question 7.17 (range filter with an instant before 1677). The refusal pass is now down to task 11.9; the test phase starts with task 12.1 on the default model, since changing the oracle's generator needs judgment: chained as-of joins and the vector cases the last tasks started serving.
