@@ -1,0 +1,10835 @@
+{
+ "meta": {
+  "merged_from": [
+   {
+    "started": "2026-11-18T02:07:53",
+    "host": "vm",
+    "cpus": 4,
+    "loadavg_start": [
+     0.87646484375,
+     1.47216796875,
+     3.02783203125
+    ],
+    "warmup": 2,
+    "reps": 5,
+    "warmup_large": 1,
+    "reps_large": 3,
+    "servers": {
+     "Deephaven": "dh+psk://oxhaven@127.0.0.1:10868"
+    },
+    "done": {
+     "build": "export answered (result exists, size known)",
+     "update_arith": "export answered (result exists, size known)",
+     "update_string": "export answered (result exists, size known)",
+     "update_cond": "export answered (result exists, size known)",
+     "where_range": "export answered (result exists, size known)",
+     "where_string": "export answered (result exists, size known)",
+     "where_conj": "export answered (result exists, size known)",
+     "sort_int": "export answered (result exists, size known)",
+     "sort_two": "export answered (result exists, size known)",
+     "sort_string": "export answered (result exists, size known)",
+     "sum_by_low": "export answered (result exists, size known)",
+     "avg_by_low": "export answered (result exists, size known)",
+     "count_by_low": "export answered (result exists, size known)",
+     "sum_by_med": "export answered (result exists, size known)",
+     "avg_by_med": "export answered (result exists, size known)",
+     "count_by_med": "export answered (result exists, size known)",
+     "sum_by_high": "export answered (result exists, size known)",
+     "avg_by_high": "export answered (result exists, size known)",
+     "count_by_high": "export answered (result exists, size known)",
+     "agg_by_multi": "export answered (result exists, size known)",
+     "last_by": "export answered (result exists, size known)",
+     "natural_join_small": "export answered (result exists, size known)",
+     "natural_join_large": "export answered (result exists, size known)",
+     "exact_join_small": "export answered (result exists, size known)",
+     "exact_join_large": "export answered (result exists, size known)",
+     "join_on_key": "export answered (result exists, size known)",
+     "aj": "export answered (result exists, size known)",
+     "select_distinct_one": "export answered (result exists, size known)",
+     "select_distinct_two": "export answered (result exists, size known)",
+     "head_half": "export answered (result exists, size known)",
+     "tail_half": "export answered (result exists, size known)",
+     "group_by": "export answered (result exists, size known)",
+     "ungroup": "export answered (result exists, size known)",
+     "doget_1m": "every record batch of 1M rows x (long, int, double) received by the client",
+     "sort_refreshing_append": "append of 1000 rows to the n-row input table returned, then two barrier changes returned (the cycle that sorted them in has finished)",
+     "doget_sorted_refreshing": "every record batch of the first 1M rows of the sorted refreshing table received",
+     "ticking_append_where_sum_by": "append of 100000 rows returned, then two barrier changes to another input table returned, then the derived table (100 rows) fetched by DoGet"
+    },
+    "loadavg_end": [
+     1.80029296875,
+     1.62158203125,
+     2.84814453125
+    ],
+    "finished": "2026-11-18T02:10:25"
+   },
+   {
+    "started": "2026-11-18T02:12:57",
+    "host": "vm",
+    "cpus": 4,
+    "loadavg_start": [
+     1.06005859375,
+     1.44775390625,
+     2.59912109375
+    ],
+    "warmup": 2,
+    "reps": 5,
+    "warmup_large": 1,
+    "reps_large": 3,
+    "servers": {
+     "Oxhaven": "dh+psk://oxhaven@127.0.0.1:10869"
+    },
+    "done": {
+     "build": "export answered (result exists, size known)",
+     "update_arith": "export answered (result exists, size known)",
+     "update_string": "export answered (result exists, size known)",
+     "update_cond": "export answered (result exists, size known)",
+     "where_range": "export answered (result exists, size known)",
+     "where_string": "export answered (result exists, size known)",
+     "where_conj": "export answered (result exists, size known)",
+     "sort_int": "export answered (result exists, size known)",
+     "sort_two": "export answered (result exists, size known)",
+     "sort_string": "export answered (result exists, size known)",
+     "sum_by_low": "export answered (result exists, size known)",
+     "avg_by_low": "export answered (result exists, size known)",
+     "count_by_low": "export answered (result exists, size known)",
+     "sum_by_med": "export answered (result exists, size known)",
+     "avg_by_med": "export answered (result exists, size known)",
+     "count_by_med": "export answered (result exists, size known)",
+     "sum_by_high": "export answered (result exists, size known)",
+     "avg_by_high": "export answered (result exists, size known)",
+     "count_by_high": "export answered (result exists, size known)",
+     "agg_by_multi": "export answered (result exists, size known)",
+     "last_by": "export answered (result exists, size known)",
+     "natural_join_small": "export answered (result exists, size known)",
+     "natural_join_large": "export answered (result exists, size known)",
+     "exact_join_small": "export answered (result exists, size known)",
+     "exact_join_large": "export answered (result exists, size known)",
+     "join_on_key": "export answered (result exists, size known)",
+     "aj": "export answered (result exists, size known)",
+     "select_distinct_one": "export answered (result exists, size known)",
+     "select_distinct_two": "export answered (result exists, size known)",
+     "head_half": "export answered (result exists, size known)",
+     "tail_half": "export answered (result exists, size known)",
+     "group_by": "export answered (result exists, size known)",
+     "ungroup": "export answered (result exists, size known)",
+     "doget_1m": "every record batch of 1M rows x (long, int, double) received by the client",
+     "sort_refreshing_append": "append of 1000 rows to the n-row input table returned, then two barrier changes returned (the cycle that sorted them in has finished)",
+     "doget_sorted_refreshing": "every record batch of the first 1M rows of the sorted refreshing table received",
+     "ticking_append_where_sum_by": "append of 100000 rows returned, then two barrier changes to another input table returned, then the derived table (100 rows) fetched by DoGet"
+    },
+    "loadavg_end": [
+     1.060546875,
+     1.3486328125,
+     2.4599609375
+    ],
+    "finished": "2026-11-18T02:14:22"
+   }
+  ],
+  "started": "2026-11-18T02:07:53",
+  "finished": "2026-11-18T02:14:22",
+  "servers": {
+   "Deephaven": "dh+psk://oxhaven@127.0.0.1:10868",
+   "Oxhaven": "dh+psk://oxhaven@127.0.0.1:10869"
+  },
+  "done": {
+   "build": "export answered (result exists, size known)",
+   "update_arith": "export answered (result exists, size known)",
+   "update_string": "export answered (result exists, size known)",
+   "update_cond": "export answered (result exists, size known)",
+   "where_range": "export answered (result exists, size known)",
+   "where_string": "export answered (result exists, size known)",
+   "where_conj": "export answered (result exists, size known)",
+   "sort_int": "export answered (result exists, size known)",
+   "sort_two": "export answered (result exists, size known)",
+   "sort_string": "export answered (result exists, size known)",
+   "sum_by_low": "export answered (result exists, size known)",
+   "avg_by_low": "export answered (result exists, size known)",
+   "count_by_low": "export answered (result exists, size known)",
+   "sum_by_med": "export answered (result exists, size known)",
+   "avg_by_med": "export answered (result exists, size known)",
+   "count_by_med": "export answered (result exists, size known)",
+   "sum_by_high": "export answered (result exists, size known)",
+   "avg_by_high": "export answered (result exists, size known)",
+   "count_by_high": "export answered (result exists, size known)",
+   "agg_by_multi": "export answered (result exists, size known)",
+   "last_by": "export answered (result exists, size known)",
+   "natural_join_small": "export answered (result exists, size known)",
+   "natural_join_large": "export answered (result exists, size known)",
+   "exact_join_small": "export answered (result exists, size known)",
+   "exact_join_large": "export answered (result exists, size known)",
+   "join_on_key": "export answered (result exists, size known)",
+   "aj": "export answered (result exists, size known)",
+   "select_distinct_one": "export answered (result exists, size known)",
+   "select_distinct_two": "export answered (result exists, size known)",
+   "head_half": "export answered (result exists, size known)",
+   "tail_half": "export answered (result exists, size known)",
+   "group_by": "export answered (result exists, size known)",
+   "ungroup": "export answered (result exists, size known)",
+   "doget_1m": "every record batch of 1M rows x (long, int, double) received by the client",
+   "sort_refreshing_append": "append of 1000 rows to the n-row input table returned, then two barrier changes returned (the cycle that sorted them in has finished)",
+   "doget_sorted_refreshing": "every record batch of the first 1M rows of the sorted refreshing table received",
+   "ticking_append_where_sum_by": "append of 100000 rows returned, then two barrier changes to another input table returned, then the derived table (100 rows) fetched by DoGet"
+  },
+  "host": "vm",
+  "cpus": 4,
+  "warmup": 2,
+  "reps": 5,
+  "warmup_large": 1,
+  "reps_large": 3
+ },
+ "sizes": {
+  "1000000": {
+   "build": {
+    "load": 1.06005859375,
+    "loads": [
+     0.87646484375,
+     1.06005859375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.3462260589994912,
+      0.30130080500020995,
+      0.24882231900028273,
+      0.2659383029995297,
+      0.20780956300040998
+     ],
+     "median": 0.2659383029995297,
+     "min": 0.20780956300040998,
+     "max": 0.3462260589994912,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "K10": 4500000,
+       "K10k": 4999500000,
+       "K1M": 499999500000,
+       "A": 50000971252,
+       "B": 71428773557.00002
+      },
+      "weighted": 252046998713184,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0"
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1"
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2"
+       ]
+      ],
+      "tail": [
+       [
+        999997,
+        7,
+        6243,
+        685813,
+        65912,
+        12157.285714285714,
+        "s997"
+       ],
+       [
+        999998,
+        8,
+        4162,
+        790542,
+        97249,
+        81559.85714285714,
+        "s998"
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.06847689700043702,
+      0.06951905300047656,
+      0.0687867050000932,
+      0.06895441699998628,
+      0.06559659400045348
+     ],
+     "median": 0.0687867050000932,
+     "min": 0.06559659400045348,
+     "max": 0.06951905300047656,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "K10": 4500000,
+       "K10k": 4999500000,
+       "K1M": 499999500000,
+       "A": 50000971252,
+       "B": 71428773557.00002
+      },
+      "weighted": 252046998713184,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0"
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1"
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2"
+       ]
+      ],
+      "tail": [
+       [
+        999997,
+        7,
+        6243,
+        685813,
+        65912,
+        12157.285714285714,
+        "s997"
+       ],
+       [
+        999998,
+        8,
+        4162,
+        790542,
+        97249,
+        81559.85714285714,
+        "s998"
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "update_arith": {
+    "load": 1.20703125,
+    "loads": [
+     1.20703125,
+     1.06005859375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.055653659000199696,
+      0.11967089699919597,
+      0.05050400200070726,
+      0.055863989000499714,
+      0.03874492100021598
+     ],
+     "median": 0.055653659000199696,
+     "min": 0.03874492100021598,
+     "max": 0.11967089699919597,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "K10": 4500000,
+       "K10k": 4999500000,
+       "K1M": 499999500000,
+       "A": 50000971252,
+       "B": 71428773557.00002,
+       "C": 100002942504,
+       "D": 57142189083.500015,
+       "E": 2999997
+      },
+      "weighted": 252046998713184,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        1,
+        0.0,
+        0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        62675,
+        72766.85714285716,
+        1
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        125349,
+        145533.71428571432,
+        2
+       ]
+      ],
+      "tail": [
+       [
+        999997,
+        7,
+        6243,
+        685813,
+        65912,
+        12157.285714285714,
+        "s997",
+        131825,
+        -47676.07142857143,
+        5
+       ],
+       [
+        999998,
+        8,
+        4162,
+        790542,
+        97249,
+        81559.85714285714,
+        "s998",
+        194499,
+        25090.78571428571,
+        6
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999",
+        57167,
+        -16425.714285714286,
+        0
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.006949549999262672,
+      0.006658748001427739,
+      0.007690946998991421,
+      0.007230146000438253,
+      0.007131813999876613
+     ],
+     "median": 0.007131813999876613,
+     "min": 0.006658748001427739,
+     "max": 0.007690946998991421,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "K10": 4500000,
+       "K10k": 4999500000,
+       "K1M": 499999500000,
+       "A": 50000971252,
+       "B": 71428773557.00002,
+       "C": 100002942504,
+       "D": 57142189083.500015,
+       "E": 2999997
+      },
+      "weighted": 252046998713184,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        1,
+        0.0,
+        0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        62675,
+        72766.85714285716,
+        1
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        125349,
+        145533.71428571432,
+        2
+       ]
+      ],
+      "tail": [
+       [
+        999997,
+        7,
+        6243,
+        685813,
+        65912,
+        12157.285714285714,
+        "s997",
+        131825,
+        -47676.07142857143,
+        5
+       ],
+       [
+        999998,
+        8,
+        4162,
+        790542,
+        97249,
+        81559.85714285714,
+        "s998",
+        194499,
+        25090.78571428571,
+        6
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999",
+        57167,
+        -16425.714285714286,
+        0
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "update_string": {
+    "load": 1.20703125,
+    "loads": [
+     1.20703125,
+     1.06005859375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.0641720779995012,
+      0.07446138099930977,
+      0.3563680209999802,
+      0.06537704400034272,
+      0.04334241500055214
+     ],
+     "median": 0.06537704400034272,
+     "min": 0.04334241500055214,
+     "max": 0.3563680209999802,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "K10": 4500000,
+       "K10k": 4999500000,
+       "K1M": 499999500000,
+       "A": 50000971252,
+       "B": 71428773557.00002
+      },
+      "weighted": 252046998713184,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        "s0_x"
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        "s1_x"
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        "s2_x"
+       ]
+      ],
+      "tail": [
+       [
+        999997,
+        7,
+        6243,
+        685813,
+        65912,
+        12157.285714285714,
+        "s997",
+        "s997_x"
+       ],
+       [
+        999998,
+        8,
+        4162,
+        790542,
+        97249,
+        81559.85714285714,
+        "s998",
+        "s998_x"
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999",
+        "s999_x"
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.018165729999964242,
+      0.017985040998610202,
+      0.030134327000268968,
+      0.02866763199926936,
+      0.01916477600025246
+     ],
+     "median": 0.01916477600025246,
+     "min": 0.017985040998610202,
+     "max": 0.030134327000268968,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "K10": 4500000,
+       "K10k": 4999500000,
+       "K1M": 499999500000,
+       "A": 50000971252,
+       "B": 71428773557.00002
+      },
+      "weighted": 252046998713184,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        "s0_x"
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        "s1_x"
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        "s2_x"
+       ]
+      ],
+      "tail": [
+       [
+        999997,
+        7,
+        6243,
+        685813,
+        65912,
+        12157.285714285714,
+        "s997",
+        "s997_x"
+       ],
+       [
+        999998,
+        8,
+        4162,
+        790542,
+        97249,
+        81559.85714285714,
+        "s998",
+        "s998_x"
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999",
+        "s999_x"
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "update_cond": {
+    "load": 1.20703125,
+    "loads": [
+     1.20703125,
+     1.1357421875
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.024406319000263466,
+      0.027933254000345187,
+      0.027712736000466975,
+      0.03876032500011206,
+      0.031150974999945902
+     ],
+     "median": 0.027933254000345187,
+     "min": 0.024406319000263466,
+     "max": 0.03876032500011206,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "K10": 4500000,
+       "K10k": 4999500000,
+       "K1M": 499999500000,
+       "A": 50000971252,
+       "B": 71428773557.00002,
+       "F": 2894223.0000000023
+      },
+      "weighted": 252046998713184,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        -0.0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        -69402.57142857143
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        138805.14285714287
+       ]
+      ],
+      "tail": [
+       [
+        999997,
+        7,
+        6243,
+        685813,
+        65912,
+        12157.285714285714,
+        "s997",
+        12157.285714285714
+       ],
+       [
+        999998,
+        8,
+        4162,
+        790542,
+        97249,
+        81559.85714285714,
+        "s998",
+        81559.85714285714
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999",
+        -8104.857142857143
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.004971749998730957,
+      0.0041567049993318506,
+      0.004074505999597022,
+      0.005139830000189249,
+      0.00520053999935044
+     ],
+     "median": 0.004971749998730957,
+     "min": 0.004074505999597022,
+     "max": 0.00520053999935044,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "K10": 4500000,
+       "K10k": 4999500000,
+       "K1M": 499999500000,
+       "A": 50000971252,
+       "B": 71428773557.00002,
+       "F": 2894223.0000000023
+      },
+      "weighted": 252046998713184,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        -0.0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        -69402.57142857143
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        138805.14285714287
+       ]
+      ],
+      "tail": [
+       [
+        999997,
+        7,
+        6243,
+        685813,
+        65912,
+        12157.285714285714,
+        "s997",
+        12157.285714285714
+       ],
+       [
+        999998,
+        8,
+        4162,
+        790542,
+        97249,
+        81559.85714285714,
+        "s998",
+        81559.85714285714
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999",
+        -8104.857142857143
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "where_range": {
+    "load": 1.20703125,
+    "loads": [
+     1.20703125,
+     1.1357421875
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.05777812700034701,
+      0.0368968920001862,
+      0.020960232999641448,
+      0.021173642000576365,
+      0.018345654999393446
+     ],
+     "median": 0.021173642000576365,
+     "min": 0.018345654999393446,
+     "max": 0.05777812700034701,
+     "check": {
+      "rows": 399988,
+      "sums": {
+       "Id": 199993300561,
+       "K10": 1799941,
+       "K10k": 1999942559,
+       "K1M": 200001452969,
+       "A": 15999298533,
+       "B": 28575483220.85715
+      },
+      "weighted": 100757435760366,
+      "head": [
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1"
+       ],
+       [
+        4,
+        4,
+        1676,
+        418916,
+        25345,
+        134752.7142857143,
+        "s4"
+       ],
+       [
+        5,
+        5,
+        9595,
+        523645,
+        56682,
+        61297.71428571428,
+        "s5"
+       ]
+      ],
+      "tail": [
+       [
+        999993,
+        3,
+        4567,
+        266897,
+        40567,
+        20262.14285714286,
+        "s993"
+       ],
+       [
+        999996,
+        6,
+        8324,
+        581084,
+        34575,
+        85612.28571428571,
+        "s996"
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.0015163320003921399,
+      0.0015378410007542698,
+      0.0014115220001258422,
+      0.0016825900002004346,
+      0.001630106000447995
+     ],
+     "median": 0.0015378410007542698,
+     "min": 0.0014115220001258422,
+     "max": 0.0016825900002004346,
+     "check": {
+      "rows": 399988,
+      "sums": {
+       "Id": 199993300561,
+       "K10": 1799941,
+       "K10k": 1999942559,
+       "K1M": 200001452969,
+       "A": 15999298533,
+       "B": 28575483220.85715
+      },
+      "weighted": 100757435760366,
+      "head": [
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1"
+       ],
+       [
+        4,
+        4,
+        1676,
+        418916,
+        25345,
+        134752.7142857143,
+        "s4"
+       ],
+       [
+        5,
+        5,
+        9595,
+        523645,
+        56682,
+        61297.71428571428,
+        "s5"
+       ]
+      ],
+      "tail": [
+       [
+        999993,
+        3,
+        4567,
+        266897,
+        40567,
+        20262.14285714286,
+        "s993"
+       ],
+       [
+        999996,
+        6,
+        8324,
+        581084,
+        34575,
+        85612.28571428571,
+        "s996"
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "where_string": {
+    "load": 1.20703125,
+    "loads": [
+     1.20703125,
+     1.1357421875
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.01704331099972478,
+      0.016781438999714737,
+      0.01940723200004868,
+      0.017165039999781584,
+      0.016487916999722074
+     ],
+     "median": 0.01704331099972478,
+     "min": 0.016487916999722074,
+     "max": 0.01940723200004868,
+     "check": {
+      "rows": 3000,
+      "sums": {
+       "Id": 1499542000,
+       "K10": 12000,
+       "K10k": 15098000,
+       "K1M": 1500118000,
+       "A": 149866357,
+       "B": 213979080.57142866
+      },
+      "weighted": 828057546420,
+      "head": [
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1"
+       ],
+       [
+        42,
+        2,
+        2598,
+        398618,
+        16115,
+        57756.57142857143,
+        "s42"
+       ],
+       [
+        999,
+        9,
+        1081,
+        624271,
+        4724,
+        47246.71428571428,
+        "s999"
+       ]
+      ],
+      "tail": [
+       [
+        999001,
+        1,
+        8919,
+        375729,
+        55196,
+        30260.714285714286,
+        "s1"
+       ],
+       [
+        999042,
+        2,
+        3598,
+        669618,
+        39974,
+        18614.714285714286,
+        "s42"
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.008464737000394962,
+      0.009187206998831243,
+      0.008026516999962041,
+      0.0076868830001330934,
+      0.007742976998997619
+     ],
+     "median": 0.008026516999962041,
+     "min": 0.0076868830001330934,
+     "max": 0.009187206998831243,
+     "check": {
+      "rows": 3000,
+      "sums": {
+       "Id": 1499542000,
+       "K10": 12000,
+       "K10k": 15098000,
+       "K1M": 1500118000,
+       "A": 149866357,
+       "B": 213979080.57142866
+      },
+      "weighted": 828057546420,
+      "head": [
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1"
+       ],
+       [
+        42,
+        2,
+        2598,
+        398618,
+        16115,
+        57756.57142857143,
+        "s42"
+       ],
+       [
+        999,
+        9,
+        1081,
+        624271,
+        4724,
+        47246.71428571428,
+        "s999"
+       ]
+      ],
+      "tail": [
+       [
+        999001,
+        1,
+        8919,
+        375729,
+        55196,
+        30260.714285714286,
+        "s1"
+       ],
+       [
+        999042,
+        2,
+        3598,
+        669618,
+        39974,
+        18614.714285714286,
+        "s42"
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "where_conj": {
+    "load": 1.20703125,
+    "loads": [
+     1.20703125,
+     1.1357421875
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.016518352000275627,
+      0.017664983999566175,
+      0.02133390800008783,
+      0.019130538999888813,
+      0.018964313999276783
+     ],
+     "median": 0.018964313999276783,
+     "min": 0.016518352000275627,
+     "max": 0.02133390800008783,
+     "check": {
+      "rows": 32495,
+      "sums": {
+       "Id": 16270981505,
+       "K10": 97485,
+       "K10k": 162508095,
+       "K1M": 16251037145,
+       "A": 812493018,
+       "B": 3134246567.5714293
+      },
+      "weighted": 8202159922209,
+      "head": [
+       [
+        43,
+        3,
+        517,
+        503347,
+        47452,
+        127159.14285714286,
+        "s43"
+       ],
+       [
+        113,
+        3,
+        4847,
+        834377,
+        40976,
+        128181.71428571429,
+        "s113"
+       ],
+       [
+        183,
+        3,
+        9177,
+        165407,
+        34500,
+        129204.28571428571,
+        "s183"
+       ]
+      ],
+      "tail": [
+       [
+        999903,
+        3,
+        1857,
+        841287,
+        20321,
+        59763.857142857145,
+        "s903"
+       ],
+       [
+        999963,
+        3,
+        6997,
+        125027,
+        484,
+        81048.57142857143,
+        "s963"
+       ],
+       [
+        999973,
+        3,
+        6187,
+        172317,
+        13845,
+        60786.42857142857,
+        "s973"
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.0035765820011874894,
+      0.002391079000517493,
+      0.0021461640008055838,
+      0.002660280999407405,
+      0.00256134600022051
+     ],
+     "median": 0.00256134600022051,
+     "min": 0.0021461640008055838,
+     "max": 0.0035765820011874894,
+     "check": {
+      "rows": 32495,
+      "sums": {
+       "Id": 16270981505,
+       "K10": 97485,
+       "K10k": 162508095,
+       "K1M": 16251037145,
+       "A": 812493018,
+       "B": 3134246567.5714293
+      },
+      "weighted": 8202159922209,
+      "head": [
+       [
+        43,
+        3,
+        517,
+        503347,
+        47452,
+        127159.14285714286,
+        "s43"
+       ],
+       [
+        113,
+        3,
+        4847,
+        834377,
+        40976,
+        128181.71428571429,
+        "s113"
+       ],
+       [
+        183,
+        3,
+        9177,
+        165407,
+        34500,
+        129204.28571428571,
+        "s183"
+       ]
+      ],
+      "tail": [
+       [
+        999903,
+        3,
+        1857,
+        841287,
+        20321,
+        59763.857142857145,
+        "s903"
+       ],
+       [
+        999963,
+        3,
+        6997,
+        125027,
+        484,
+        81048.57142857143,
+        "s963"
+       ],
+       [
+        999973,
+        3,
+        6187,
+        172317,
+        13845,
+        60786.42857142857,
+        "s973"
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "sort_int": {
+    "load": 1.27099609375,
+    "loads": [
+     1.27099609375,
+     1.1357421875
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.08754866599974775,
+      0.08617416099968978,
+      0.0894752359999984,
+      0.09364435799943749,
+      0.09562274600011733
+     ],
+     "median": 0.0894752359999984,
+     "min": 0.08617416099968978,
+     "max": 0.09562274600011733,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "K10": 4500000,
+       "K10k": 4999500000,
+       "K1M": 499999500000,
+       "A": 50000971252,
+       "B": 71428773556.99997
+      },
+      "weighted": 251982942003851,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0"
+       ],
+       [
+        100003,
+        3,
+        3757,
+        214187,
+        0,
+        15957.857142857143,
+        "s3"
+       ],
+       [
+        200006,
+        6,
+        7514,
+        428374,
+        0,
+        31915.714285714286,
+        "s6"
+       ]
+      ],
+      "tail": [
+       [
+        714691,
+        1,
+        8029,
+        873739,
+        100002,
+        101516.28571428571,
+        "s691"
+       ],
+       [
+        814694,
+        4,
+        1786,
+        87926,
+        100002,
+        117474.14285714286,
+        "s694"
+       ],
+       [
+        914697,
+        7,
+        5543,
+        302113,
+        100002,
+        133432.0,
+        "s697"
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.04686132999995607,
+      0.04174857799989695,
+      0.0427354559997184,
+      0.042433016998984385,
+      0.04624634299943864
+     ],
+     "median": 0.0427354559997184,
+     "min": 0.04174857799989695,
+     "max": 0.04686132999995607,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "K10": 4500000,
+       "K10k": 4999500000,
+       "K1M": 499999500000,
+       "A": 50000971252,
+       "B": 71428773556.99997
+      },
+      "weighted": 251982942003851,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0"
+       ],
+       [
+        100003,
+        3,
+        3757,
+        214187,
+        0,
+        15957.857142857143,
+        "s3"
+       ],
+       [
+        200006,
+        6,
+        7514,
+        428374,
+        0,
+        31915.714285714286,
+        "s6"
+       ]
+      ],
+      "tail": [
+       [
+        714691,
+        1,
+        8029,
+        873739,
+        100002,
+        101516.28571428571,
+        "s691"
+       ],
+       [
+        814694,
+        4,
+        1786,
+        87926,
+        100002,
+        117474.14285714286,
+        "s694"
+       ],
+       [
+        914697,
+        7,
+        5543,
+        302113,
+        100002,
+        133432.0,
+        "s697"
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "sort_two": {
+    "load": 1.27099609375,
+    "loads": [
+     1.27099609375,
+     1.1357421875
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.22127590499985672,
+      0.1852220490000036,
+      0.23048572300012893,
+      0.19045365700003458,
+      0.19570961600038572
+     ],
+     "median": 0.19570961600038572,
+     "min": 0.1852220490000036,
+     "max": 0.23048572300012893,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "K10": 4500000,
+       "K10k": 4999500000,
+       "K1M": 499999500000,
+       "A": 50000971252,
+       "B": 71428773556.99998
+      },
+      "weighted": 251986371169364,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0"
+       ],
+       [
+        656610,
+        0,
+        4590,
+        108690,
+        70305,
+        0.5714285714285714,
+        "s610"
+       ],
+       [
+        618890,
+        0,
+        9910,
+        730810,
+        74125,
+        2.7142857142857144,
+        "s890"
+       ]
+      ],
+      "tail": [
+       [
+        411289,
+        9,
+        7591,
+        885681,
+        76750,
+        142853.14285714287,
+        "s289"
+       ],
+       [
+        373569,
+        9,
+        2911,
+        507801,
+        80570,
+        142855.2857142857,
+        "s569"
+       ],
+       [
+        335849,
+        9,
+        8231,
+        129921,
+        84390,
+        142857.42857142858,
+        "s849"
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.1288313000004564,
+      0.1410355370007892,
+      0.15223171999969054,
+      0.13928834900070797,
+      0.13733341499937524
+     ],
+     "median": 0.13928834900070797,
+     "min": 0.1288313000004564,
+     "max": 0.15223171999969054,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "K10": 4500000,
+       "K10k": 4999500000,
+       "K1M": 499999500000,
+       "A": 50000971252,
+       "B": 71428773556.99998
+      },
+      "weighted": 251986371169364,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0"
+       ],
+       [
+        656610,
+        0,
+        4590,
+        108690,
+        70305,
+        0.5714285714285714,
+        "s610"
+       ],
+       [
+        618890,
+        0,
+        9910,
+        730810,
+        74125,
+        2.7142857142857144,
+        "s890"
+       ]
+      ],
+      "tail": [
+       [
+        411289,
+        9,
+        7591,
+        885681,
+        76750,
+        142853.14285714287,
+        "s289"
+       ],
+       [
+        373569,
+        9,
+        2911,
+        507801,
+        80570,
+        142855.2857142857,
+        "s569"
+       ],
+       [
+        335849,
+        9,
+        8231,
+        129921,
+        84390,
+        142857.42857142858,
+        "s849"
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "sort_string": {
+    "load": 1.27099609375,
+    "loads": [
+     1.27099609375,
+     1.1357421875
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.24234749500010366,
+      0.2280342459998792,
+      0.21727159100009885,
+      0.2673460560008607,
+      0.2716551880002953
+     ],
+     "median": 0.24234749500010366,
+     "min": 0.21727159100009885,
+     "max": 0.2716551880002953,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "K10": 4500000,
+       "K10k": 4999500000,
+       "K1M": 499999500000,
+       "A": 50000971252,
+       "B": 71428773557.00003
+      },
+      "weighted": 251386118398915,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0"
+       ],
+       [
+        1000,
+        0,
+        9000,
+        729000,
+        36061,
+        116649.28571428571,
+        "s0"
+       ],
+       [
+        2000,
+        0,
+        8000,
+        458000,
+        72122,
+        90441.0,
+        "s0"
+       ]
+      ],
+      "tail": [
+       [
+        997999,
+        9,
+        4081,
+        437271,
+        56464,
+        60521.42857142857,
+        "s999"
+       ],
+       [
+        998999,
+        9,
+        3081,
+        166271,
+        92525,
+        34313.142857142855,
+        "s999"
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.09790930599956482,
+      0.09672321899961389,
+      0.09976487899984932,
+      0.10574939499929314,
+      0.1015951480003423
+     ],
+     "median": 0.09976487899984932,
+     "min": 0.09672321899961389,
+     "max": 0.10574939499929314,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "K10": 4500000,
+       "K10k": 4999500000,
+       "K1M": 499999500000,
+       "A": 50000971252,
+       "B": 71428773557.00003
+      },
+      "weighted": 251386118398915,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0"
+       ],
+       [
+        1000,
+        0,
+        9000,
+        729000,
+        36061,
+        116649.28571428571,
+        "s0"
+       ],
+       [
+        2000,
+        0,
+        8000,
+        458000,
+        72122,
+        90441.0,
+        "s0"
+       ]
+      ],
+      "tail": [
+       [
+        997999,
+        9,
+        4081,
+        437271,
+        56464,
+        60521.42857142857,
+        "s999"
+       ],
+       [
+        998999,
+        9,
+        3081,
+        166271,
+        92525,
+        34313.142857142855,
+        "s999"
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "sum_by_low": {
+    "load": 1.2490234375,
+    "loads": [
+     1.2490234375,
+     1.1357421875
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.025875725999867427,
+      0.02839751999999862,
+      0.019871036000040476,
+      0.023051690999636776,
+      0.02022946699980821
+     ],
+     "median": 0.023051690999636776,
+     "min": 0.019871036000040476,
+     "max": 0.02839751999999862,
+     "check": {
+      "rows": 10,
+      "sums": {
+       "K": 45,
+       "A": 50000971252,
+       "B": 71428773557.0
+      },
+      "weighted": 285,
+      "head": [
+       [
+        0,
+        5000030160,
+        7142913906.1428585
+       ],
+       [
+        1,
+        5000136155,
+        7142721656.285712
+       ],
+       [
+        2,
+        5000142147,
+        7143100836.714288
+       ]
+      ],
+      "tail": [
+       [
+        7,
+        5000072104,
+        7142425302.571427
+       ],
+       [
+        8,
+        5000178099,
+        7143518770.857141
+       ],
+       [
+        9,
+        5000084088,
+        7142612233.14286
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.012664046998906997,
+      0.013002966001295135,
+      0.01161103800041019,
+      0.011405925999497413,
+      0.011733814000763232
+     ],
+     "median": 0.011733814000763232,
+     "min": 0.011405925999497413,
+     "max": 0.013002966001295135,
+     "check": {
+      "rows": 10,
+      "sums": {
+       "K": 45,
+       "A": 50000971252,
+       "B": 71428773557.0
+      },
+      "weighted": 285,
+      "head": [
+       [
+        0,
+        5000030160,
+        7142913906.1428585
+       ],
+       [
+        1,
+        5000136155,
+        7142721656.285712
+       ],
+       [
+        2,
+        5000142147,
+        7143100836.714288
+       ]
+      ],
+      "tail": [
+       [
+        7,
+        5000072104,
+        7142425302.571427
+       ],
+       [
+        8,
+        5000178099,
+        7143518770.857141
+       ],
+       [
+        9,
+        5000084088,
+        7142612233.14286
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "avg_by_low": {
+    "load": 1.2490234375,
+    "loads": [
+     1.2490234375,
+     1.1357421875
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.024000964000151725,
+      0.01895910800067213,
+      0.019878846000210615,
+      0.01867532799951732,
+      0.018614436999996542
+     ],
+     "median": 0.01895910800067213,
+     "min": 0.018614436999996542,
+     "max": 0.024000964000151725,
+     "check": {
+      "rows": 10,
+      "sums": {
+       "K": 45,
+       "A": 500009.71251999994,
+       "B": 714287.73557
+      },
+      "weighted": 285,
+      "head": [
+       [
+        0,
+        50000.3016,
+        71429.13906142859
+       ],
+       [
+        1,
+        50001.36155,
+        71427.21656285712
+       ],
+       [
+        2,
+        50001.42147,
+        71431.00836714287
+       ]
+      ],
+      "tail": [
+       [
+        7,
+        50000.72104,
+        71424.25302571428
+       ],
+       [
+        8,
+        50001.78099,
+        71435.18770857141
+       ],
+       [
+        9,
+        50000.84088,
+        71426.1223314286
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.013532078000935144,
+      0.012744747000397183,
+      0.012360263999653398,
+      0.01153417199930118,
+      0.012948491999850376
+     ],
+     "median": 0.012744747000397183,
+     "min": 0.01153417199930118,
+     "max": 0.013532078000935144,
+     "check": {
+      "rows": 10,
+      "sums": {
+       "K": 45,
+       "A": 500009.71251999994,
+       "B": 714287.73557
+      },
+      "weighted": 285,
+      "head": [
+       [
+        0,
+        50000.3016,
+        71429.13906142859
+       ],
+       [
+        1,
+        50001.36155,
+        71427.21656285712
+       ],
+       [
+        2,
+        50001.42147,
+        71431.00836714287
+       ]
+      ],
+      "tail": [
+       [
+        7,
+        50000.72104,
+        71424.25302571428
+       ],
+       [
+        8,
+        50001.78099,
+        71435.18770857141
+       ],
+       [
+        9,
+        50000.84088,
+        71426.1223314286
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "count_by_low": {
+    "load": 1.2490234375,
+    "loads": [
+     1.2490234375,
+     1.1357421875
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.015325436000239279,
+      0.015105649999895832,
+      0.022313067000141018,
+      0.01599519799947302,
+      0.023783695999554766
+     ],
+     "median": 0.01599519799947302,
+     "min": 0.015105649999895832,
+     "max": 0.023783695999554766,
+     "check": {
+      "rows": 10,
+      "sums": {
+       "K": 45,
+       "N": 1000000
+      },
+      "weighted": 285,
+      "head": [
+       [
+        0,
+        100000
+       ],
+       [
+        1,
+        100000
+       ],
+       [
+        2,
+        100000
+       ]
+      ],
+      "tail": [
+       [
+        7,
+        100000
+       ],
+       [
+        8,
+        100000
+       ],
+       [
+        9,
+        100000
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.008863435999955982,
+      0.0092171310006961,
+      0.008891919998859521,
+      0.008289256000352907,
+      0.008465408000120078
+     ],
+     "median": 0.008863435999955982,
+     "min": 0.008289256000352907,
+     "max": 0.0092171310006961,
+     "check": {
+      "rows": 10,
+      "sums": {
+       "K": 45,
+       "N": 1000000
+      },
+      "weighted": 285,
+      "head": [
+       [
+        0,
+        100000
+       ],
+       [
+        1,
+        100000
+       ],
+       [
+        2,
+        100000
+       ]
+      ],
+      "tail": [
+       [
+        7,
+        100000
+       ],
+       [
+        8,
+        100000
+       ],
+       [
+        9,
+        100000
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "sum_by_med": {
+    "load": 1.2490234375,
+    "loads": [
+     1.2490234375,
+     1.1357421875
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.04168920699976297,
+      0.0362517690000459,
+      0.05423015300038969,
+      0.04166693699971802,
+      0.035541930999897886
+     ],
+     "median": 0.04166693699971802,
+     "min": 0.035541930999897886,
+     "max": 0.05423015300038969,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K": 49995000,
+       "A": 50000971252,
+       "B": 71428773557.0
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0,
+        5066103,
+        7265199.428571429
+       ],
+       [
+        7919,
+        4899704,
+        7348293.142857143
+       ],
+       [
+        5838,
+        5033314,
+        7002814.142857143
+       ]
+      ],
+      "tail": [
+       [
+        6243,
+        5125205,
+        7236283.285714285
+       ],
+       [
+        4162,
+        4958806,
+        7319377.0
+       ],
+       [
+        2081,
+        4992413,
+        7402470.714285715
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.037044670001705526,
+      0.04150236900022719,
+      0.03872710100040422,
+      0.03945130899955984,
+      0.038168175000464544
+     ],
+     "median": 0.03872710100040422,
+     "min": 0.037044670001705526,
+     "max": 0.04150236900022719,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K": 49995000,
+       "A": 50000971252,
+       "B": 71428773557.0
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0,
+        5066103,
+        7265199.428571429
+       ],
+       [
+        7919,
+        4899704,
+        7348293.142857143
+       ],
+       [
+        5838,
+        5033314,
+        7002814.142857143
+       ]
+      ],
+      "tail": [
+       [
+        6243,
+        5125205,
+        7236283.285714285
+       ],
+       [
+        4162,
+        4958806,
+        7319377.0
+       ],
+       [
+        2081,
+        4992413,
+        7402470.714285715
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "avg_by_med": {
+    "load": 1.2490234375,
+    "loads": [
+     1.2490234375,
+     1.1357421875
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.050128515000324114,
+      0.03535216899945226,
+      0.037212107999948785,
+      0.044817038000473985,
+      0.03676012699997955
+     ],
+     "median": 0.037212107999948785,
+     "min": 0.03535216899945226,
+     "max": 0.050128515000324114,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K": 49995000,
+       "A": 500009712.52,
+       "B": 714287735.5699997
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0,
+        50661.03,
+        72651.99428571429
+       ],
+       [
+        7919,
+        48997.04,
+        73482.93142857142
+       ],
+       [
+        5838,
+        50333.14,
+        70028.14142857143
+       ]
+      ],
+      "tail": [
+       [
+        6243,
+        51252.05,
+        72362.83285714286
+       ],
+       [
+        4162,
+        49588.06,
+        73193.77
+       ],
+       [
+        2081,
+        49924.13,
+        74024.70714285715
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.03796762599995418,
+      0.03743436800141353,
+      0.037558766000074684,
+      0.03712758400070015,
+      0.04095188000064809
+     ],
+     "median": 0.037558766000074684,
+     "min": 0.03712758400070015,
+     "max": 0.04095188000064809,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K": 49995000,
+       "A": 500009712.52,
+       "B": 714287735.5699997
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0,
+        50661.03,
+        72651.99428571429
+       ],
+       [
+        7919,
+        48997.04,
+        73482.93142857142
+       ],
+       [
+        5838,
+        50333.14,
+        70028.14142857143
+       ]
+      ],
+      "tail": [
+       [
+        6243,
+        51252.05,
+        72362.83285714286
+       ],
+       [
+        4162,
+        49588.06,
+        73193.77
+       ],
+       [
+        2081,
+        49924.13,
+        74024.70714285715
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "count_by_med": {
+    "load": 1.2490234375,
+    "loads": [
+     1.2490234375,
+     1.1357421875
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.01534392800022033,
+      0.017024257000230136,
+      0.016850784999405732,
+      0.01807105700027023,
+      0.02119071599918243
+     ],
+     "median": 0.017024257000230136,
+     "min": 0.01534392800022033,
+     "max": 0.02119071599918243,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K": 49995000,
+       "N": 1000000
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0,
+        100
+       ],
+       [
+        7919,
+        100
+       ],
+       [
+        5838,
+        100
+       ]
+      ],
+      "tail": [
+       [
+        6243,
+        100
+       ],
+       [
+        4162,
+        100
+       ],
+       [
+        2081,
+        100
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.017409580999810714,
+      0.017588888000318548,
+      0.016625704998659785,
+      0.01666033800029254,
+      0.017378057000314584
+     ],
+     "median": 0.017378057000314584,
+     "min": 0.016625704998659785,
+     "max": 0.017588888000318548,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K": 49995000,
+       "N": 1000000
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0,
+        100
+       ],
+       [
+        7919,
+        100
+       ],
+       [
+        5838,
+        100
+       ]
+      ],
+      "tail": [
+       [
+        6243,
+        100
+       ],
+       [
+        4162,
+        100
+       ],
+       [
+        2081,
+        100
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "sum_by_high": {
+    "load": 1.2490234375,
+    "loads": [
+     1.2490234375,
+     1.1357421875
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.12133622500005004,
+      0.1843451049999203,
+      0.13186153800052125,
+      0.12620907800010173,
+      0.11538777100031439
+     ],
+     "median": 0.12620907800010173,
+     "min": 0.11538777100031439,
+     "max": 0.1843451049999203,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "K": 499999500000,
+       "A": 50000971252,
+       "B": 71428773557.00002
+      },
+      "weighted": 251983022047136,
+      "head": [
+       [
+        0,
+        0,
+        0.0
+       ],
+       [
+        104729,
+        31337,
+        69402.57142857143
+       ],
+       [
+        209458,
+        62674,
+        138805.14285714287
+       ]
+      ],
+      "tail": [
+       [
+        685813,
+        65912,
+        12157.285714285714
+       ],
+       [
+        790542,
+        97249,
+        81559.85714285714
+       ],
+       [
+        895271,
+        28583,
+        8104.857142857143
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.21375932100090722,
+      0.19395510899994406,
+      0.1833638139996765,
+      0.16058005599916214,
+      0.16570549899915932
+     ],
+     "median": 0.1833638139996765,
+     "min": 0.16058005599916214,
+     "max": 0.21375932100090722,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "K": 499999500000,
+       "A": 50000971252,
+       "B": 71428773557.00002
+      },
+      "weighted": 251983022047136,
+      "head": [
+       [
+        0,
+        0,
+        0.0
+       ],
+       [
+        104729,
+        31337,
+        69402.57142857143
+       ],
+       [
+        209458,
+        62674,
+        138805.14285714287
+       ]
+      ],
+      "tail": [
+       [
+        685813,
+        65912,
+        12157.285714285714
+       ],
+       [
+        790542,
+        97249,
+        81559.85714285714
+       ],
+       [
+        895271,
+        28583,
+        8104.857142857143
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "avg_by_high": {
+    "load": 1.2490234375,
+    "loads": [
+     1.2490234375,
+     1.205078125
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.12207599200064578,
+      0.14520273099969927,
+      0.1402766649998739,
+      0.15671446899978037,
+      0.13299191500027518
+     ],
+     "median": 0.1402766649998739,
+     "min": 0.12207599200064578,
+     "max": 0.15671446899978037,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "K": 499999500000,
+       "A": 50000971252.0,
+       "B": 71428773557.00002
+      },
+      "weighted": 251983022047136,
+      "head": [
+       [
+        0,
+        0.0,
+        0.0
+       ],
+       [
+        104729,
+        31337.0,
+        69402.57142857143
+       ],
+       [
+        209458,
+        62674.0,
+        138805.14285714287
+       ]
+      ],
+      "tail": [
+       [
+        685813,
+        65912.0,
+        12157.285714285714
+       ],
+       [
+        790542,
+        97249.0,
+        81559.85714285714
+       ],
+       [
+        895271,
+        28583.0,
+        8104.857142857143
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.20597367200025474,
+      0.2350246940004581,
+      0.17871814200043445,
+      0.17329169299955538,
+      0.18664621399875614
+     ],
+     "median": 0.18664621399875614,
+     "min": 0.17329169299955538,
+     "max": 0.2350246940004581,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "K": 499999500000,
+       "A": 50000971252.0,
+       "B": 71428773557.00002
+      },
+      "weighted": 251983022047136,
+      "head": [
+       [
+        0,
+        0.0,
+        0.0
+       ],
+       [
+        104729,
+        31337.0,
+        69402.57142857143
+       ],
+       [
+        209458,
+        62674.0,
+        138805.14285714287
+       ]
+      ],
+      "tail": [
+       [
+        685813,
+        65912.0,
+        12157.285714285714
+       ],
+       [
+        790542,
+        97249.0,
+        81559.85714285714
+       ],
+       [
+        895271,
+        28583.0,
+        8104.857142857143
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "count_by_high": {
+    "load": 1.2490234375,
+    "loads": [
+     1.2490234375,
+     1.205078125
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.08590822999940428,
+      0.08601225900019926,
+      0.08884392300024047,
+      0.09720184100024198,
+      0.10843416999978217
+     ],
+     "median": 0.08884392300024047,
+     "min": 0.08590822999940428,
+     "max": 0.10843416999978217,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "K": 499999500000,
+       "N": 1000000
+      },
+      "weighted": 251983022047136,
+      "head": [
+       [
+        0,
+        1
+       ],
+       [
+        104729,
+        1
+       ],
+       [
+        209458,
+        1
+       ]
+      ],
+      "tail": [
+       [
+        685813,
+        1
+       ],
+       [
+        790542,
+        1
+       ],
+       [
+        895271,
+        1
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.10027565699965635,
+      0.09706064199963294,
+      0.0990607510011614,
+      0.08821002199874783,
+      0.09440861100119946
+     ],
+     "median": 0.09706064199963294,
+     "min": 0.08821002199874783,
+     "max": 0.10027565699965635,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "K": 499999500000,
+       "N": 1000000
+      },
+      "weighted": 251983022047136,
+      "head": [
+       [
+        0,
+        1
+       ],
+       [
+        104729,
+        1
+       ],
+       [
+        209458,
+        1
+       ]
+      ],
+      "tail": [
+       [
+        685813,
+        1
+       ],
+       [
+        790542,
+        1
+       ],
+       [
+        895271,
+        1
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "agg_by_multi": {
+    "load": 1.5498046875,
+    "loads": [
+     1.5498046875,
+     1.205078125
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.05422437900051591,
+      0.05753356600052939,
+      0.05624642800012225,
+      0.05406905300060316,
+      0.0578431570002067
+     ],
+     "median": 0.05624642800012225,
+     "min": 0.05406905300060316,
+     "max": 0.0578431570002067,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K10k": 49995000,
+       "SA": 50000971252,
+       "AB": 714287735.5699997,
+       "MinA": 11071637,
+       "MaxB": 1414066731.0000005,
+       "N": 1000000
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0,
+        5066103,
+        72651.99428571429,
+        0,
+        141793.7142857143,
+        100
+       ],
+       [
+        7919,
+        4899704,
+        73482.93142857142,
+        469,
+        140299.42857142858,
+        100
+       ],
+       [
+        5838,
+        5033314,
+        70028.14142857143,
+        1392,
+        138805.14285714287,
+        100
+       ]
+      ],
+      "tail": [
+       [
+        6243,
+        5125205,
+        72362.83285714286,
+        2315,
+        142021.14285714287,
+        100
+       ],
+       [
+        4162,
+        4958806,
+        73193.77,
+        469,
+        142654.57142857142,
+        100
+       ],
+       [
+        2081,
+        4992413,
+        74024.70714285715,
+        1392,
+        142224.14285714287,
+        100
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.07886390800013032,
+      0.08043549800095207,
+      0.08616827500009094,
+      0.0836718379996455,
+      0.082222772998648
+     ],
+     "median": 0.082222772998648,
+     "min": 0.07886390800013032,
+     "max": 0.08616827500009094,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K10k": 49995000,
+       "SA": 50000971252,
+       "AB": 714287735.5699997,
+       "MinA": 11071637,
+       "MaxB": 1414066731.0000005,
+       "N": 1000000
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0,
+        5066103,
+        72651.99428571429,
+        0,
+        141793.7142857143,
+        100
+       ],
+       [
+        7919,
+        4899704,
+        73482.93142857142,
+        469,
+        140299.42857142858,
+        100
+       ],
+       [
+        5838,
+        5033314,
+        70028.14142857143,
+        1392,
+        138805.14285714287,
+        100
+       ]
+      ],
+      "tail": [
+       [
+        6243,
+        5125205,
+        72362.83285714286,
+        2315,
+        142021.14285714287,
+        100
+       ],
+       [
+        4162,
+        4958806,
+        73193.77,
+        469,
+        142654.57142857142,
+        100
+       ],
+       [
+        2081,
+        4992413,
+        74024.70714285715,
+        1392,
+        142224.14285714287,
+        100
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "last_by": {
+    "load": 1.5498046875,
+    "loads": [
+     1.5498046875,
+     1.205078125
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.017212333000315994,
+      0.01831855899945367,
+      0.0174517969999215,
+      0.028999412000302982,
+      0.027954094000051555
+     ],
+     "median": 0.01831855899945367,
+     "min": 0.017212333000315994,
+     "max": 0.028999412000302982,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K10k": 49995000,
+       "Id": 9949995000,
+       "K10": 45000,
+       "K1M": 4998355000,
+       "A": 499920812,
+       "B": 714329784.7142856
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0,
+        990000,
+        0,
+        710000,
+        99322,
+        53875.142857142855,
+        "s0"
+       ],
+       [
+        7919,
+        990001,
+        1,
+        814729,
+        30656,
+        123277.71428571429,
+        "s1"
+       ],
+       [
+        5838,
+        990002,
+        2,
+        919458,
+        61993,
+        49822.71428571428,
+        "s2"
+       ]
+      ],
+      "tail": [
+       [
+        6243,
+        999997,
+        7,
+        685813,
+        65912,
+        12157.285714285714,
+        "s997"
+       ],
+       [
+        4162,
+        999998,
+        8,
+        790542,
+        97249,
+        81559.85714285714,
+        "s998"
+       ],
+       [
+        2081,
+        999999,
+        9,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.01976097399892751,
+      0.01928914999916742,
+      0.02102775700041093,
+      0.025695579999592155,
+      0.019589433999499306
+     ],
+     "median": 0.01976097399892751,
+     "min": 0.01928914999916742,
+     "max": 0.025695579999592155,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K10k": 49995000,
+       "Id": 9949995000,
+       "K10": 45000,
+       "K1M": 4998355000,
+       "A": 499920812,
+       "B": 714329784.7142856
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0,
+        990000,
+        0,
+        710000,
+        99322,
+        53875.142857142855,
+        "s0"
+       ],
+       [
+        7919,
+        990001,
+        1,
+        814729,
+        30656,
+        123277.71428571429,
+        "s1"
+       ],
+       [
+        5838,
+        990002,
+        2,
+        919458,
+        61993,
+        49822.71428571428,
+        "s2"
+       ]
+      ],
+      "tail": [
+       [
+        6243,
+        999997,
+        7,
+        685813,
+        65912,
+        12157.285714285714,
+        "s997"
+       ],
+       [
+        4162,
+        999998,
+        8,
+        790542,
+        97249,
+        81559.85714285714,
+        "s998"
+       ],
+       [
+        2081,
+        999999,
+        9,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "natural_join_small": {
+    "load": 1.5498046875,
+    "loads": [
+     1.5498046875,
+     1.205078125
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.02193577100024413,
+      0.02664370599995891,
+      0.02631531699989864,
+      0.02471549799975037,
+      0.024024323000048753
+     ],
+     "median": 0.02471549799975037,
+     "min": 0.02193577100024413,
+     "max": 0.02664370599995891,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "K10": 4500000,
+       "K10k": 4999500000,
+       "K1M": 499999500000,
+       "A": 50000971252,
+       "B": 71428773557.00002,
+       "R1": 14998500000
+      },
+      "weighted": 252046998713184,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        23757
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        17514
+       ]
+      ],
+      "tail": [
+       [
+        999997,
+        7,
+        6243,
+        685813,
+        65912,
+        12157.285714285714,
+        "s997",
+        18729
+       ],
+       [
+        999998,
+        8,
+        4162,
+        790542,
+        97249,
+        81559.85714285714,
+        "s998",
+        12486
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999",
+        6243
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.008930427000450436,
+      0.00924247600050876,
+      0.008772767001573811,
+      0.008894533000784577,
+      0.008617339999545948
+     ],
+     "median": 0.008894533000784577,
+     "min": 0.008617339999545948,
+     "max": 0.00924247600050876,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "K10": 4500000,
+       "K10k": 4999500000,
+       "K1M": 499999500000,
+       "A": 50000971252,
+       "B": 71428773557.00002,
+       "R1": 14998500000
+      },
+      "weighted": 252046998713184,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        23757
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        17514
+       ]
+      ],
+      "tail": [
+       [
+        999997,
+        7,
+        6243,
+        685813,
+        65912,
+        12157.285714285714,
+        "s997",
+        18729
+       ],
+       [
+        999998,
+        8,
+        4162,
+        790542,
+        97249,
+        81559.85714285714,
+        "s998",
+        12486
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999",
+        6243
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "natural_join_large": {
+    "load": 1.5498046875,
+    "loads": [
+     1.5498046875,
+     1.205078125
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.10352084400074091,
+      0.09629954199954227,
+      0.08385308200013242,
+      0.08773051199932524,
+      0.09473298899956717
+     ],
+     "median": 0.09473298899956717,
+     "min": 0.08385308200013242,
+     "max": 0.10352084400074091,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "K10": 4500000,
+       "K10k": 4999500000,
+       "K1M": 499999500000,
+       "A": 50000971252,
+       "B": 71428773557.00002,
+       "R2": 2499997500000
+      },
+      "weighted": 252046998713184,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        523645
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        1047290
+       ]
+      ],
+      "tail": [
+       [
+        999997,
+        7,
+        6243,
+        685813,
+        65912,
+        12157.285714285714,
+        "s997",
+        3429065
+       ],
+       [
+        999998,
+        8,
+        4162,
+        790542,
+        97249,
+        81559.85714285714,
+        "s998",
+        3952710
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999",
+        4476355
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.06403150000005553,
+      0.061920767000628985,
+      0.06297639799959143,
+      0.06037260899938701,
+      0.06498359899887873
+     ],
+     "median": 0.06297639799959143,
+     "min": 0.06037260899938701,
+     "max": 0.06498359899887873,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "K10": 4500000,
+       "K10k": 4999500000,
+       "K1M": 499999500000,
+       "A": 50000971252,
+       "B": 71428773557.00002,
+       "R2": 2499997500000
+      },
+      "weighted": 252046998713184,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        523645
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        1047290
+       ]
+      ],
+      "tail": [
+       [
+        999997,
+        7,
+        6243,
+        685813,
+        65912,
+        12157.285714285714,
+        "s997",
+        3429065
+       ],
+       [
+        999998,
+        8,
+        4162,
+        790542,
+        97249,
+        81559.85714285714,
+        "s998",
+        3952710
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999",
+        4476355
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "exact_join_small": {
+    "load": 1.5498046875,
+    "loads": [
+     1.5498046875,
+     1.205078125
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.02091936499982694,
+      0.019809796999652463,
+      0.01981710100062628,
+      0.02749179800048296,
+      0.03102620899971953
+     ],
+     "median": 0.02091936499982694,
+     "min": 0.019809796999652463,
+     "max": 0.03102620899971953,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "K10": 4500000,
+       "K10k": 4999500000,
+       "K1M": 499999500000,
+       "A": 50000971252,
+       "B": 71428773557.00002,
+       "R1": 14998500000
+      },
+      "weighted": 252046998713184,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        23757
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        17514
+       ]
+      ],
+      "tail": [
+       [
+        999997,
+        7,
+        6243,
+        685813,
+        65912,
+        12157.285714285714,
+        "s997",
+        18729
+       ],
+       [
+        999998,
+        8,
+        4162,
+        790542,
+        97249,
+        81559.85714285714,
+        "s998",
+        12486
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999",
+        6243
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.008456895000563236,
+      0.008232598998802132,
+      0.008114343001579982,
+      0.008048691001022235,
+      0.008455506000245805
+     ],
+     "median": 0.008232598998802132,
+     "min": 0.008048691001022235,
+     "max": 0.008456895000563236,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "K10": 4500000,
+       "K10k": 4999500000,
+       "K1M": 499999500000,
+       "A": 50000971252,
+       "B": 71428773557.00002,
+       "R1": 14998500000
+      },
+      "weighted": 252046998713184,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        23757
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        17514
+       ]
+      ],
+      "tail": [
+       [
+        999997,
+        7,
+        6243,
+        685813,
+        65912,
+        12157.285714285714,
+        "s997",
+        18729
+       ],
+       [
+        999998,
+        8,
+        4162,
+        790542,
+        97249,
+        81559.85714285714,
+        "s998",
+        12486
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999",
+        6243
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "exact_join_large": {
+    "load": 1.5498046875,
+    "loads": [
+     1.5498046875,
+     1.205078125
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.10551350399964576,
+      0.10109289600040938,
+      0.091253259000041,
+      0.10332925800048542,
+      0.07808539699999528
+     ],
+     "median": 0.10109289600040938,
+     "min": 0.07808539699999528,
+     "max": 0.10551350399964576,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "K10": 4500000,
+       "K10k": 4999500000,
+       "K1M": 499999500000,
+       "A": 50000971252,
+       "B": 71428773557.00002,
+       "R2": 2499997500000
+      },
+      "weighted": 252046998713184,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        523645
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        1047290
+       ]
+      ],
+      "tail": [
+       [
+        999997,
+        7,
+        6243,
+        685813,
+        65912,
+        12157.285714285714,
+        "s997",
+        3429065
+       ],
+       [
+        999998,
+        8,
+        4162,
+        790542,
+        97249,
+        81559.85714285714,
+        "s998",
+        3952710
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999",
+        4476355
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.06761847799862153,
+      0.06582543900003657,
+      0.0655512319990521,
+      0.06594092399973306,
+      0.06397626199941442
+     ],
+     "median": 0.06582543900003657,
+     "min": 0.06397626199941442,
+     "max": 0.06761847799862153,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "K10": 4500000,
+       "K10k": 4999500000,
+       "K1M": 499999500000,
+       "A": 50000971252,
+       "B": 71428773557.00002,
+       "R2": 2499997500000
+      },
+      "weighted": 252046998713184,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        523645
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        1047290
+       ]
+      ],
+      "tail": [
+       [
+        999997,
+        7,
+        6243,
+        685813,
+        65912,
+        12157.285714285714,
+        "s997",
+        3429065
+       ],
+       [
+        999998,
+        8,
+        4162,
+        790542,
+        97249,
+        81559.85714285714,
+        "s998",
+        3952710
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999",
+        4476355
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "join_on_key": {
+    "load": 1.5498046875,
+    "loads": [
+     1.5498046875,
+     1.1083984375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.3592319330000464,
+      0.3574286220000431,
+      0.3566286860004766,
+      0.2826334780002071,
+      0.257751857000585
+     ],
+     "median": 0.3566286860004766,
+     "min": 0.257751857000585,
+     "max": 0.3592319330000464,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "K10": 4500000,
+       "K10k": 4999500000,
+       "K1M": 499999500000,
+       "A": 50000971252,
+       "B": 71428773557.00002,
+       "R1": 14998500000
+      },
+      "weighted": 252046998713184,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        23757
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        17514
+       ]
+      ],
+      "tail": [
+       [
+        999997,
+        7,
+        6243,
+        685813,
+        65912,
+        12157.285714285714,
+        "s997",
+        18729
+       ],
+       [
+        999998,
+        8,
+        4162,
+        790542,
+        97249,
+        81559.85714285714,
+        "s998",
+        12486
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999",
+        6243
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.018628189998707967,
+      0.01886667500002659,
+      0.0254719610002212,
+      0.025844291998510016,
+      0.02620538999872224
+     ],
+     "median": 0.0254719610002212,
+     "min": 0.018628189998707967,
+     "max": 0.02620538999872224,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "K10": 4500000,
+       "K10k": 4999500000,
+       "K1M": 499999500000,
+       "A": 50000971252,
+       "B": 71428773557.00002,
+       "R1": 14998500000
+      },
+      "weighted": 252046998713184,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        23757
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        17514
+       ]
+      ],
+      "tail": [
+       [
+        999997,
+        7,
+        6243,
+        685813,
+        65912,
+        12157.285714285714,
+        "s997",
+        18729
+       ],
+       [
+        999998,
+        8,
+        4162,
+        790542,
+        97249,
+        81559.85714285714,
+        "s998",
+        12486
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999",
+        6243
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "aj": {
+    "load": 1.5859375,
+    "loads": [
+     1.5859375,
+     1.1083984375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.3553293270006179,
+      0.29780776699954004,
+      0.200191829000687,
+      0.18607720999989397,
+      0.18391041600079916
+     ],
+     "median": 0.200191829000687,
+     "min": 0.18391041600079916,
+     "max": 0.3553293270006179,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "K10": 4500000,
+       "K10k": 4999500000,
+       "K1M": 499999500000,
+       "A": 50000971252,
+       "B": 71428773557.00002,
+       "Stamp": 499950001776,
+       "R4": 49994700192
+      },
+      "weighted": 252046998713184,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        null,
+        null
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        null,
+        null
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        null,
+        null
+       ]
+      ],
+      "tail": [
+       [
+        999997,
+        7,
+        6243,
+        685813,
+        65912,
+        12157.285714285714,
+        "s997",
+        999973,
+        99997
+       ],
+       [
+        999998,
+        8,
+        4162,
+        790542,
+        97249,
+        81559.85714285714,
+        "s998",
+        999983,
+        99998
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999",
+        999993,
+        99999
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.014546955000696471,
+      0.012964935000127298,
+      0.013206896999690798,
+      0.013676614998985315,
+      0.02015714299886895
+     ],
+     "median": 0.013676614998985315,
+     "min": 0.012964935000127298,
+     "max": 0.02015714299886895,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "K10": 4500000,
+       "K10k": 4999500000,
+       "K1M": 499999500000,
+       "A": 50000971252,
+       "B": 71428773557.00002,
+       "Stamp": 499950001776,
+       "R4": 49994700192
+      },
+      "weighted": 252046998713184,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        null,
+        null
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        null,
+        null
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        null,
+        null
+       ]
+      ],
+      "tail": [
+       [
+        999997,
+        7,
+        6243,
+        685813,
+        65912,
+        12157.285714285714,
+        "s997",
+        999973,
+        99997
+       ],
+       [
+        999998,
+        8,
+        4162,
+        790542,
+        97249,
+        81559.85714285714,
+        "s998",
+        999983,
+        99998
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999",
+        999993,
+        99999
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "select_distinct_one": {
+    "load": 1.5859375,
+    "loads": [
+     1.5859375,
+     1.1083984375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.013843200999872352,
+      0.020505094000327517,
+      0.017353638999338727,
+      0.023069573999237036,
+      0.013399435000792437
+     ],
+     "median": 0.017353638999338727,
+     "min": 0.013399435000792437,
+     "max": 0.023069573999237036,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K10k": 49995000
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0
+       ],
+       [
+        7919
+       ],
+       [
+        5838
+       ]
+      ],
+      "tail": [
+       [
+        6243
+       ],
+       [
+        4162
+       ],
+       [
+        2081
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.007279849000042304,
+      0.006361964999086922,
+      0.006216603000211762,
+      0.005779244000223116,
+      0.005688815001121839
+     ],
+     "median": 0.006216603000211762,
+     "min": 0.005688815001121839,
+     "max": 0.007279849000042304,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K10k": 49995000
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0
+       ],
+       [
+        7919
+       ],
+       [
+        5838
+       ]
+      ],
+      "tail": [
+       [
+        6243
+       ],
+       [
+        4162
+       ],
+       [
+        2081
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "select_distinct_two": {
+    "load": 1.5859375,
+    "loads": [
+     1.5859375,
+     1.1083984375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.06416304399954242,
+      0.045977861000210396,
+      0.03229790499972296,
+      0.04234424100013712,
+      0.028115463000176533
+     ],
+     "median": 0.04234424100013712,
+     "min": 0.028115463000176533,
+     "max": 0.06416304399954242,
+     "check": {
+      "rows": 1000,
+      "sums": {
+       "K10": 4500
+      },
+      "weighted": 2256000,
+      "head": [
+       [
+        0,
+        "s0"
+       ],
+       [
+        1,
+        "s1"
+       ],
+       [
+        2,
+        "s2"
+       ]
+      ],
+      "tail": [
+       [
+        7,
+        "s997"
+       ],
+       [
+        8,
+        "s998"
+       ],
+       [
+        9,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.021477020998645457,
+      0.022334908000630094,
+      0.022869096999784233,
+      0.02234312800101179,
+      0.02168044599966379
+     ],
+     "median": 0.022334908000630094,
+     "min": 0.021477020998645457,
+     "max": 0.022869096999784233,
+     "check": {
+      "rows": 1000,
+      "sums": {
+       "K10": 4500
+      },
+      "weighted": 2256000,
+      "head": [
+       [
+        0,
+        "s0"
+       ],
+       [
+        1,
+        "s1"
+       ],
+       [
+        2,
+        "s2"
+       ]
+      ],
+      "tail": [
+       [
+        7,
+        "s997"
+       ],
+       [
+        8,
+        "s998"
+       ],
+       [
+        9,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "head_half": {
+    "load": 1.5859375,
+    "loads": [
+     1.5859375,
+     1.1083984375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.0018501649992685998,
+      0.0018460829996911343,
+      0.002075514999887673,
+      0.002049191999503819,
+      0.001880451000033645
+     ],
+     "median": 0.001880451000033645,
+     "min": 0.0018460829996911343,
+     "max": 0.002075514999887673,
+     "check": {
+      "rows": 500000,
+      "sums": {
+       "Id": 124999750000,
+       "K10": 2250000,
+       "K10k": 2499750000,
+       "K1M": 250025750000,
+       "A": 25000510320,
+       "B": 35715058702.85713
+      },
+      "weighted": 62979075770160,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0"
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1"
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2"
+       ]
+      ],
+      "tail": [
+       [
+        499997,
+        7,
+        6243,
+        185813,
+        35952,
+        116261.14285714286,
+        "s997"
+       ],
+       [
+        499998,
+        8,
+        4162,
+        290542,
+        67289,
+        42806.142857142855,
+        "s998"
+       ],
+       [
+        499999,
+        9,
+        2081,
+        395271,
+        98626,
+        112208.71428571429,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.0006605859998671804,
+      0.0006417160002456512,
+      0.0006774769990443019,
+      0.0005971490008960245,
+      0.0013085450009384658
+     ],
+     "median": 0.0006605859998671804,
+     "min": 0.0005971490008960245,
+     "max": 0.0013085450009384658,
+     "check": {
+      "rows": 500000,
+      "sums": {
+       "Id": 124999750000,
+       "K10": 2250000,
+       "K10k": 2499750000,
+       "K1M": 250025750000,
+       "A": 25000510320,
+       "B": 35715058702.85713
+      },
+      "weighted": 62979075770160,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0"
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1"
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2"
+       ]
+      ],
+      "tail": [
+       [
+        499997,
+        7,
+        6243,
+        185813,
+        35952,
+        116261.14285714286,
+        "s997"
+       ],
+       [
+        499998,
+        8,
+        4162,
+        290542,
+        67289,
+        42806.142857142855,
+        "s998"
+       ],
+       [
+        499999,
+        9,
+        2081,
+        395271,
+        98626,
+        112208.71428571429,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "tail_half": {
+    "load": 1.619140625,
+    "loads": [
+     1.619140625,
+     1.1083984375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.0020655359994634637,
+      0.0018926829998235917,
+      0.0021000110000386485,
+      0.0018730860001596739,
+      0.0019096349997198558
+     ],
+     "median": 0.0019096349997198558,
+     "min": 0.0018730860001596739,
+     "max": 0.0021000110000386485,
+     "check": {
+      "rows": 500000,
+      "sums": {
+       "Id": 374999750000,
+       "K10": 2250000,
+       "K10k": 2499750000,
+       "K1M": 249973750000,
+       "A": 25000460932,
+       "B": 35713714854.14285
+      },
+      "weighted": 188915855770160,
+      "head": [
+       [
+        500000,
+        0,
+        0,
+        500000,
+        29960,
+        38753.71428571428,
+        "s0"
+       ],
+       [
+        500001,
+        1,
+        7919,
+        604729,
+        61297,
+        108156.28571428571,
+        "s1"
+       ],
+       [
+        500002,
+        2,
+        5838,
+        709458,
+        92634,
+        34701.28571428572,
+        "s2"
+       ]
+      ],
+      "tail": [
+       [
+        999997,
+        7,
+        6243,
+        685813,
+        65912,
+        12157.285714285714,
+        "s997"
+       ],
+       [
+        999998,
+        8,
+        4162,
+        790542,
+        97249,
+        81559.85714285714,
+        "s998"
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.0006408910012396518,
+      0.0005834799994772766,
+      0.0005762699984188657,
+      0.0005644630000460893,
+      0.0006940339990251232
+     ],
+     "median": 0.0005834799994772766,
+     "min": 0.0005644630000460893,
+     "max": 0.0006940339990251232,
+     "check": {
+      "rows": 500000,
+      "sums": {
+       "Id": 374999750000,
+       "K10": 2250000,
+       "K10k": 2499750000,
+       "K1M": 249973750000,
+       "A": 25000460932,
+       "B": 35713714854.14285
+      },
+      "weighted": 188915855770160,
+      "head": [
+       [
+        500000,
+        0,
+        0,
+        500000,
+        29960,
+        38753.71428571428,
+        "s0"
+       ],
+       [
+        500001,
+        1,
+        7919,
+        604729,
+        61297,
+        108156.28571428571,
+        "s1"
+       ],
+       [
+        500002,
+        2,
+        5838,
+        709458,
+        92634,
+        34701.28571428572,
+        "s2"
+       ]
+      ],
+      "tail": [
+       [
+        999997,
+        7,
+        6243,
+        685813,
+        65912,
+        12157.285714285714,
+        "s997"
+       ],
+       [
+        999998,
+        8,
+        4162,
+        790542,
+        97249,
+        81559.85714285714,
+        "s998"
+       ],
+       [
+        999999,
+        9,
+        2081,
+        895271,
+        28583,
+        8104.857142857143,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "group_by": {
+    "load": 1.619140625,
+    "loads": [
+     1.619140625,
+     1.1083984375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.048986486999638146,
+      0.050526613000329235,
+      0.07257425099942338,
+      0.05523708800046734,
+      0.05899046000013186
+     ],
+     "median": 0.05523708800046734,
+     "min": 0.048986486999638146,
+     "max": 0.07257425099942338,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K10k": 49995000
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0
+       ],
+       [
+        7919
+       ],
+       [
+        5838
+       ]
+      ],
+      "tail": [
+       [
+        6243
+       ],
+       [
+        4162
+       ],
+       [
+        2081
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.07350447099997837,
+      0.07713099000102375,
+      0.09196796000105678,
+      0.07601621699905081,
+      0.08214637899982336
+     ],
+     "median": 0.07713099000102375,
+     "min": 0.07350447099997837,
+     "max": 0.09196796000105678,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K10k": 49995000
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0
+       ],
+       [
+        7919
+       ],
+       [
+        5838
+       ]
+      ],
+      "tail": [
+       [
+        6243
+       ],
+       [
+        4162
+       ],
+       [
+        2081
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "ungroup": {
+    "load": 1.619140625,
+    "loads": [
+     1.619140625,
+     1.1083984375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.0064415540000482,
+      0.005478524999489309,
+      0.005501264000486117,
+      0.005087614000331087,
+      0.0054094030001579085
+     ],
+     "median": 0.005478524999489309,
+     "min": 0.005087614000331087,
+     "max": 0.0064415540000482,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "K10k": 4999500000,
+       "A": 50000971252
+      },
+      "weighted": 2515882620646,
+      "head": [
+       [
+        0,
+        0
+       ],
+       [
+        0,
+        60601
+       ],
+       [
+        0,
+        21199
+       ]
+      ],
+      "tail": [
+       [
+        2081,
+        7384
+       ],
+       [
+        2081,
+        67985
+       ],
+       [
+        2081,
+        28583
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.0010964090015477268,
+      0.0010100540002895286,
+      0.0010029950008174637,
+      0.0009634639991418226,
+      0.0009880690013233107
+     ],
+     "median": 0.0010029950008174637,
+     "min": 0.0009634639991418226,
+     "max": 0.0010964090015477268,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "K10k": 4999500000,
+       "A": 50000971252
+      },
+      "weighted": 2515882620646,
+      "head": [
+       [
+        0,
+        0
+       ],
+       [
+        0,
+        60601
+       ],
+       [
+        0,
+        21199
+       ]
+      ],
+      "tail": [
+       [
+        2081,
+        7384
+       ],
+       [
+        2081,
+        67985
+       ],
+       [
+        2081,
+        28583
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "doget_1m": {
+    "load": 1.619140625,
+    "loads": [
+     1.619140625,
+     1.1083984375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.0733284879997882,
+      0.06642630799979088,
+      0.06269884199991793,
+      0.06732276000002457,
+      0.06348132799939776
+     ],
+     "median": 0.06642630799979088,
+     "min": 0.06269884199991793,
+     "max": 0.0733284879997882,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "A": 50000971252,
+       "B": 71428773556.99998
+      }
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.020815215999391512,
+      0.018460813000274356,
+      0.018848910000087926,
+      0.01934176299982937,
+      0.02505208299953665
+     ],
+     "median": 0.01934176299982937,
+     "min": 0.018460813000274356,
+     "max": 0.02505208299953665,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "A": 50000971252,
+       "B": 71428773557.0
+      }
+     }
+    },
+    "match": true
+   },
+   "sort_refreshing_append": {
+    "load": 1.619140625,
+    "loads": [
+     1.619140625,
+     1.1083984375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.04034909300025902,
+      0.04004454299956706,
+      0.03378704199985805,
+      0.02927317200010293,
+      0.025562177999745472
+     ],
+     "median": 0.03378704199985805,
+     "min": 0.025562177999745472,
+     "max": 0.04034909300025902,
+     "check": {
+      "rows": 1007000,
+      "sums": {
+       "Id": 507023996500,
+       "A": 50351100959,
+       "B": 71928887513.28569
+      },
+      "weighted": 255536216288841,
+      "head": [
+       [
+        0,
+        0,
+        0.0
+       ],
+       [
+        100003,
+        0,
+        15957.857142857143
+       ],
+       [
+        200006,
+        0,
+        31915.714285714286
+       ]
+      ],
+      "tail": [
+       [
+        714691,
+        100002,
+        101516.28571428571
+       ],
+       [
+        814694,
+        100002,
+        117474.14285714286
+       ],
+       [
+        914697,
+        100002,
+        133432.0
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.032736929000748205,
+      0.042970546999640646,
+      0.03133553099905839,
+      0.031030072999783442,
+      0.031286827001167694
+     ],
+     "median": 0.03133553099905839,
+     "min": 0.031030072999783442,
+     "max": 0.042970546999640646,
+     "check": {
+      "rows": 1007000,
+      "sums": {
+       "Id": 507023996500,
+       "A": 50351100959,
+       "B": 71928887513.28569
+      },
+      "weighted": 255536216288841,
+      "head": [
+       [
+        0,
+        0,
+        0.0
+       ],
+       [
+        100003,
+        0,
+        15957.857142857143
+       ],
+       [
+        200006,
+        0,
+        31915.714285714286
+       ]
+      ],
+      "tail": [
+       [
+        714691,
+        100002,
+        101516.28571428571
+       ],
+       [
+        814694,
+        100002,
+        117474.14285714286
+       ],
+       [
+        914697,
+        100002,
+        133432.0
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "doget_sorted_refreshing": {
+    "load": 1.619140625,
+    "loads": [
+     1.619140625,
+     1.1083984375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.11247273900062282,
+      0.10986453799978335,
+      0.09287914000015007,
+      0.09628537000025972,
+      0.12532681799984857
+     ],
+     "median": 0.10986453799978335,
+     "min": 0.09287914000015007,
+     "max": 0.12532681799984857,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 503499514065,
+       "A": 49653516220,
+       "B": 71428764410.42857
+      },
+      "weighted": 253745377862662,
+      "head": [
+       [
+        0,
+        0,
+        0.0
+       ],
+       [
+        100003,
+        0,
+        15957.857142857143
+       ],
+       [
+        200006,
+        0,
+        31915.714285714286
+       ]
+      ],
+      "tail": [
+       [
+        610032,
+        99307,
+        91012.42857142857
+       ],
+       [
+        710035,
+        99307,
+        106970.28571428571
+       ],
+       [
+        810038,
+        99307,
+        122928.14285714286
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.06930539599852636,
+      0.0704025390004972,
+      0.0712394950005546,
+      0.07696741399922757,
+      0.07081713799925637
+     ],
+     "median": 0.07081713799925637,
+     "min": 0.06930539599852636,
+     "max": 0.07696741399922757,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 503499514065,
+       "A": 49653516220,
+       "B": 71428764410.42859
+      },
+      "weighted": 253745377862662,
+      "head": [
+       [
+        0,
+        0,
+        0.0
+       ],
+       [
+        100003,
+        0,
+        15957.857142857143
+       ],
+       [
+        200006,
+        0,
+        31915.714285714286
+       ]
+      ],
+      "tail": [
+       [
+        610032,
+        99307,
+        91012.42857142857
+       ],
+       [
+        710035,
+        99307,
+        106970.28571428571
+       ],
+       [
+        810038,
+        99307,
+        122928.14285714286
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "ticking_append_where_sum_by": {
+    "load": 1.619140625,
+    "loads": [
+     1.619140625,
+     1.1083984375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.0554066619997684,
+      0.04937754999991739,
+      0.05785377400025027,
+      0.053614661999745294,
+      0.05106369800068933
+     ],
+     "median": 0.053614661999745294,
+     "min": 0.04937754999991739,
+     "max": 0.05785377400025027,
+     "check": {
+      "rows": 50,
+      "correct": true
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.030990377999842167,
+      0.02943162200062943,
+      0.03059819800000696,
+      0.04266231799920206,
+      0.03803055400021549
+     ],
+     "median": 0.030990377999842167,
+     "min": 0.02943162200062943,
+     "max": 0.04266231799920206,
+     "check": {
+      "rows": 50,
+      "correct": true
+     }
+    },
+    "match": true
+   }
+  },
+  "10000000": {
+   "build": {
+    "load": 1.64990234375,
+    "loads": [
+     1.64990234375,
+     1.099609375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      1.6377735269998084,
+      2.546168803999535,
+      1.8484845279999718
+     ],
+     "median": 1.8484845279999718,
+     "min": 1.6377735269998084,
+     "max": 2.546168803999535,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "Id": 49999995000000,
+       "K10": 45000000,
+       "K10k": 49995000000,
+       "K1M": 4999995000000,
+       "A": 500010022956,
+       "B": 714287272097.1438
+      },
+      "weighted": 25200039938247555,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0"
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1"
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2"
+       ]
+      ],
+      "tail": [
+       [
+        9999997,
+        7,
+        6243,
+        685813,
+        5174,
+        138293.85714285713,
+        "s997"
+       ],
+       [
+        9999998,
+        8,
+        4162,
+        790542,
+        36511,
+        64838.857142857145,
+        "s998"
+       ],
+       [
+        9999999,
+        9,
+        2081,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.9036758309994184,
+      0.8766337189990736,
+      0.8805401000008715
+     ],
+     "median": 0.8805401000008715,
+     "min": 0.8766337189990736,
+     "max": 0.9036758309994184,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "Id": 49999995000000,
+       "K10": 45000000,
+       "K10k": 49995000000,
+       "K1M": 4999995000000,
+       "A": 500010022956,
+       "B": 714287272097.1438
+      },
+      "weighted": 25200039938247555,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0"
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1"
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2"
+       ]
+      ],
+      "tail": [
+       [
+        9999997,
+        7,
+        6243,
+        685813,
+        5174,
+        138293.85714285713,
+        "s997"
+       ],
+       [
+        9999998,
+        8,
+        4162,
+        790542,
+        36511,
+        64838.857142857145,
+        "s998"
+       ],
+       [
+        9999999,
+        9,
+        2081,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "update_arith": {
+    "load": 1.7099609375,
+    "loads": [
+     1.7099609375,
+     1.099609375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.1866257379997478,
+      0.17653137200068159,
+      0.6011968320008236
+     ],
+     "median": 0.1866257379997478,
+     "min": 0.17653137200068159,
+     "max": 0.6011968320008236,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "Id": 49999995000000,
+       "K10": 45000000,
+       "K10k": 49995000000,
+       "K1M": 4999995000000,
+       "A": 500010022956,
+       "B": 714287272097.1438,
+       "C": 1000030045912,
+       "D": 571420885189.715,
+       "E": 29999994
+      },
+      "weighted": 25200039938247555,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        1,
+        0.0,
+        0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        62675,
+        72766.85714285716,
+        1
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        125349,
+        145533.71428571432,
+        2
+       ]
+      ],
+      "tail": [
+       [
+        9999997,
+        7,
+        6243,
+        685813,
+        5174,
+        138293.85714285713,
+        "s997",
+        10349,
+        202266.78571428568,
+        0
+       ],
+       [
+        9999998,
+        8,
+        4162,
+        790542,
+        36511,
+        64838.857142857145,
+        "s998",
+        73023,
+        60747.28571428571,
+        1
+       ],
+       [
+        9999999,
+        9,
+        2081,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999",
+        135697,
+        133514.14285714287,
+        2
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.1625041240004066,
+      0.15985363899926597,
+      0.16331994000029226
+     ],
+     "median": 0.1625041240004066,
+     "min": 0.15985363899926597,
+     "max": 0.16331994000029226,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "Id": 49999995000000,
+       "K10": 45000000,
+       "K10k": 49995000000,
+       "K1M": 4999995000000,
+       "A": 500010022956,
+       "B": 714287272097.1438,
+       "C": 1000030045912,
+       "D": 571420885189.715,
+       "E": 29999994
+      },
+      "weighted": 25200039938247555,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        1,
+        0.0,
+        0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        62675,
+        72766.85714285716,
+        1
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        125349,
+        145533.71428571432,
+        2
+       ]
+      ],
+      "tail": [
+       [
+        9999997,
+        7,
+        6243,
+        685813,
+        5174,
+        138293.85714285713,
+        "s997",
+        10349,
+        202266.78571428568,
+        0
+       ],
+       [
+        9999998,
+        8,
+        4162,
+        790542,
+        36511,
+        64838.857142857145,
+        "s998",
+        73023,
+        60747.28571428571,
+        1
+       ],
+       [
+        9999999,
+        9,
+        2081,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999",
+        135697,
+        133514.14285714287,
+        2
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "update_string": {
+    "load": 1.7099609375,
+    "loads": [
+     1.7099609375,
+     1.01123046875
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      1.3904382549999355,
+      1.3822550369995952,
+      1.6490310360004514
+     ],
+     "median": 1.3904382549999355,
+     "min": 1.3822550369995952,
+     "max": 1.6490310360004514,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "Id": 49999995000000,
+       "K10": 45000000,
+       "K10k": 49995000000,
+       "K1M": 4999995000000,
+       "A": 500010022956,
+       "B": 714287272097.1438
+      },
+      "weighted": 25200039938247555,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        "s0_x"
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        "s1_x"
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        "s2_x"
+       ]
+      ],
+      "tail": [
+       [
+        9999997,
+        7,
+        6243,
+        685813,
+        5174,
+        138293.85714285713,
+        "s997",
+        "s997_x"
+       ],
+       [
+        9999998,
+        8,
+        4162,
+        790542,
+        36511,
+        64838.857142857145,
+        "s998",
+        "s998_x"
+       ],
+       [
+        9999999,
+        9,
+        2081,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999",
+        "s999_x"
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.19721288199980336,
+      0.20993552999971143,
+      0.19833724099953542
+     ],
+     "median": 0.19833724099953542,
+     "min": 0.19721288199980336,
+     "max": 0.20993552999971143,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "Id": 49999995000000,
+       "K10": 45000000,
+       "K10k": 49995000000,
+       "K1M": 4999995000000,
+       "A": 500010022956,
+       "B": 714287272097.1438
+      },
+      "weighted": 25200039938247555,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        "s0_x"
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        "s1_x"
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        "s2_x"
+       ]
+      ],
+      "tail": [
+       [
+        9999997,
+        7,
+        6243,
+        685813,
+        5174,
+        138293.85714285713,
+        "s997",
+        "s997_x"
+       ],
+       [
+        9999998,
+        8,
+        4162,
+        790542,
+        36511,
+        64838.857142857145,
+        "s998",
+        "s998_x"
+       ],
+       [
+        9999999,
+        9,
+        2081,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999",
+        "s999_x"
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "update_cond": {
+    "load": 1.65283203125,
+    "loads": [
+     1.65283203125,
+     1.01123046875
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.07847729900004197,
+      0.22887910900044517,
+      0.10394744699988223
+     ],
+     "median": 0.10394744699988223,
+     "min": 0.07847729900004197,
+     "max": 0.22887910900044517,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "Id": 49999995000000,
+       "K10": 45000000,
+       "K10k": 49995000000,
+       "K1M": 4999995000000,
+       "A": 500010022956,
+       "B": 714287272097.1438,
+       "F": 3700637.1428571474
+      },
+      "weighted": 25200039938247555,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        -0.0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        -69402.57142857143
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        138805.14285714287
+       ]
+      ],
+      "tail": [
+       [
+        9999997,
+        7,
+        6243,
+        685813,
+        5174,
+        138293.85714285713,
+        "s997",
+        -138293.85714285713
+       ],
+       [
+        9999998,
+        8,
+        4162,
+        790542,
+        36511,
+        64838.857142857145,
+        "s998",
+        -64838.857142857145
+       ],
+       [
+        9999999,
+        9,
+        2081,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999",
+        134241.42857142858
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.08455573699939123,
+      0.08101395999983652,
+      0.07987874500031467
+     ],
+     "median": 0.08101395999983652,
+     "min": 0.07987874500031467,
+     "max": 0.08455573699939123,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "Id": 49999995000000,
+       "K10": 45000000,
+       "K10k": 49995000000,
+       "K1M": 4999995000000,
+       "A": 500010022956,
+       "B": 714287272097.1438,
+       "F": 3700637.1428571474
+      },
+      "weighted": 25200039938247555,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        -0.0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        -69402.57142857143
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        138805.14285714287
+       ]
+      ],
+      "tail": [
+       [
+        9999997,
+        7,
+        6243,
+        685813,
+        5174,
+        138293.85714285713,
+        "s997",
+        -138293.85714285713
+       ],
+       [
+        9999998,
+        8,
+        4162,
+        790542,
+        36511,
+        64838.857142857145,
+        "s998",
+        -64838.857142857145
+       ],
+       [
+        9999999,
+        9,
+        2081,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999",
+        134241.42857142858
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "where_range": {
+    "load": 1.60009765625,
+    "loads": [
+     1.60009765625,
+     1.01123046875
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.037333099000534276,
+      0.038263875999291486,
+      0.038867660000505566
+     ],
+     "median": 0.038263875999291486,
+     "min": 0.037333099000534276,
+     "max": 0.038867660000505566,
+     "check": {
+      "rows": 3999880,
+      "sums": {
+       "Id": 19999392989290,
+       "K10": 17999460,
+       "K10k": 19997677510,
+       "K1M": 1999937352410,
+       "A": 159993169179,
+       "B": 285712717668.5717
+      },
+      "weighted": 10079721346352045,
+      "head": [
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1"
+       ],
+       [
+        4,
+        4,
+        1676,
+        418916,
+        25345,
+        134752.7142857143,
+        "s4"
+       ],
+       [
+        5,
+        5,
+        9595,
+        523645,
+        56682,
+        61297.71428571428,
+        "s5"
+       ]
+      ],
+      "tail": [
+       [
+        9999992,
+        2,
+        6648,
+        162168,
+        48495,
+        76996.14285714286,
+        "s992"
+       ],
+       [
+        9999995,
+        5,
+        405,
+        476355,
+        42503,
+        142346.2857142857,
+        "s995"
+       ],
+       [
+        9999998,
+        8,
+        4162,
+        790542,
+        36511,
+        64838.857142857145,
+        "s998"
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.015409440000439645,
+      0.01488628399965819,
+      0.014060059000257752
+     ],
+     "median": 0.01488628399965819,
+     "min": 0.014060059000257752,
+     "max": 0.015409440000439645,
+     "check": {
+      "rows": 3999880,
+      "sums": {
+       "Id": 19999392989290,
+       "K10": 17999460,
+       "K10k": 19997677510,
+       "K1M": 1999937352410,
+       "A": 159993169179,
+       "B": 285712717668.5717
+      },
+      "weighted": 10079721346352045,
+      "head": [
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1"
+       ],
+       [
+        4,
+        4,
+        1676,
+        418916,
+        25345,
+        134752.7142857143,
+        "s4"
+       ],
+       [
+        5,
+        5,
+        9595,
+        523645,
+        56682,
+        61297.71428571428,
+        "s5"
+       ]
+      ],
+      "tail": [
+       [
+        9999992,
+        2,
+        6648,
+        162168,
+        48495,
+        76996.14285714286,
+        "s992"
+       ],
+       [
+        9999995,
+        5,
+        405,
+        476355,
+        42503,
+        142346.2857142857,
+        "s995"
+       ],
+       [
+        9999998,
+        8,
+        4162,
+        790542,
+        36511,
+        64838.857142857145,
+        "s998"
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "where_string": {
+    "load": 1.60009765625,
+    "loads": [
+     1.60009765625,
+     1.01123046875
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.10692351999932725,
+      0.12301664300048287,
+      0.10872768599983829
+     ],
+     "median": 0.10872768599983829,
+     "min": 0.10692351999932725,
+     "max": 0.12301664300048287,
+     "check": {
+      "rows": 30000,
+      "sums": {
+       "Id": 149995420000,
+       "K10": 120000,
+       "K10k": 150980000,
+       "K1M": 15001180000,
+       "A": 1499920939,
+       "B": 2142547995.0
+      },
+      "weighted": 75451056313470,
+      "head": [
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1"
+       ],
+       [
+        42,
+        2,
+        2598,
+        398618,
+        16115,
+        57756.57142857143,
+        "s42"
+       ],
+       [
+        999,
+        9,
+        1081,
+        624271,
+        4724,
+        47246.71428571428,
+        "s999"
+       ]
+      ],
+      "tail": [
+       [
+        9999001,
+        1,
+        8919,
+        375729,
+        94461,
+        13539.714285714286,
+        "s1"
+       ],
+       [
+        9999042,
+        2,
+        3598,
+        669618,
+        79239,
+        1893.7142857142858,
+        "s42"
+       ],
+       [
+        9999999,
+        9,
+        2081,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.07683792099851416,
+      0.07384708599965961,
+      0.07827421200090612
+     ],
+     "median": 0.07683792099851416,
+     "min": 0.07384708599965961,
+     "max": 0.07827421200090612,
+     "check": {
+      "rows": 30000,
+      "sums": {
+       "Id": 149995420000,
+       "K10": 120000,
+       "K10k": 150980000,
+       "K1M": 15001180000,
+       "A": 1499920939,
+       "B": 2142547995.0
+      },
+      "weighted": 75451056313470,
+      "head": [
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1"
+       ],
+       [
+        42,
+        2,
+        2598,
+        398618,
+        16115,
+        57756.57142857143,
+        "s42"
+       ],
+       [
+        999,
+        9,
+        1081,
+        624271,
+        4724,
+        47246.71428571428,
+        "s999"
+       ]
+      ],
+      "tail": [
+       [
+        9999001,
+        1,
+        8919,
+        375729,
+        94461,
+        13539.714285714286,
+        "s1"
+       ],
+       [
+        9999042,
+        2,
+        3598,
+        669618,
+        79239,
+        1893.7142857142858,
+        "s42"
+       ],
+       [
+        9999999,
+        9,
+        2081,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "where_conj": {
+    "load": 1.60009765625,
+    "loads": [
+     1.60009765625,
+     1.01123046875
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.08472900800006755,
+      0.06744155700016563,
+      0.06628812100007053
+     ],
+     "median": 0.06744155700016563,
+     "min": 0.06628812100007053,
+     "max": 0.08472900800006755,
+     "check": {
+      "rows": 324992,
+      "sums": {
+       "Id": 1625201952106,
+       "K10": 974976,
+       "K10k": 1625547414,
+       "K1M": 162547109274,
+       "A": 8125016954,
+       "B": 31339987270.14286
+      },
+      "weighted": 819519983644929,
+      "head": [
+       [
+        43,
+        3,
+        517,
+        503347,
+        47452,
+        127159.14285714286,
+        "s43"
+       ],
+       [
+        113,
+        3,
+        4847,
+        834377,
+        40976,
+        128181.71428571429,
+        "s113"
+       ],
+       [
+        183,
+        3,
+        9177,
+        165407,
+        34500,
+        129204.28571428571,
+        "s183"
+       ]
+      ],
+      "tail": [
+       [
+        9999943,
+        3,
+        8617,
+        30447,
+        13027,
+        104851.85714285714,
+        "s943"
+       ],
+       [
+        9999953,
+        3,
+        7807,
+        77737,
+        26388,
+        84589.71428571429,
+        "s953"
+       ],
+       [
+        9999963,
+        3,
+        6997,
+        125027,
+        39749,
+        64327.57142857143,
+        "s963"
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.02865324200138275,
+      0.02925260200026969,
+      0.02927791399997659
+     ],
+     "median": 0.02925260200026969,
+     "min": 0.02865324200138275,
+     "max": 0.02927791399997659,
+     "check": {
+      "rows": 324992,
+      "sums": {
+       "Id": 1625201952106,
+       "K10": 974976,
+       "K10k": 1625547414,
+       "K1M": 162547109274,
+       "A": 8125016954,
+       "B": 31339987270.14286
+      },
+      "weighted": 819519983644929,
+      "head": [
+       [
+        43,
+        3,
+        517,
+        503347,
+        47452,
+        127159.14285714286,
+        "s43"
+       ],
+       [
+        113,
+        3,
+        4847,
+        834377,
+        40976,
+        128181.71428571429,
+        "s113"
+       ],
+       [
+        183,
+        3,
+        9177,
+        165407,
+        34500,
+        129204.28571428571,
+        "s183"
+       ]
+      ],
+      "tail": [
+       [
+        9999943,
+        3,
+        8617,
+        30447,
+        13027,
+        104851.85714285714,
+        "s943"
+       ],
+       [
+        9999953,
+        3,
+        7807,
+        77737,
+        26388,
+        84589.71428571429,
+        "s953"
+       ],
+       [
+        9999963,
+        3,
+        6997,
+        125027,
+        39749,
+        64327.57142857143,
+        "s963"
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "sort_int": {
+    "load": 1.60009765625,
+    "loads": [
+     1.60009765625,
+     1.01123046875
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      1.5349391059999107,
+      1.502506189000087,
+      1.273439705999408
+     ],
+     "median": 1.502506189000087,
+     "min": 1.273439705999408,
+     "max": 1.5349391059999107,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "Id": 49999995000000,
+       "K10": 45000000,
+       "K10k": 49995000000,
+       "K1M": 4999995000000,
+       "A": 500010022956,
+       "B": 714287272097.1427
+      },
+      "weighted": 25199571466732473,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0"
+       ],
+       [
+        100003,
+        3,
+        3757,
+        214187,
+        0,
+        15957.857142857143,
+        "s3"
+       ],
+       [
+        200006,
+        6,
+        7514,
+        428374,
+        0,
+        31915.714285714286,
+        "s6"
+       ]
+      ],
+      "tail": [
+       [
+        9714961,
+        1,
+        6159,
+        150569,
+        100002,
+        109147.71428571429,
+        "s961"
+       ],
+       [
+        9814964,
+        4,
+        9916,
+        364756,
+        100002,
+        125105.57142857143,
+        "s964"
+       ],
+       [
+        9914967,
+        7,
+        3673,
+        578943,
+        100002,
+        141063.42857142858,
+        "s967"
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.5134494699996139,
+      0.5327171910012112,
+      0.5347290330009855
+     ],
+     "median": 0.5327171910012112,
+     "min": 0.5134494699996139,
+     "max": 0.5347290330009855,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "Id": 49999995000000,
+       "K10": 45000000,
+       "K10k": 49995000000,
+       "K1M": 4999995000000,
+       "A": 500010022956,
+       "B": 714287272097.1427
+      },
+      "weighted": 25199571466732473,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0"
+       ],
+       [
+        100003,
+        3,
+        3757,
+        214187,
+        0,
+        15957.857142857143,
+        "s3"
+       ],
+       [
+        200006,
+        6,
+        7514,
+        428374,
+        0,
+        31915.714285714286,
+        "s6"
+       ]
+      ],
+      "tail": [
+       [
+        9714961,
+        1,
+        6159,
+        150569,
+        100002,
+        109147.71428571429,
+        "s961"
+       ],
+       [
+        9814964,
+        4,
+        9916,
+        364756,
+        100002,
+        125105.57142857143,
+        "s964"
+       ],
+       [
+        9914967,
+        7,
+        3673,
+        578943,
+        100002,
+        141063.42857142858,
+        "s967"
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "sort_two": {
+    "load": 1.50732421875,
+    "loads": [
+     1.50732421875,
+     1.01025390625
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      2.242057133000344,
+      2.38196895999954,
+      2.498708021999846
+     ],
+     "median": 2.38196895999954,
+     "min": 2.242057133000344,
+     "max": 2.498708021999846,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "Id": 49999995000000,
+       "K10": 45000000,
+       "K10k": 49995000000,
+       "K1M": 4999995000000,
+       "A": 500010022956,
+       "B": 714287272097.1431
+      },
+      "weighted": 25199499949096405,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0"
+       ],
+       [
+        2664160,
+        0,
+        3040,
+        812640,
+        77394,
+        0.14285714285714285,
+        "s160"
+       ],
+       [
+        5328320,
+        0,
+        6080,
+        625280,
+        54785,
+        0.2857142857142857,
+        "s320"
+       ]
+      ],
+      "tail": [
+       [
+        5007559,
+        9,
+        9721,
+        646511,
+        68870,
+        142857.14285714287,
+        "s559"
+       ],
+       [
+        7671719,
+        9,
+        2761,
+        459151,
+        46261,
+        142857.2857142857,
+        "s719"
+       ],
+       [
+        335849,
+        9,
+        8231,
+        129921,
+        84390,
+        142857.42857142858,
+        "s849"
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      1.711222836000161,
+      1.6759237270016456,
+      1.5635195190006925
+     ],
+     "median": 1.6759237270016456,
+     "min": 1.5635195190006925,
+     "max": 1.711222836000161,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "Id": 49999995000000,
+       "K10": 45000000,
+       "K10k": 49995000000,
+       "K1M": 4999995000000,
+       "A": 500010022956,
+       "B": 714287272097.1431
+      },
+      "weighted": 25199499949096405,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0"
+       ],
+       [
+        2664160,
+        0,
+        3040,
+        812640,
+        77394,
+        0.14285714285714285,
+        "s160"
+       ],
+       [
+        5328320,
+        0,
+        6080,
+        625280,
+        54785,
+        0.2857142857142857,
+        "s320"
+       ]
+      ],
+      "tail": [
+       [
+        5007559,
+        9,
+        9721,
+        646511,
+        68870,
+        142857.14285714287,
+        "s559"
+       ],
+       [
+        7671719,
+        9,
+        2761,
+        459151,
+        46261,
+        142857.2857142857,
+        "s719"
+       ],
+       [
+        335849,
+        9,
+        8231,
+        129921,
+        84390,
+        142857.42857142858,
+        "s849"
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "sort_string": {
+    "load": 1.4287109375,
+    "loads": [
+     1.4287109375,
+     1.00830078125
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      2.211429627999678,
+      2.3125383509996027,
+      2.1161330539998744
+     ],
+     "median": 2.211429627999678,
+     "min": 2.1161330539998744,
+     "max": 2.3125383509996027,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "Id": 49999995000000,
+       "K10": 45000000,
+       "K10k": 49995000000,
+       "K1M": 4999995000000,
+       "A": 500010022956,
+       "B": 714287272097.1434
+      },
+      "weighted": 25200453736998675,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0"
+       ],
+       [
+        1000,
+        0,
+        9000,
+        729000,
+        36061,
+        116649.28571428571,
+        "s0"
+       ],
+       [
+        2000,
+        0,
+        8000,
+        458000,
+        72122,
+        90441.0,
+        "s0"
+       ]
+      ],
+      "tail": [
+       [
+        9997999,
+        9,
+        4081,
+        437271,
+        95729,
+        43800.42857142857,
+        "s999"
+       ],
+       [
+        9998999,
+        9,
+        3081,
+        166271,
+        31787,
+        17592.14285714286,
+        "s999"
+       ],
+       [
+        9999999,
+        9,
+        2081,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      1.4356559329989977,
+      1.3300803719994292,
+      1.4037455460002093
+     ],
+     "median": 1.4037455460002093,
+     "min": 1.3300803719994292,
+     "max": 1.4356559329989977,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "Id": 49999995000000,
+       "K10": 45000000,
+       "K10k": 49995000000,
+       "K1M": 4999995000000,
+       "A": 500010022956,
+       "B": 714287272097.1434
+      },
+      "weighted": 25200453736998675,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0"
+       ],
+       [
+        1000,
+        0,
+        9000,
+        729000,
+        36061,
+        116649.28571428571,
+        "s0"
+       ],
+       [
+        2000,
+        0,
+        8000,
+        458000,
+        72122,
+        90441.0,
+        "s0"
+       ]
+      ],
+      "tail": [
+       [
+        9997999,
+        9,
+        4081,
+        437271,
+        95729,
+        43800.42857142857,
+        "s999"
+       ],
+       [
+        9998999,
+        9,
+        3081,
+        166271,
+        31787,
+        17592.14285714286,
+        "s999"
+       ],
+       [
+        9999999,
+        9,
+        2081,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "sum_by_low": {
+    "load": 1.3623046875,
+    "loads": [
+     1.3623046875,
+     1.00732421875
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.20673804099988047,
+      0.28196941899932426,
+      0.2687269389998619
+     ],
+     "median": 0.2687269389998619,
+     "min": 0.20673804099988047,
+     "max": 0.28196941899932426,
+     "check": {
+      "rows": 10,
+      "sums": {
+       "K": 45,
+       "A": 500010022956,
+       "B": 714287272097.1426
+      },
+      "weighted": 285,
+      "head": [
+       [
+        0,
+        50000912661,
+        71428806999.00008
+       ],
+       [
+        1,
+        50000972581,
+        71428598791.2856
+       ],
+       [
+        2,
+        50001032501,
+        71428819156.28566
+       ]
+      ],
+      "tail": [
+       [
+        7,
+        50000932089,
+        71428635263.14294
+       ],
+       [
+        8,
+        50000992009,
+        71428855628.1428
+       ],
+       [
+        9,
+        50001051929,
+        71428647420.4284
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.12565113500022562,
+      0.13461737599936896,
+      0.11745120800151199
+     ],
+     "median": 0.12565113500022562,
+     "min": 0.11745120800151199,
+     "max": 0.13461737599936896,
+     "check": {
+      "rows": 10,
+      "sums": {
+       "K": 45,
+       "A": 500010022956,
+       "B": 714287272097.1426
+      },
+      "weighted": 285,
+      "head": [
+       [
+        0,
+        50000912661,
+        71428806999.00008
+       ],
+       [
+        1,
+        50000972581,
+        71428598791.2856
+       ],
+       [
+        2,
+        50001032501,
+        71428819156.28566
+       ]
+      ],
+      "tail": [
+       [
+        7,
+        50000932089,
+        71428635263.14294
+       ],
+       [
+        8,
+        50000992009,
+        71428855628.1428
+       ],
+       [
+        9,
+        50001051929,
+        71428647420.4284
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "avg_by_low": {
+    "load": 1.3623046875,
+    "loads": [
+     1.3623046875,
+     1.00732421875
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.16281754699957673,
+      0.15750894299981155,
+      0.16298469299999852
+     ],
+     "median": 0.16281754699957673,
+     "min": 0.15750894299981155,
+     "max": 0.16298469299999852,
+     "check": {
+      "rows": 10,
+      "sums": {
+       "K": 45,
+       "A": 500010.022956,
+       "B": 714287.2720971426
+      },
+      "weighted": 285,
+      "head": [
+       [
+        0,
+        50000.912661,
+        71428.80699900008
+       ],
+       [
+        1,
+        50000.972581,
+        71428.59879128559
+       ],
+       [
+        2,
+        50001.032501,
+        71428.81915628567
+       ]
+      ],
+      "tail": [
+       [
+        7,
+        50000.932089,
+        71428.63526314295
+       ],
+       [
+        8,
+        50000.992009,
+        71428.8556281428
+       ],
+       [
+        9,
+        50001.051929,
+        71428.6474204284
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.11602407800091896,
+      0.11676416699992842,
+      0.11728475100062496
+     ],
+     "median": 0.11676416699992842,
+     "min": 0.11602407800091896,
+     "max": 0.11728475100062496,
+     "check": {
+      "rows": 10,
+      "sums": {
+       "K": 45,
+       "A": 500010.022956,
+       "B": 714287.2720971426
+      },
+      "weighted": 285,
+      "head": [
+       [
+        0,
+        50000.912661,
+        71428.80699900008
+       ],
+       [
+        1,
+        50000.972581,
+        71428.59879128559
+       ],
+       [
+        2,
+        50001.032501,
+        71428.81915628567
+       ]
+      ],
+      "tail": [
+       [
+        7,
+        50000.932089,
+        71428.63526314295
+       ],
+       [
+        8,
+        50000.992009,
+        71428.8556281428
+       ],
+       [
+        9,
+        50001.051929,
+        71428.6474204284
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "count_by_low": {
+    "load": 1.3623046875,
+    "loads": [
+     1.3623046875,
+     1.00732421875
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.1323423970006843,
+      0.11485408200042002,
+      0.11728212400066695
+     ],
+     "median": 0.11728212400066695,
+     "min": 0.11485408200042002,
+     "max": 0.1323423970006843,
+     "check": {
+      "rows": 10,
+      "sums": {
+       "K": 45,
+       "N": 10000000
+      },
+      "weighted": 285,
+      "head": [
+       [
+        0,
+        1000000
+       ],
+       [
+        1,
+        1000000
+       ],
+       [
+        2,
+        1000000
+       ]
+      ],
+      "tail": [
+       [
+        7,
+        1000000
+       ],
+       [
+        8,
+        1000000
+       ],
+       [
+        9,
+        1000000
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.09326971399968897,
+      0.08199635800156102,
+      0.11500483199961309
+     ],
+     "median": 0.09326971399968897,
+     "min": 0.08199635800156102,
+     "max": 0.11500483199961309,
+     "check": {
+      "rows": 10,
+      "sums": {
+       "K": 45,
+       "N": 10000000
+      },
+      "weighted": 285,
+      "head": [
+       [
+        0,
+        1000000
+       ],
+       [
+        1,
+        1000000
+       ],
+       [
+        2,
+        1000000
+       ]
+      ],
+      "tail": [
+       [
+        7,
+        1000000
+       ],
+       [
+        8,
+        1000000
+       ],
+       [
+        9,
+        1000000
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "sum_by_med": {
+    "load": 1.3623046875,
+    "loads": [
+     1.3623046875,
+     1.00732421875
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.29006699199999275,
+      0.32401013300022896,
+      0.3062289800000144
+     ],
+     "median": 0.3062289800000144,
+     "min": 0.29006699199999275,
+     "max": 0.32401013300022896,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K": 49995000,
+       "A": 500010022956,
+       "B": 714287272097.1436
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0,
+        49992921,
+        71577230.42857142
+       ],
+       [
+        7919,
+        49828976,
+        71693879.7142857
+       ],
+       [
+        5838,
+        49965040,
+        71524813.85714287
+       ]
+      ],
+      "tail": [
+       [
+        6243,
+        50083926,
+        71430926.57142857
+       ],
+       [
+        4162,
+        49819978,
+        71404718.28571428
+       ],
+       [
+        2081,
+        49956042,
+        71807082.7142857
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.3728811130004033,
+      0.3764686319991597,
+      0.3905491739988065
+     ],
+     "median": 0.3764686319991597,
+     "min": 0.3728811130004033,
+     "max": 0.3905491739988065,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K": 49995000,
+       "A": 500010022956,
+       "B": 714287272097.1436
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0,
+        49992921,
+        71577230.42857142
+       ],
+       [
+        7919,
+        49828976,
+        71693879.7142857
+       ],
+       [
+        5838,
+        49965040,
+        71524813.85714287
+       ]
+      ],
+      "tail": [
+       [
+        6243,
+        50083926,
+        71430926.57142857
+       ],
+       [
+        4162,
+        49819978,
+        71404718.28571428
+       ],
+       [
+        2081,
+        49956042,
+        71807082.7142857
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "avg_by_med": {
+    "load": 1.3623046875,
+    "loads": [
+     1.3623046875,
+     1.00634765625
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.30794139000045107,
+      0.3311069799992765,
+      0.3111604779996924
+     ],
+     "median": 0.3111604779996924,
+     "min": 0.30794139000045107,
+     "max": 0.3311069799992765,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K": 49995000,
+       "A": 500010022.9559997,
+       "B": 714287272.0971419
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0,
+        49992.921,
+        71577.23042857142
+       ],
+       [
+        7919,
+        49828.976,
+        71693.87971428571
+       ],
+       [
+        5838,
+        49965.04,
+        71524.81385714287
+       ]
+      ],
+      "tail": [
+       [
+        6243,
+        50083.926,
+        71430.92657142857
+       ],
+       [
+        4162,
+        49819.978,
+        71404.71828571429
+       ],
+       [
+        2081,
+        49956.042,
+        71807.0827142857
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.38843360999999277,
+      0.3721676459990704,
+      0.37566347400024824
+     ],
+     "median": 0.37566347400024824,
+     "min": 0.3721676459990704,
+     "max": 0.38843360999999277,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K": 49995000,
+       "A": 500010022.9559997,
+       "B": 714287272.0971419
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0,
+        49992.921,
+        71577.23042857142
+       ],
+       [
+        7919,
+        49828.976,
+        71693.87971428571
+       ],
+       [
+        5838,
+        49965.04,
+        71524.81385714287
+       ]
+      ],
+      "tail": [
+       [
+        6243,
+        50083.926,
+        71430.92657142857
+       ],
+       [
+        4162,
+        49819.978,
+        71404.71828571429
+       ],
+       [
+        2081,
+        49956.042,
+        71807.0827142857
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "count_by_med": {
+    "load": 1.3330078125,
+    "loads": [
+     1.3330078125,
+     1.00634765625
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.1474012569997285,
+      0.14692507099971408,
+      0.13932232499973907
+     ],
+     "median": 0.14692507099971408,
+     "min": 0.13932232499973907,
+     "max": 0.1474012569997285,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K": 49995000,
+       "N": 10000000
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0,
+        1000
+       ],
+       [
+        7919,
+        1000
+       ],
+       [
+        5838,
+        1000
+       ]
+      ],
+      "tail": [
+       [
+        6243,
+        1000
+       ],
+       [
+        4162,
+        1000
+       ],
+       [
+        2081,
+        1000
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.18361957199886092,
+      0.16777264300071693,
+      0.17146465400037414
+     ],
+     "median": 0.17146465400037414,
+     "min": 0.16777264300071693,
+     "max": 0.18361957199886092,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K": 49995000,
+       "N": 10000000
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0,
+        1000
+       ],
+       [
+        7919,
+        1000
+       ],
+       [
+        5838,
+        1000
+       ]
+      ],
+      "tail": [
+       [
+        6243,
+        1000
+       ],
+       [
+        4162,
+        1000
+       ],
+       [
+        2081,
+        1000
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "sum_by_high": {
+    "load": 1.3330078125,
+    "loads": [
+     1.3330078125,
+     1.00634765625
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.5875037760006308,
+      0.5979506140001831,
+      0.6090195629994923
+     ],
+     "median": 0.5979506140001831,
+     "min": 0.5875037760006308,
+     "max": 0.6090195629994923,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "K": 499999500000,
+       "A": 500010022956,
+       "B": 714287272097.143
+      },
+      "weighted": 251983022047136,
+      "head": [
+       [
+        0,
+        496334,
+        630682.8571428572
+       ],
+       [
+        104729,
+        509695,
+        610420.7142857144
+       ],
+       [
+        209458,
+        423053,
+        733016.1428571428
+       ]
+      ],
+      "tail": [
+       [
+        685813,
+        455433,
+        752255.7142857143
+       ],
+       [
+        790542,
+        568797,
+        731993.5714285715
+       ],
+       [
+        895271,
+        482155,
+        711731.4285714286
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.6575954669988278,
+      0.6873968609997974,
+      0.661415673999727
+     ],
+     "median": 0.661415673999727,
+     "min": 0.6575954669988278,
+     "max": 0.6873968609997974,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "K": 499999500000,
+       "A": 500010022956,
+       "B": 714287272097.143
+      },
+      "weighted": 251983022047136,
+      "head": [
+       [
+        0,
+        496334,
+        630682.8571428572
+       ],
+       [
+        104729,
+        509695,
+        610420.7142857144
+       ],
+       [
+        209458,
+        423053,
+        733016.1428571428
+       ]
+      ],
+      "tail": [
+       [
+        685813,
+        455433,
+        752255.7142857143
+       ],
+       [
+        790542,
+        568797,
+        731993.5714285715
+       ],
+       [
+        895271,
+        482155,
+        711731.4285714286
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "avg_by_high": {
+    "load": 1.3330078125,
+    "loads": [
+     1.3330078125,
+     1.00537109375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.5899508990005415,
+      0.6240946870002517,
+      0.5778403340000295
+     ],
+     "median": 0.5899508990005415,
+     "min": 0.5778403340000295,
+     "max": 0.6240946870002517,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "K": 499999500000,
+       "A": 50001002295.599945,
+       "B": 71428727209.71426
+      },
+      "weighted": 251983022047136,
+      "head": [
+       [
+        0,
+        49633.4,
+        63068.28571428572
+       ],
+       [
+        104729,
+        50969.5,
+        61042.07142857144
+       ],
+       [
+        209458,
+        42305.3,
+        73301.61428571428
+       ]
+      ],
+      "tail": [
+       [
+        685813,
+        45543.3,
+        75225.57142857143
+       ],
+       [
+        790542,
+        56879.7,
+        73199.35714285714
+       ],
+       [
+        895271,
+        48215.5,
+        71173.14285714287
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.6407073779992061,
+      0.7014763469996979,
+      0.679039812001065
+     ],
+     "median": 0.679039812001065,
+     "min": 0.6407073779992061,
+     "max": 0.7014763469996979,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "K": 499999500000,
+       "A": 50001002295.599945,
+       "B": 71428727209.71426
+      },
+      "weighted": 251983022047136,
+      "head": [
+       [
+        0,
+        49633.4,
+        63068.28571428572
+       ],
+       [
+        104729,
+        50969.5,
+        61042.07142857144
+       ],
+       [
+        209458,
+        42305.3,
+        73301.61428571428
+       ]
+      ],
+      "tail": [
+       [
+        685813,
+        45543.3,
+        75225.57142857143
+       ],
+       [
+        790542,
+        56879.7,
+        73199.35714285714
+       ],
+       [
+        895271,
+        48215.5,
+        71173.14285714287
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "count_by_high": {
+    "load": 1.38671875,
+    "loads": [
+     1.38671875,
+     1.00537109375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.387611086999641,
+      0.5282260579997455,
+      0.3632722199999989
+     ],
+     "median": 0.387611086999641,
+     "min": 0.3632722199999989,
+     "max": 0.5282260579997455,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "K": 499999500000,
+       "N": 10000000
+      },
+      "weighted": 251983022047136,
+      "head": [
+       [
+        0,
+        10
+       ],
+       [
+        104729,
+        10
+       ],
+       [
+        209458,
+        10
+       ]
+      ],
+      "tail": [
+       [
+        685813,
+        10
+       ],
+       [
+        790542,
+        10
+       ],
+       [
+        895271,
+        10
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.3856110680007987,
+      0.3653435119995265,
+      0.3783846589994937
+     ],
+     "median": 0.3783846589994937,
+     "min": 0.3653435119995265,
+     "max": 0.3856110680007987,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "K": 499999500000,
+       "N": 10000000
+      },
+      "weighted": 251983022047136,
+      "head": [
+       [
+        0,
+        10
+       ],
+       [
+        104729,
+        10
+       ],
+       [
+        209458,
+        10
+       ]
+      ],
+      "tail": [
+       [
+        685813,
+        10
+       ],
+       [
+        790542,
+        10
+       ],
+       [
+        895271,
+        10
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "agg_by_multi": {
+    "load": 1.38671875,
+    "loads": [
+     1.38671875,
+     1.0048828125
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.5140605070000674,
+      0.492253374000029,
+      0.5107656939999288
+     ],
+     "median": 0.5107656939999288,
+     "min": 0.492253374000029,
+     "max": 0.5140605070000674,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K10k": 49995000,
+       "SA": 500010022956,
+       "AB": 714287272.0971419,
+       "MinA": 699959,
+       "MaxB": 1427750808.2857146,
+       "N": 10000000
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0,
+        49992921,
+        71577.23042857142,
+        0,
+        142703.42857142858,
+        1000
+       ],
+       [
+        7919,
+        49828976,
+        71693.87971428571,
+        15,
+        142727.85714285713,
+        1000
+       ],
+       [
+        5838,
+        49965040,
+        71524.81385714287,
+        30,
+        142679.0,
+        1000
+       ]
+      ],
+      "tail": [
+       [
+        6243,
+        50083926,
+        71430.92657142857,
+        45,
+        142703.42857142858,
+        1000
+       ],
+       [
+        4162,
+        49819978,
+        71404.71828571429,
+        15,
+        142727.85714285713,
+        1000
+       ],
+       [
+        2081,
+        49956042,
+        71807.0827142857,
+        30,
+        142752.2857142857,
+        1000
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.8044149369998195,
+      0.811769647998517,
+      0.8267986509999901
+     ],
+     "median": 0.811769647998517,
+     "min": 0.8044149369998195,
+     "max": 0.8267986509999901,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K10k": 49995000,
+       "SA": 500010022956,
+       "AB": 714287272.0971419,
+       "MinA": 699959,
+       "MaxB": 1427750808.2857146,
+       "N": 10000000
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0,
+        49992921,
+        71577.23042857142,
+        0,
+        142703.42857142858,
+        1000
+       ],
+       [
+        7919,
+        49828976,
+        71693.87971428571,
+        15,
+        142727.85714285713,
+        1000
+       ],
+       [
+        5838,
+        49965040,
+        71524.81385714287,
+        30,
+        142679.0,
+        1000
+       ]
+      ],
+      "tail": [
+       [
+        6243,
+        50083926,
+        71430.92657142857,
+        45,
+        142703.42857142858,
+        1000
+       ],
+       [
+        4162,
+        49819978,
+        71404.71828571429,
+        15,
+        142727.85714285713,
+        1000
+       ],
+       [
+        2081,
+        49956042,
+        71807.0827142857,
+        30,
+        142752.2857142857,
+        1000
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "last_by": {
+    "load": 1.35546875,
+    "loads": [
+     1.35546875,
+     1.0048828125
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.15540594000049168,
+      0.1331155010002476,
+      0.16132131199992727
+     ],
+     "median": 0.15540594000049168,
+     "min": 0.1331155010002476,
+     "max": 0.16132131199992727,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K10k": 49995000,
+       "Id": 99949995000,
+       "K10": 45000,
+       "K1M": 4998355000,
+       "A": 499959034,
+       "B": 714263143.2857144
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0,
+        9990000,
+        0,
+        710000,
+        38584,
+        37154.142857142855,
+        "s0"
+       ],
+       [
+        7919,
+        9990001,
+        1,
+        814729,
+        69921,
+        106556.71428571429,
+        "s1"
+       ],
+       [
+        5838,
+        9990002,
+        2,
+        919458,
+        1255,
+        33101.71428571428,
+        "s2"
+       ]
+      ],
+      "tail": [
+       [
+        6243,
+        9999997,
+        7,
+        685813,
+        5174,
+        138293.85714285713,
+        "s997"
+       ],
+       [
+        4162,
+        9999998,
+        8,
+        790542,
+        36511,
+        64838.857142857145,
+        "s998"
+       ],
+       [
+        2081,
+        9999999,
+        9,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.1912518760000239,
+      0.1820940880006674,
+      0.19265962000099535
+     ],
+     "median": 0.1912518760000239,
+     "min": 0.1820940880006674,
+     "max": 0.19265962000099535,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K10k": 49995000,
+       "Id": 99949995000,
+       "K10": 45000,
+       "K1M": 4998355000,
+       "A": 499959034,
+       "B": 714263143.2857144
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0,
+        9990000,
+        0,
+        710000,
+        38584,
+        37154.142857142855,
+        "s0"
+       ],
+       [
+        7919,
+        9990001,
+        1,
+        814729,
+        69921,
+        106556.71428571429,
+        "s1"
+       ],
+       [
+        5838,
+        9990002,
+        2,
+        919458,
+        1255,
+        33101.71428571428,
+        "s2"
+       ]
+      ],
+      "tail": [
+       [
+        6243,
+        9999997,
+        7,
+        685813,
+        5174,
+        138293.85714285713,
+        "s997"
+       ],
+       [
+        4162,
+        9999998,
+        8,
+        790542,
+        36511,
+        64838.857142857145,
+        "s998"
+       ],
+       [
+        2081,
+        9999999,
+        9,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "natural_join_small": {
+    "load": 1.35546875,
+    "loads": [
+     1.35546875,
+     1.0048828125
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.21947901899966382,
+      0.23935144400002173,
+      0.2129722400004539
+     ],
+     "median": 0.21947901899966382,
+     "min": 0.2129722400004539,
+     "max": 0.23935144400002173,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "Id": 49999995000000,
+       "K10": 45000000,
+       "K10k": 49995000000,
+       "K1M": 4999995000000,
+       "A": 500010022956,
+       "B": 714287272097.1438,
+       "R1": 149985000000
+      },
+      "weighted": 25200039938247555,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        23757
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        17514
+       ]
+      ],
+      "tail": [
+       [
+        9999997,
+        7,
+        6243,
+        685813,
+        5174,
+        138293.85714285713,
+        "s997",
+        18729
+       ],
+       [
+        9999998,
+        8,
+        4162,
+        790542,
+        36511,
+        64838.857142857145,
+        "s998",
+        12486
+       ],
+       [
+        9999999,
+        9,
+        2081,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999",
+        6243
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.1197757250010909,
+      0.13556010799948126,
+      0.1209440779985016
+     ],
+     "median": 0.1209440779985016,
+     "min": 0.1197757250010909,
+     "max": 0.13556010799948126,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "Id": 49999995000000,
+       "K10": 45000000,
+       "K10k": 49995000000,
+       "K1M": 4999995000000,
+       "A": 500010022956,
+       "B": 714287272097.1438,
+       "R1": 149985000000
+      },
+      "weighted": 25200039938247555,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        23757
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        17514
+       ]
+      ],
+      "tail": [
+       [
+        9999997,
+        7,
+        6243,
+        685813,
+        5174,
+        138293.85714285713,
+        "s997",
+        18729
+       ],
+       [
+        9999998,
+        8,
+        4162,
+        790542,
+        36511,
+        64838.857142857145,
+        "s998",
+        12486
+       ],
+       [
+        9999999,
+        9,
+        2081,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999",
+        6243
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "natural_join_large": {
+    "load": 1.35546875,
+    "loads": [
+     1.35546875,
+     1.0849609375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.40899477199945977,
+      0.3603353199996491,
+      0.3397270940004091
+     ],
+     "median": 0.3603353199996491,
+     "min": 0.3397270940004091,
+     "max": 0.40899477199945977,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "Id": 49999995000000,
+       "K10": 45000000,
+       "K10k": 49995000000,
+       "K1M": 4999995000000,
+       "A": 500010022956,
+       "B": 714287272097.1438,
+       "R2": 24999975000000
+      },
+      "weighted": 25200039938247555,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        523645
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        1047290
+       ]
+      ],
+      "tail": [
+       [
+        9999997,
+        7,
+        6243,
+        685813,
+        5174,
+        138293.85714285713,
+        "s997",
+        3429065
+       ],
+       [
+        9999998,
+        8,
+        4162,
+        790542,
+        36511,
+        64838.857142857145,
+        "s998",
+        3952710
+       ],
+       [
+        9999999,
+        9,
+        2081,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999",
+        4476355
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.3236519349993614,
+      0.328476860999217,
+      0.3603088640011265
+     ],
+     "median": 0.328476860999217,
+     "min": 0.3236519349993614,
+     "max": 0.3603088640011265,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "Id": 49999995000000,
+       "K10": 45000000,
+       "K10k": 49995000000,
+       "K1M": 4999995000000,
+       "A": 500010022956,
+       "B": 714287272097.1438,
+       "R2": 24999975000000
+      },
+      "weighted": 25200039938247555,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        523645
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        1047290
+       ]
+      ],
+      "tail": [
+       [
+        9999997,
+        7,
+        6243,
+        685813,
+        5174,
+        138293.85714285713,
+        "s997",
+        3429065
+       ],
+       [
+        9999998,
+        8,
+        4162,
+        790542,
+        36511,
+        64838.857142857145,
+        "s998",
+        3952710
+       ],
+       [
+        9999999,
+        9,
+        2081,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999",
+        4476355
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "exact_join_small": {
+    "load": 1.35546875,
+    "loads": [
+     1.35546875,
+     1.0849609375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.19262659499963775,
+      0.19311230800030899,
+      0.2834148339998137
+     ],
+     "median": 0.19311230800030899,
+     "min": 0.19262659499963775,
+     "max": 0.2834148339998137,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "Id": 49999995000000,
+       "K10": 45000000,
+       "K10k": 49995000000,
+       "K1M": 4999995000000,
+       "A": 500010022956,
+       "B": 714287272097.1438,
+       "R1": 149985000000
+      },
+      "weighted": 25200039938247555,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        23757
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        17514
+       ]
+      ],
+      "tail": [
+       [
+        9999997,
+        7,
+        6243,
+        685813,
+        5174,
+        138293.85714285713,
+        "s997",
+        18729
+       ],
+       [
+        9999998,
+        8,
+        4162,
+        790542,
+        36511,
+        64838.857142857145,
+        "s998",
+        12486
+       ],
+       [
+        9999999,
+        9,
+        2081,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999",
+        6243
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.11888143999931344,
+      0.1266209000004892,
+      0.11470197800008464
+     ],
+     "median": 0.11888143999931344,
+     "min": 0.11470197800008464,
+     "max": 0.1266209000004892,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "Id": 49999995000000,
+       "K10": 45000000,
+       "K10k": 49995000000,
+       "K1M": 4999995000000,
+       "A": 500010022956,
+       "B": 714287272097.1438,
+       "R1": 149985000000
+      },
+      "weighted": 25200039938247555,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        23757
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        17514
+       ]
+      ],
+      "tail": [
+       [
+        9999997,
+        7,
+        6243,
+        685813,
+        5174,
+        138293.85714285713,
+        "s997",
+        18729
+       ],
+       [
+        9999998,
+        8,
+        4162,
+        790542,
+        36511,
+        64838.857142857145,
+        "s998",
+        12486
+       ],
+       [
+        9999999,
+        9,
+        2081,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999",
+        6243
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "exact_join_large": {
+    "load": 1.4072265625,
+    "loads": [
+     1.4072265625,
+     1.0849609375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.5874129650001123,
+      0.44967416300005425,
+      0.4073941719998402
+     ],
+     "median": 0.44967416300005425,
+     "min": 0.4073941719998402,
+     "max": 0.5874129650001123,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "Id": 49999995000000,
+       "K10": 45000000,
+       "K10k": 49995000000,
+       "K1M": 4999995000000,
+       "A": 500010022956,
+       "B": 714287272097.1438,
+       "R2": 24999975000000
+      },
+      "weighted": 25200039938247555,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        523645
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        1047290
+       ]
+      ],
+      "tail": [
+       [
+        9999997,
+        7,
+        6243,
+        685813,
+        5174,
+        138293.85714285713,
+        "s997",
+        3429065
+       ],
+       [
+        9999998,
+        8,
+        4162,
+        790542,
+        36511,
+        64838.857142857145,
+        "s998",
+        3952710
+       ],
+       [
+        9999999,
+        9,
+        2081,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999",
+        4476355
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.32761854999989737,
+      0.3474116560009861,
+      0.3292465220001759
+     ],
+     "median": 0.3292465220001759,
+     "min": 0.32761854999989737,
+     "max": 0.3474116560009861,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "Id": 49999995000000,
+       "K10": 45000000,
+       "K10k": 49995000000,
+       "K1M": 4999995000000,
+       "A": 500010022956,
+       "B": 714287272097.1438,
+       "R2": 24999975000000
+      },
+      "weighted": 25200039938247555,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        523645
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        1047290
+       ]
+      ],
+      "tail": [
+       [
+        9999997,
+        7,
+        6243,
+        685813,
+        5174,
+        138293.85714285713,
+        "s997",
+        3429065
+       ],
+       [
+        9999998,
+        8,
+        4162,
+        790542,
+        36511,
+        64838.857142857145,
+        "s998",
+        3952710
+       ],
+       [
+        9999999,
+        9,
+        2081,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999",
+        4476355
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "join_on_key": {
+    "load": 1.4072265625,
+    "loads": [
+     1.4072265625,
+     1.0849609375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      2.4536233349999748,
+      2.1850040939998507,
+      2.2059854240005734
+     ],
+     "median": 2.2059854240005734,
+     "min": 2.1850040939998507,
+     "max": 2.4536233349999748,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "Id": 49999995000000,
+       "K10": 45000000,
+       "K10k": 49995000000,
+       "K1M": 4999995000000,
+       "A": 500010022956,
+       "B": 714287272097.1438,
+       "R1": 149985000000
+      },
+      "weighted": 25200039938247555,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        23757
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        17514
+       ]
+      ],
+      "tail": [
+       [
+        9999997,
+        7,
+        6243,
+        685813,
+        5174,
+        138293.85714285713,
+        "s997",
+        18729
+       ],
+       [
+        9999998,
+        8,
+        4162,
+        790542,
+        36511,
+        64838.857142857145,
+        "s998",
+        12486
+       ],
+       [
+        9999999,
+        9,
+        2081,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999",
+        6243
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.28219265600091603,
+      0.28149705699979677,
+      0.28819162999934633
+     ],
+     "median": 0.28219265600091603,
+     "min": 0.28149705699979677,
+     "max": 0.28819162999934633,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "Id": 49999995000000,
+       "K10": 45000000,
+       "K10k": 49995000000,
+       "K1M": 4999995000000,
+       "A": 500010022956,
+       "B": 714287272097.1438,
+       "R1": 149985000000
+      },
+      "weighted": 25200039938247555,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        0
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        23757
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        17514
+       ]
+      ],
+      "tail": [
+       [
+        9999997,
+        7,
+        6243,
+        685813,
+        5174,
+        138293.85714285713,
+        "s997",
+        18729
+       ],
+       [
+        9999998,
+        8,
+        4162,
+        790542,
+        36511,
+        64838.857142857145,
+        "s998",
+        12486
+       ],
+       [
+        9999999,
+        9,
+        2081,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999",
+        6243
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "aj": {
+    "load": 1.34423828125,
+    "loads": [
+     1.34423828125,
+     1.078125
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      1.7935446700003013,
+      2.0866094879993398,
+      2.3112755590000233
+     ],
+     "median": 2.0866094879993398,
+     "min": 1.7935446700003013,
+     "max": 2.3112755590000233,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "Id": 49999995000000,
+       "K10": 45000000,
+       "K10k": 49995000000,
+       "K1M": 4999995000000,
+       "A": 500010022956,
+       "B": 714287272097.1438,
+       "Stamp": 49999500001776,
+       "R4": 4999947000192
+      },
+      "weighted": 25200039938247555,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        null,
+        null
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        null,
+        null
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        null,
+        null
+       ]
+      ],
+      "tail": [
+       [
+        9999997,
+        7,
+        6243,
+        685813,
+        5174,
+        138293.85714285713,
+        "s997",
+        9999973,
+        999997
+       ],
+       [
+        9999998,
+        8,
+        4162,
+        790542,
+        36511,
+        64838.857142857145,
+        "s998",
+        9999983,
+        999998
+       ],
+       [
+        9999999,
+        9,
+        2081,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999",
+        9999993,
+        999999
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.18862164699930872,
+      0.1795400079990941,
+      0.18510603399954562
+     ],
+     "median": 0.18510603399954562,
+     "min": 0.1795400079990941,
+     "max": 0.18862164699930872,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "Id": 49999995000000,
+       "K10": 45000000,
+       "K10k": 49995000000,
+       "K1M": 4999995000000,
+       "A": 500010022956,
+       "B": 714287272097.1438,
+       "Stamp": 49999500001776,
+       "R4": 4999947000192
+      },
+      "weighted": 25200039938247555,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0",
+        null,
+        null
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1",
+        null,
+        null
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2",
+        null,
+        null
+       ]
+      ],
+      "tail": [
+       [
+        9999997,
+        7,
+        6243,
+        685813,
+        5174,
+        138293.85714285713,
+        "s997",
+        9999973,
+        999997
+       ],
+       [
+        9999998,
+        8,
+        4162,
+        790542,
+        36511,
+        64838.857142857145,
+        "s998",
+        9999983,
+        999998
+       ],
+       [
+        9999999,
+        9,
+        2081,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999",
+        9999993,
+        999999
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "select_distinct_one": {
+    "load": 1.5927734375,
+    "loads": [
+     1.5927734375,
+     1.078125
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.09819973200046661,
+      0.09799685500001942,
+      0.16835304999949585
+     ],
+     "median": 0.09819973200046661,
+     "min": 0.09799685500001942,
+     "max": 0.16835304999949585,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K10k": 49995000
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0
+       ],
+       [
+        7919
+       ],
+       [
+        5838
+       ]
+      ],
+      "tail": [
+       [
+        6243
+       ],
+       [
+        4162
+       ],
+       [
+        2081
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.04747627300093882,
+      0.0467117270000017,
+      0.04703176599832659
+     ],
+     "median": 0.04703176599832659,
+     "min": 0.0467117270000017,
+     "max": 0.04747627300093882,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K10k": 49995000
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0
+       ],
+       [
+        7919
+       ],
+       [
+        5838
+       ]
+      ],
+      "tail": [
+       [
+        6243
+       ],
+       [
+        4162
+       ],
+       [
+        2081
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "select_distinct_two": {
+    "load": 1.5927734375,
+    "loads": [
+     1.5927734375,
+     1.078125
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.26289322699994955,
+      0.22266333400057192,
+      0.23328597500039905
+     ],
+     "median": 0.23328597500039905,
+     "min": 0.22266333400057192,
+     "max": 0.26289322699994955,
+     "check": {
+      "rows": 1000,
+      "sums": {
+       "K10": 4500
+      },
+      "weighted": 2256000,
+      "head": [
+       [
+        0,
+        "s0"
+       ],
+       [
+        1,
+        "s1"
+       ],
+       [
+        2,
+        "s2"
+       ]
+      ],
+      "tail": [
+       [
+        7,
+        "s997"
+       ],
+       [
+        8,
+        "s998"
+       ],
+       [
+        9,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.2095361909996427,
+      0.20586301699950127,
+      0.20293141499860212
+     ],
+     "median": 0.20586301699950127,
+     "min": 0.20293141499860212,
+     "max": 0.2095361909996427,
+     "check": {
+      "rows": 1000,
+      "sums": {
+       "K10": 4500
+      },
+      "weighted": 2256000,
+      "head": [
+       [
+        0,
+        "s0"
+       ],
+       [
+        1,
+        "s1"
+       ],
+       [
+        2,
+        "s2"
+       ]
+      ],
+      "tail": [
+       [
+        7,
+        "s997"
+       ],
+       [
+        8,
+        "s998"
+       ],
+       [
+        9,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "head_half": {
+    "load": 1.5927734375,
+    "loads": [
+     1.5927734375,
+     1.07177734375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.0016071030004241038,
+      0.001621046999389364,
+      0.002148638000107894
+     ],
+     "median": 0.001621046999389364,
+     "min": 0.0016071030004241038,
+     "max": 0.002148638000107894,
+     "check": {
+      "rows": 5000000,
+      "sums": {
+       "Id": 12499997500000,
+       "K10": 22500000,
+       "K10k": 24997500000,
+       "K1M": 2499997500000,
+       "A": 250004980803,
+       "B": 357143828283.28577
+      },
+      "weighted": 6299811386004540,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0"
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1"
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2"
+       ]
+      ],
+      "tail": [
+       [
+        4999997,
+        7,
+        6243,
+        685813,
+        5583,
+        36471.857142857145,
+        "s997"
+       ],
+       [
+        4999998,
+        8,
+        4162,
+        790542,
+        36920,
+        105874.42857142857,
+        "s998"
+       ],
+       [
+        4999999,
+        9,
+        2081,
+        895271,
+        68257,
+        32419.428571428572,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.0007773340003041085,
+      0.0008258960006060079,
+      0.0006922630000190111
+     ],
+     "median": 0.0007773340003041085,
+     "min": 0.0006922630000190111,
+     "max": 0.0008258960006060079,
+     "check": {
+      "rows": 5000000,
+      "sums": {
+       "Id": 12499997500000,
+       "K10": 22500000,
+       "K10k": 24997500000,
+       "K1M": 2499997500000,
+       "A": 250004980803,
+       "B": 357143828283.28577
+      },
+      "weighted": 6299811386004540,
+      "head": [
+       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.0,
+        "s0"
+       ],
+       [
+        1,
+        1,
+        7919,
+        104729,
+        31337,
+        69402.57142857143,
+        "s1"
+       ],
+       [
+        2,
+        2,
+        5838,
+        209458,
+        62674,
+        138805.14285714287,
+        "s2"
+       ]
+      ],
+      "tail": [
+       [
+        4999997,
+        7,
+        6243,
+        685813,
+        5583,
+        36471.857142857145,
+        "s997"
+       ],
+       [
+        4999998,
+        8,
+        4162,
+        790542,
+        36920,
+        105874.42857142857,
+        "s998"
+       ],
+       [
+        4999999,
+        9,
+        2081,
+        895271,
+        68257,
+        32419.428571428572,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "tail_half": {
+    "load": 1.5927734375,
+    "loads": [
+     1.5927734375,
+     1.07177734375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.002004635000048438,
+      0.001885613999547786,
+      0.0028680370005531586
+     ],
+     "median": 0.002004635000048438,
+     "min": 0.001885613999547786,
+     "max": 0.0028680370005531586,
+     "check": {
+      "rows": 5000000,
+      "sums": {
+       "Id": 37499997500000,
+       "K10": 22500000,
+       "K10k": 24997500000,
+       "K1M": 2499997500000,
+       "A": 250005042153,
+       "B": 357143443813.85736
+      },
+      "weighted": 18899199836004540,
+      "head": [
+       [
+        5000000,
+        0,
+        0,
+        0,
+        99594,
+        101822.0,
+        "s0"
+       ],
+       [
+        5000001,
+        1,
+        7919,
+        104729,
+        30928,
+        28367.0,
+        "s1"
+       ],
+       [
+        5000002,
+        2,
+        5838,
+        209458,
+        62265,
+        97769.57142857143,
+        "s2"
+       ]
+      ],
+      "tail": [
+       [
+        9999997,
+        7,
+        6243,
+        685813,
+        5174,
+        138293.85714285713,
+        "s997"
+       ],
+       [
+        9999998,
+        8,
+        4162,
+        790542,
+        36511,
+        64838.857142857145,
+        "s998"
+       ],
+       [
+        9999999,
+        9,
+        2081,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.000661228999888408,
+      0.0006586739982594736,
+      0.0006427690004784381
+     ],
+     "median": 0.0006586739982594736,
+     "min": 0.0006427690004784381,
+     "max": 0.000661228999888408,
+     "check": {
+      "rows": 5000000,
+      "sums": {
+       "Id": 37499997500000,
+       "K10": 22500000,
+       "K10k": 24997500000,
+       "K1M": 2499997500000,
+       "A": 250005042153,
+       "B": 357143443813.85736
+      },
+      "weighted": 18899199836004540,
+      "head": [
+       [
+        5000000,
+        0,
+        0,
+        0,
+        99594,
+        101822.0,
+        "s0"
+       ],
+       [
+        5000001,
+        1,
+        7919,
+        104729,
+        30928,
+        28367.0,
+        "s1"
+       ],
+       [
+        5000002,
+        2,
+        5838,
+        209458,
+        62265,
+        97769.57142857143,
+        "s2"
+       ]
+      ],
+      "tail": [
+       [
+        9999997,
+        7,
+        6243,
+        685813,
+        5174,
+        138293.85714285713,
+        "s997"
+       ],
+       [
+        9999998,
+        8,
+        4162,
+        790542,
+        36511,
+        64838.857142857145,
+        "s998"
+       ],
+       [
+        9999999,
+        9,
+        2081,
+        895271,
+        67848,
+        134241.42857142858,
+        "s999"
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "group_by": {
+    "load": 1.5927734375,
+    "loads": [
+     1.5927734375,
+     1.07177734375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.6743785919998118,
+      0.6333580760001496,
+      0.5632735939998383
+     ],
+     "median": 0.6333580760001496,
+     "min": 0.5632735939998383,
+     "max": 0.6743785919998118,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K10k": 49995000
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0
+       ],
+       [
+        7919
+       ],
+       [
+        5838
+       ]
+      ],
+      "tail": [
+       [
+        6243
+       ],
+       [
+        4162
+       ],
+       [
+        2081
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.8959766019997915,
+      0.9339466270012053,
+      0.881078748998334
+     ],
+     "median": 0.8959766019997915,
+     "min": 0.881078748998334,
+     "max": 0.9339466270012053,
+     "check": {
+      "rows": 10000,
+      "sums": {
+       "K10k": 49995000
+      },
+      "weighted": 25002110640,
+      "head": [
+       [
+        0
+       ],
+       [
+        7919
+       ],
+       [
+        5838
+       ]
+      ],
+      "tail": [
+       [
+        6243
+       ],
+       [
+        4162
+       ],
+       [
+        2081
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "ungroup": {
+    "load": 1.62548828125,
+    "loads": [
+     1.62548828125,
+     1.07177734375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.0036712110004373244,
+      0.0035832760004268494,
+      0.002245499000309792
+     ],
+     "median": 0.0035832760004268494,
+     "min": 0.002245499000309792,
+     "max": 0.0036712110004373244,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "K10k": 49995000000,
+       "A": 500010022956
+      },
+      "weighted": 25197136592620,
+      "head": [
+       [
+        0,
+        0
+       ],
+       [
+        0,
+        60601
+       ],
+       [
+        0,
+        21199
+       ]
+      ],
+      "tail": [
+       [
+        2081,
+        46649
+       ],
+       [
+        2081,
+        7247
+       ],
+       [
+        2081,
+        67848
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.0009667539998190477,
+      0.0009890559995255899,
+      0.000920418999157846
+     ],
+     "median": 0.0009667539998190477,
+     "min": 0.000920418999157846,
+     "max": 0.0009890559995255899,
+     "check": {
+      "rows": 10000000,
+      "sums": {
+       "K10k": 49995000000,
+       "A": 500010022956
+      },
+      "weighted": 25197136592620,
+      "head": [
+       [
+        0,
+        0
+       ],
+       [
+        0,
+        60601
+       ],
+       [
+        0,
+        21199
+       ]
+      ],
+      "tail": [
+       [
+        2081,
+        46649
+       ],
+       [
+        2081,
+        7247
+       ],
+       [
+        2081,
+        67848
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "doget_1m": {
+    "load": 1.62548828125,
+    "loads": [
+     1.62548828125,
+     1.07177734375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.055133899999418645,
+      0.0605483909994291,
+      0.05646234400046524
+     ],
+     "median": 0.05646234400046524,
+     "min": 0.055133899999418645,
+     "max": 0.0605483909994291,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "A": 50000971252,
+       "B": 71428773556.99998
+      }
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.026861927000936703,
+      0.025925681000444456,
+      0.021723743000620743
+     ],
+     "median": 0.025925681000444456,
+     "min": 0.021723743000620743,
+     "max": 0.026861927000936703,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 499999500000,
+       "A": 50000971252,
+       "B": 71428773557.0
+      }
+     }
+    },
+    "match": true
+   },
+   "sort_refreshing_append": {
+    "load": 1.62548828125,
+    "loads": [
+     1.62548828125,
+     1.07177734375
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      1.0025043719997484,
+      0.7670702769992204,
+      0.22954799099989032
+     ],
+     "median": 0.7670702769992204,
+     "min": 0.22954799099989032,
+     "max": 1.0025043719997484,
+     "check": {
+      "rows": 10004000,
+      "sums": {
+       "Id": 50040002998000,
+       "A": 500210064281,
+       "B": 714572947555.8555
+      },
+      "weighted": 25219778824111818,
+      "head": [
+       [
+        0,
+        0,
+        0.0
+       ],
+       [
+        100003,
+        0,
+        15957.857142857143
+       ],
+       [
+        200006,
+        0,
+        31915.714285714286
+       ]
+      ],
+      "tail": [
+       [
+        9714961,
+        100002,
+        109147.71428571429
+       ],
+       [
+        9814964,
+        100002,
+        125105.57142857143
+       ],
+       [
+        9914967,
+        100002,
+        141063.42857142858
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.03794506799931696,
+      0.03917365300003439,
+      0.03793342700009816
+     ],
+     "median": 0.03794506799931696,
+     "min": 0.03793342700009816,
+     "max": 0.03917365300003439,
+     "check": {
+      "rows": 10004000,
+      "sums": {
+       "Id": 50040002998000,
+       "A": 500210064281,
+       "B": 714572947555.8555
+      },
+      "weighted": 25219778824111818,
+      "head": [
+       [
+        0,
+        0,
+        0.0
+       ],
+       [
+        100003,
+        0,
+        15957.857142857143
+       ],
+       [
+        200006,
+        0,
+        31915.714285714286
+       ]
+      ],
+      "tail": [
+       [
+        9714961,
+        100002,
+        109147.71428571429
+       ],
+       [
+        9814964,
+        100002,
+        125105.57142857143
+       ],
+       [
+        9914967,
+        100002,
+        141063.42857142858
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "doget_sorted_refreshing": {
+    "load": 1.78271484375,
+    "loads": [
+     1.78271484375,
+     1.060546875
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.15870680100033496,
+      0.1221328209994681,
+      0.12407141299991054
+     ],
+     "median": 0.12407141299991054,
+     "min": 0.1221328209994681,
+     "max": 0.15870680100033496,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 5001897972845,
+       "A": 4997656236,
+       "B": 71426396298.28572
+      },
+      "weighted": 2520748767341736,
+      "head": [
+       [
+        0,
+        0,
+        0.0
+       ],
+       [
+        100003,
+        0,
+        15957.857142857143
+       ],
+       [
+        200006,
+        0,
+        31915.714285714286
+       ]
+      ],
+      "tail": [
+       [
+        2863165,
+        9996,
+        131579.14285714287
+       ],
+       [
+        2963168,
+        9996,
+        4679.428571428572
+       ],
+       [
+        3063171,
+        9996,
+        20637.285714285714
+       ]
+      ]
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.13441335799871013,
+      0.15411251099976653,
+      0.12880904299890972
+     ],
+     "median": 0.13441335799871013,
+     "min": 0.12880904299890972,
+     "max": 0.15411251099976653,
+     "check": {
+      "rows": 1000000,
+      "sums": {
+       "Id": 5001897972845,
+       "A": 4997656236,
+       "B": 71426396298.28572
+      },
+      "weighted": 2520748767341736,
+      "head": [
+       [
+        0,
+        0,
+        0.0
+       ],
+       [
+        100003,
+        0,
+        15957.857142857143
+       ],
+       [
+        200006,
+        0,
+        31915.714285714286
+       ]
+      ],
+      "tail": [
+       [
+        2863165,
+        9996,
+        131579.14285714287
+       ],
+       [
+        2963168,
+        9996,
+        4679.428571428572
+       ],
+       [
+        3063171,
+        9996,
+        20637.285714285714
+       ]
+      ]
+     }
+    },
+    "match": true
+   },
+   "ticking_append_where_sum_by": {
+    "load": 1.80029296875,
+    "loads": [
+     1.80029296875,
+     1.060546875
+    ],
+    "Deephaven": {
+     "status": "ok",
+     "times": [
+      0.23465855100039335,
+      0.20974381699943478,
+      0.23147173399956955
+     ],
+     "median": 0.23147173399956955,
+     "min": 0.20974381699943478,
+     "max": 0.23465855100039335,
+     "check": {
+      "rows": 50,
+      "correct": true
+     }
+    },
+    "Oxhaven": {
+     "status": "ok",
+     "times": [
+      0.03149895800015656,
+      0.03369106199897942,
+      0.03553016600017145
+     ],
+     "median": 0.03369106199897942,
+     "min": 0.03149895800015656,
+     "max": 0.03553016600017145,
+     "check": {
+      "rows": 50,
+      "correct": true
+     }
+    },
+    "match": true
+   }
+  }
+ }
+}
