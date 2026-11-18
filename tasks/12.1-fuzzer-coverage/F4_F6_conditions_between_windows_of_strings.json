@@ -1,0 +1,19 @@
+{
+ "format": 1,
+ "name": "F4_F6_conditions_between_windows_of_strings",
+ "description": "Task 12.1, F4 and F6. Rolling formulas over a window of strings. F4 (s1, s2): Java serves a read of a slice of the window; Oxhaven refuses the method call (a method of a vector of objects is not compiled yet). F6 (c1, c2, f): an element of a condition between two vectors of strings is a java.lang.Object to Java, in a rolling formula and in update alike; Oxhaven types it java.lang.String. The values are the same.",
+ "inputs": [
+  {"name": "t",
+   "columns": [{"name": "K", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "S2", "type": "string"}],
+   "rows": [[1, "a", "x"], [1, "b", "y"], [2, "c", null], [2, null, "w"]]}
+ ],
+ "operations": [
+  {"name": "s1", "op": "update_by", "source": "t", "by": [], "ops": [{"op": "rolling_formula_tick", "columns": ["U = S"], "args": {"formula": "each.subVector(0, 1)[0]", "formula_param": "each", "rev_ticks": 2, "fwd_ticks": 0}}]},
+  {"name": "s2", "op": "update_by", "source": "t", "by": [], "ops": [{"op": "rolling_formula_tick", "columns": ["U = S"], "args": {"formula": "(each.size() > 1 ? each : each.subVector(0, 1)).size()", "formula_param": "each", "rev_ticks": 2, "fwd_ticks": 0}}]},
+  {"name": "c1", "op": "update_by", "source": "t", "by": [], "ops": [{"op": "rolling_formula_tick", "columns": ["U = S"], "args": {"formula": "(each.size() > 1 ? each : each)[0]", "formula_param": "each", "rev_ticks": 2, "fwd_ticks": 0}}]},
+  {"name": "c2", "op": "update_by", "source": "t", "by": [], "ops": [{"op": "rolling_formula_tick", "columns": ["U"], "args": {"formula": "U = (S.size() > 1 ? S : S2)[0]", "formula_param": null, "rev_ticks": 2, "fwd_ticks": 0}}]},
+  {"name": "g", "op": "group_by", "source": "t", "by": ["K"]},
+  {"name": "f", "op": "update", "source": "g", "formulas": ["X = S[0]", "Y = (K > 1 ? S : S2)[0]"]}
+ ],
+ "results": [{"table": "s1"}, {"table": "s2"}, {"table": "c1"}, {"table": "c2"}, {"table": "f"}]
+}

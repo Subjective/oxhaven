@@ -304,12 +304,17 @@ def test_what_an_owner_item_or_a_finding_restricts_is_not_drawn():
             seen["aj of the shape of C1"] += kind == "aj" and op["right"] not in inputs
             assert kind == "aj" or op["right"] in inputs, where
     for family, runs in GENERATED.items():
+        if family == "all3":  # two seeds that drew a filter on `k` over a sort before V12
+            runs = runs + [fuzz.generate(seed, fuzz.THIRD_FAMILIES[family], "third")
+                           for seed in (724, 831)]
         for doc, predicted in runs:
             live = _live(doc)
             # V10: the columns `ungroup` is not asked to take, by table, and the tables that
-            # have one. V11: the tables that nothing reads.
+            # have one. V11: the tables that nothing reads. V12: the refreshing sort results
+            # and what is made from them.
             marked: dict[str, set[str]] = {}
             leaves = set()
+            rekeyed = set()
             for op in doc["operations"]:
                 kind, name = op["op"], op["name"]
                 types = dict(predicted[name])
@@ -326,12 +331,18 @@ def test_what_an_owner_item_or_a_finding_restricts_is_not_drawn():
                     seen["V10"] += bool(marked)
                     assert not marked.get(first), (family, doc["name"], op)
                 marked[name] = marks
+                if name in live and (kind == "sort" or first in rekeyed):
+                    rekeyed.add(name)
+                if first in rekeyed:
+                    for text in op.get("filters", []) + _filters(op):
+                        assert not re.search(r"\bk\b", text), (family, doc["name"], op)
                 assert not leaves.intersection(sc.references(op)), (family, doc["name"], op)
                 if kind == "update_by" and first in live and any(
                         operator["op"].startswith(COMPARING) and before[_source(pair)].startswith(LIST)
                         for operator in op["ops"] for pair in operator["columns"]):
                     leaves.add(name)
             seen["V11"] += len(leaves)
+            seen["V12"] += len(rekeyed)
     assert not {name: seen[name] for name in fuzz_third.RESTRICTIONS if seen[name] <= 5}, seen
     # What C1 keeps from raj is drawn for aj (PARITY.md, A13).
     assert seen["aj of the shape of C1"] > 5, seen

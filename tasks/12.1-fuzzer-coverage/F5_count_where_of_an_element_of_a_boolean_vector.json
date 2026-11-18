@@ -1,0 +1,16 @@
+{
+ "format": 1,
+ "name": "F5_count_where_of_an_element_of_a_boolean_vector",
+ "description": "Task 12.1, F5. A count-where filter that reads an element of a vector of Booleans, in update_by and in agg_by. Java serves it; Oxhaven refuses the filter (an element of a Boolean vector is compiled in a formula column and not in a filter).",
+ "inputs": [
+  {"name": "t",
+   "columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}],
+   "rows": [[1, true], [1, false], [2, null], [2, true], [3, false]]}
+ ],
+ "operations": [
+  {"name": "g", "op": "group_by", "source": "t", "by": ["K"]},
+  {"name": "u", "op": "update_by", "source": "g", "by": [], "ops": [{"op": "cum_count_where", "columns": ["N"], "args": {"filters": ["isNull(B[0])"]}}]},
+  {"name": "a", "op": "agg_by", "source": "g", "by": [], "aggs": [{"agg": "count_where", "column": "N", "args": {"filters": ["isNull(B[0])"]}}]}
+ ],
+ "results": [{"table": "u"}, {"table": "a"}]
+}

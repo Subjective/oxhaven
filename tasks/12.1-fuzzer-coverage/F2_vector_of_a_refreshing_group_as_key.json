@@ -1,0 +1,23 @@
+{
+ "format": 1,
+ "name": "F2_vector_of_a_refreshing_group_as_key",
+ "description": "Task 12.1, F2. Vector columns of a refreshing group_by result as group-by columns of agg_by, as select_distinct columns, as update_by buckets, and in the distinct aggregation. A vector of the reference is a view of its group, so when the step adds a row to the group of K 1 the key or value its operators hold has changed under them: they fail in the cycle (IllegalStateException: Missing value in probe; AggregationOperatorException: Failed to modify or remove data) or keep a stale value. Oxhaven's vectors are values and its results follow the groups.",
+ "inputs": [
+  {"name": "t", "ticking": {"key_columns": ["Id"]},
+   "columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "int32"}, {"name": "C", "type": "int32"}],
+   "rows": [[1, 1, 5], [2, 1, 6], [3, 2, 5], [4, 2, 6], [5, 3, 7]]}
+ ],
+ "operations": [
+  {"name": "g", "op": "group_by", "source": "t", "by": ["K"]},
+  {"name": "a", "op": "agg_by", "source": "g", "by": ["C"], "aggs": [{"agg": "count", "column": "N"}]},
+  {"name": "sd", "op": "select_distinct", "source": "g", "columns": ["C"]},
+  {"name": "u", "op": "update_by", "source": "g", "by": ["C"], "ops": [{"op": "cum_sum", "columns": ["X = K"]}]},
+  {"name": "d", "op": "agg_by", "source": "g", "by": [], "aggs": [{"agg": "distinct", "columns": ["D = C"]}]},
+  {"name": "dv", "op": "ungroup", "source": "d", "columns": ["D"]}
+ ],
+ "results": [{"table": "g"}, {"table": "a"}, {"table": "sd"}, {"table": "u"}, {"table": "dv"}],
+ "steps": [
+  {"actions": [{"action": "add", "table": "t", "rows": [[6, 1, 9]]}]},
+  {"actions": [{"action": "delete", "table": "t", "rows": [[3]]}]}
+ ]
+}

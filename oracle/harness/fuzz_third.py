@@ -59,6 +59,7 @@ Not generated, each for a stated reason:
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .fuzz import FLOATS, INT_BITS, NUMERIC, ORDERED_STAMPS, _Table
@@ -102,6 +103,9 @@ RESTRICTIONS: dict[str, str] = {
     "V11": "pick_table, pick: on a refreshing table the result of a minimum or maximum of "
            "vectors is not the source of a later operation (F8: the reference's result holds "
            "views of the groups, and what reads it is not told when a group changes)",
+    "V12": "filter: no filter on the row key `k` over a refreshing sort result or a table "
+           "made from one (F9: the servers give the rows of such a result different row keys, "
+           "which PARITY.md A4 does not compare)",
     "C1": "build_asof: no raj with exact match columns of a static left table and a "
           "refreshing right table that is not an input table (F1: the reference fails "
           "the result when the right table reports a change that touches neither a match "
@@ -121,6 +125,7 @@ _CELL_KEEPING = frozenset({
     "update_view", "lazy_update", "update_by", "where_in", "snapshot",
 })
 _VECTOR_OPERATIONS = ("update_by", "agg_by", "select_distinct")
+_ROW_KEY = re.compile(r"\bk\b")
 
 
 class _Third(_Second):
@@ -134,6 +139,7 @@ class _Third(_Second):
         # Per table: its columns that `ungroup` is not asked to take (V6, V10).
         self.untyped: dict[str, set[str]] = {}
         self.leaves: set[str] = set()  # tables that no later operation reads (V11)
+        self.rekeyed: set[str] = set()  # refreshing sort results and what is made from them
 
     # ------------------------------------------------------------ bookkeeping
 
@@ -159,6 +165,8 @@ class _Third(_Second):
         self.solid[name] = {column for column in solid if types[column].startswith(LIST)}
         untyped: set[str] = set()
         first = self.tables[op.get("source") or op.get("left") or name]
+        if self.tables[name].live and (kind == "sort" or first.name in self.rekeyed):
+            self.rekeyed.add(name)  # V12
         untyped |= {column for column in self.untyped.get(first.name, ())
                     if types.get(column) == first.type_of(column)
                     or (kind == "ungroup" and column in types)}
@@ -244,6 +252,12 @@ class _Third(_Second):
                                     "fwd_ticks": rng.choice([0, 0, 1])}}]},
                  columns, source.rows)
         return True
+
+    def filter(self, table: _Table) -> str | None:
+        made = super().filter(table)
+        if made is not None and table.name in self.rekeyed and _ROW_KEY.search(made):
+            return "i > 1"  # V12
+        return made
 
     def pick_table(self) -> _Table:
         if self.kind in _VECTOR_OPERATIONS and self.chance(0.6):
