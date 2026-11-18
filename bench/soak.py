@@ -148,6 +148,16 @@ class Server:
             fds = len(os.listdir(f"/proc/{self.pid}/fd"))
         except OSError:
             return None
+        # The part of the resident memory that is in transparent huge pages, which the
+        # kernel gives and takes in pieces of 2 MB (docs/SOAK.md, "Memory").
+        huge = 0
+        try:
+            with open(f"/proc/{self.pid}/smaps_rollup") as f:
+                for line in f:
+                    if line.startswith("AnonHugePages:"):
+                        huge = int(line.split()[1])
+        except OSError:
+            pass
         rss = hwm = threads = 0
         for line in status.splitlines():
             if line.startswith("VmRSS:"):
@@ -161,7 +171,7 @@ class Server:
         rest = stat[stat.rindex(")") + 2:].split()
         ticks = os.sysconf("SC_CLK_TCK")
         return {
-            "rss_kb": rss, "hwm_kb": hwm, "threads": threads, "fds": fds,
+            "rss_kb": rss, "huge_kb": huge, "hwm_kb": hwm, "threads": threads, "fds": fds,
             "cpu_s": (int(rest[11]) + int(rest[12])) / ticks,
         }
 
@@ -186,6 +196,18 @@ class Server:
         if self.alive():
             self.proc.kill()
             self.proc.wait()
+
+
+def control_work() -> float:
+    """The processor time this thread needs for a fixed piece of work that has nothing to do
+    with the server. The machine decides it, so it tells a server that needs more processor
+    time for a round from a machine that gives less for the same time (docs/SOAK.md,
+    "Liveness")."""
+    t0 = time.thread_time()
+    x = 0
+    for i in range(300_000):
+        x += i * i
+    return time.thread_time() - t0
 
 
 # ---------------------------------------------------------------------------------------------
@@ -935,6 +957,16 @@ def judge(rounds: list[dict], profile: Profile, subscriber: dict, cycle_ms: int)
     }
     if growth > profile.cpu_growth:
         violate("liveness", "processor time per round climbs", out["cpu"])
+    # Reported beside the two trends and not judged: what the machine did meanwhile.
+    control = [r["control_s"] for r in steady if r.get("control_s") is not None]
+    if control:
+        out["control_ms"] = {"median_first_third": round(statistics.median(third(control, 0)) * 1000, 1),
+                             "median_last_third": round(statistics.median(third(control, 2)) * 1000, 1)}
+    huge = [r["huge_kb"] / 1024 for r in steady if r.get("huge_kb") is not None]
+    if huge:
+        out["huge_pages_mb"] = {"median_first_third": round(statistics.median(third(huge, 0)), 1),
+                                "median_last_third": round(statistics.median(third(huge, 2)), 1),
+                                "min": round(min(huge), 1), "max": round(max(huge), 1)}
 
     for what in ("fds", "threads"):
         values = [r[what] for r in steady]
@@ -1148,7 +1180,8 @@ def run_soak(args: argparse.Namespace) -> int:
                     cycles = {"cycles": rounds[-1]["cycles"] if rounds else 0, "cycle_gap_s": 0.0}
             rounds.append({"t": run.now(), "work_s": round(work, 3), "barrier_s": round(barrier_s, 4), **cycles,
                            "cpu_round_s": round(sample["cpu_s"] - last_cpu, 3), **sample,
-                           "updates": stats["updates"], "load": os.getloadavg()[0]})
+                           "updates": stats["updates"], "load": os.getloadavg()[0],
+                           "control_s": round(control_work(), 4)})
             last_cpu = sample["cpu_s"]
             if n % 15 == 0:
                 print(f"t={run.now():7.0f}s round {n} rss={sample['rss_kb'] / 1024:.1f}MB cpu={sample['cpu_s']:.0f}s "
@@ -1210,8 +1243,13 @@ def print_summary(result: dict) -> None:
         print(f"  subscriber: {sb['updates']} updates, longest gap {sb['max_gap_s']}s, furthest behind {sb['max_lag_s']}s")
         print(f"  rss MB: start {r['start']}, after warm-up {r['after_warmup']}, end {r['end']}, peak {r['peak']}, "
               f"slope {r['slope_mb_per_hour']} MB/h (allowed {r['allowed_mb_per_hour']})")
+        hp, ct = s.get("huge_pages_mb"), s.get("control_ms")
+        if hp:
+            print(f"  of the rss, in huge pages: {hp['median_first_third']} -> {hp['median_last_third']} MB "
+                  f"(between {hp['min']} and {hp['max']})")
         print(f"  cpu: {c['total_s']}s, per round {c['per_round_first_third_s']}s -> {c['per_round_last_third_s']}s "
-              f"(growth {c['growth_over_window']:+.1%}, allowed {c['allowed_growth']:.0%})")
+              f"(growth {c['growth_over_window']:+.1%}, allowed {c['allowed_growth']:.0%})"
+              + (f"; the driver's fixed work {ct['median_first_third']} -> {ct['median_last_third']} ms" if ct else ""))
         print(f"  barrier: median {b['median'] * 1000:.1f}ms, max {b['max'] * 1000:.0f}ms; "
               f"fds {s['fds']['baseline']:.0f} -> {s['fds']['last_third']:.0f}, threads {s['threads']['baseline']:.0f} -> {s['threads']['last_third']:.0f}")
     sd = result.get("shutdown", {})
