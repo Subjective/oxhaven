@@ -731,6 +731,56 @@ fn encoded_type(name: &str, column_type: &ColumnType) -> Result<DataType, SortEr
     })
 }
 
+/// The cells of a column of objects in Arrow's row format, whose bytes order as Java's
+/// `compareTo` of the cells: for `merge_sorted`, which compares the boxed keys of a column.
+/// Nulls are encoded first; whoever compares two cells checks for null first.
+pub(crate) struct ComparableCells {
+    column_type: ColumnType,
+    converter: RowConverter,
+}
+
+impl ComparableCells {
+    /// `None` for a type whose cells are not `Comparable` objects that this orders: the
+    /// primitive types and `String`, which a caller compares itself, and `Period`,
+    /// `ZoneId`, objects, tables, arrays and vectors of these, which Java fails to compare
+    /// (`ClassCastException`).
+    ///
+    /// Behavior: java.time.LocalDate#compareTo, LocalTime#compareTo,
+    /// LocalDateTime#compareTo, Duration#compareTo, java.lang.Enum#compareTo,
+    /// java.math.BigDecimal#compareTo, java.math.BigInteger#compareTo,
+    /// java.time.chrono.ChronoZonedDateTime#compareTo, io.deephaven.vector.IntVector#compareTo
+    /// and ObjectVector#compareTo
+    pub(crate) fn new(column_type: &ColumnType) -> Option<Self> {
+        let taken = match column_type {
+            ColumnType::LocalDate
+            | ColumnType::LocalTime
+            | ColumnType::LocalDateTime
+            | ColumnType::Duration
+            | ColumnType::DayOfWeek
+            | ColumnType::BigDecimal
+            | ColumnType::BigInteger
+            | ColumnType::ZonedDateTime => true,
+            ColumnType::Vector(element) => is_comparable_element(element),
+            _ => false,
+        };
+        if !taken {
+            return None;
+        }
+        let key_type = encoded_type("", column_type).ok()?;
+        let converter = RowConverter::new(vec![SortField::new(key_type)]).ok()?;
+        Some(Self {
+            column_type: column_type.clone(),
+            converter,
+        })
+    }
+
+    /// The rows of `values`, cells of this column type.
+    pub(crate) fn rows(&self, values: &ArrayRef) -> Result<Rows, TableFailure> {
+        let keys = comparable(values, &self.column_type, false)?;
+        self.converter.convert_columns(&[keys]).map_err(failure)
+    }
+}
+
 /// The Arrow type of the sort keys of a vector or an array whose elements have keys of
 /// `element`: a list, which Arrow's row format orders element by element, a list that is
 /// the start of another first, a null list first (or last, descending).
