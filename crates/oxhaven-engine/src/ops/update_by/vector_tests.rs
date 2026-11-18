@@ -807,15 +807,6 @@ fn objects_formula(text: &str, token: Option<&str>, columns: &[&str]) -> Result<
     }
 }
 
-/// Seen on Deephaven 42.9 over the table of [`objects_formula`]: `len` of a condition
-/// between two windows of strings throws `ClassCastException` for the `Object[]` the
-/// window gives, for every row.
-#[test]
-#[should_panic(expected = "ObjectRingBufferVectorWrapper#toArray")]
-fn len_of_a_condition_between_windows_of_objects_is_unported() {
-    let _ = objects_formula("R = len(I[0] > 1 ? S : T)", None, &[]);
-}
-
 /// Seen on Deephaven 42.9 over the table of [`objects_formula`]: `(S.size() > 1 ? I :
 /// J)[0]` is `0 0 0 1 2`, `(S.size() < 2 ? I : J).get(0)` `0 0 0 10 20`, the nested
 /// condition `0 0 0 1 2`, and the guarded `[1]` `-1 1 1 2 3`; `[1]` and `.get(2)` without
@@ -854,6 +845,55 @@ fn a_read_of_a_window_chosen_by_a_condition_reads_the_chosen_window() {
         ),
         Ok("-1 1 1 2 3".to_string())
     );
+}
+
+/// Seen on Deephaven 42.9 over the table of [`objects_formula`]: a read of a condition
+/// between a window and a slice of one, a slice of a condition between windows, and a
+/// library function of a condition read the vector the condition chose, and fail where a
+/// read of it fails (`NoSuchElementException`); `len` of a condition between windows of
+/// strings fails as `len` of one does (`ClassCastException`).
+///
+/// Behavior: IntRingBufferVectorWrapper#get, IntVectorSlice#get, Basic#first and Basic#last
+/// over the vector a condition chose
+#[test]
+fn a_read_of_a_condition_between_windows_and_slices_reads_the_chosen_one() {
+    let read = |text: &str| objects_formula(text, None, &[]);
+    for (text, expected) in [
+        ("R = (I[0] > 1 ? I : I.subVector(0, 1))[0]", "0 0 0 1 2"),
+        ("R = (I[0] > 1 ? I : J).subVector(0, 1)[0]", "0 0 0 10 2"),
+        (
+            "R = (I[0] > 1 ? I : (I[0] > 0 ? J : I.subVector(0, 1)))[0]",
+            "0 0 0 10 2",
+        ),
+        ("R = (I[0] > 1 ? I : I.subVector(0, 1)).size()", "1 1 1 1 3"),
+        ("R = max(I[0] > 1 ? I : I.subVector(0, 2))", "0 1 1 2 4"),
+        (
+            "R = sum((I[0] > 1 ? I : J).subVector(1, 3))",
+            "null 10 30 50 7",
+        ),
+        ("R = first(I[0] > 1 ? I : J)", "0 0 0 10 2"),
+        ("R = last(I[0] > 1 ? I : J)", "0 10 20 30 4"),
+    ] {
+        assert_eq!(read(text), Ok(expected.to_string()), "{text}");
+    }
+    let outside = read("R = J[1]");
+    assert!(outside.is_err());
+    for text in [
+        "R = (I[0] > 1 ? I : J).subVector(1, 2)[0]",
+        "R = (I[0] > 0 ? I : I.subVector(1, 2))[0]",
+        "R = first(I[0] > 1 ? I : I.subVector(1, 3))",
+        "R = (I[0] > 1 ? S : T)[1]",
+    ] {
+        assert_eq!(read(text), outside, "{text}");
+    }
+    let array_cast = read("R = len(S)");
+    assert!(array_cast.is_err());
+    for text in [
+        "R = len(I[0] > 1 ? S : T)",
+        "R = len(I[0] > 1 ? S : (I[0] > 0 ? T : S))",
+    ] {
+        assert_eq!(read(text), array_cast, "{text}");
+    }
 }
 
 /// The table of the count-where tests, `group_by("B")` of nine rows in Java: `E` is
