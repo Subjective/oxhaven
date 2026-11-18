@@ -202,3 +202,68 @@ fn zoned_date_times_match_with_their_zone_and_range_by_compare_to() {
     assert_eq!(kept(&table, "Z < '2024-03-10T09:00:00 Asia/Tokyo'"), [2, 5]);
     assert_eq!(kept(&table, "Z >= null"), [0, 1, 2, 3, 4, 5]);
 }
+
+/// The table of the 11.8 probes: `T` is 2024-01-01T00:00:00Z plus `i` hours, null in row 2.
+fn hours_table() -> Arc<dyn Table> {
+    let base = 1_704_067_200_000_000_000i64;
+    let t = (0..4)
+        .map(|i| (i != 2).then_some(base + i * HOUR))
+        .collect::<TimestampNanosecondArray>()
+        .with_data_type(ColumnType::Instant.arrow_type());
+    static_table(vec![("T", ColumnType::Instant, Arc::new(t))])
+}
+
+/// Behavior: the `Instant` convertor of MatchFilter.ColumnTypeConvertorFactory#getConvertor
+/// (DateTimeUtils#parseInstant reads any instant, a year of more than four digits after a
+/// sign among them) and ObjectChunkMatchFilterFactory, which compares instants with
+/// `Objects.equals`; RangeFilter#init, whose DateTimeUtils#epochNanos fails past the
+/// instants a column holds. Each answer is what Java 42.9 gave for the same table.
+#[test]
+fn an_instant_no_column_holds_matches_no_cell() {
+    let t = hours_table();
+    let none = [0i64; 0];
+    for (filter, rows) in [
+        ("T == '+10000-01-01T00:00:00 UTC'", &none[..]),
+        ("T != '+10000-01-01T00:00:00 UTC'", &[0, 1, 2, 3]),
+        ("T in '+10000-01-01T00:00:00 UTC'", &none),
+        ("T not in '+10000-01-01T00:00:00 UTC', null", &[0, 1, 3]),
+        (
+            "T in '+10000-01-01T00:00:00Z', '2024-01-01T01:00:00Z'",
+            &[1],
+        ),
+        ("T == '2263-01-01T00:00:00 UTC'", &none),
+        ("T != '2263-01-01T00:00:00 UTC'", &[0, 1, 2, 3]),
+        ("T == '1600-01-01T00:00:00 UTC'", &none),
+        ("T == '-0001-01-01T00:00:00 UTC'", &none),
+        ("T == '2024-01-01T01:00:00 UTC'", &[1]),
+    ] {
+        assert_eq!(kept(&t, filter), rows, "{filter}");
+    }
+    for filter in [
+        "T < '+10000-01-01T00:00:00 UTC'",
+        "T >= '+10000-01-01T00:00:00 UTC'",
+        "T > '2263-01-01T00:00:00 UTC'",
+        "T > '+10000-01-01T00:00:00Z'",
+        "T > '+0999999999-12-31T23:59:59.999999999 UTC'",
+        "'+10000-01-01T00:00:00 UTC' > T",
+        // years Java does not read
+        "T > '10000-01-01T00:00:00 UTC'",
+        "T > '+2024-01-01T00:00:00 UTC'",
+        "T > '+1000000000-01-01T00:00:00 UTC'",
+        "T > '+10000-01-01 UTC'",
+        "T == '+2024-01-01T00:00:00 UTC'",
+    ] {
+        refused(&t, filter);
+    }
+}
+
+/// Java turns an instant before 1677 into nanoseconds by a multiplication that wraps
+/// around: seen on Java 42.9, `T > '1600-01-01T00:00:00 UTC'` keeps none of these rows
+/// and `T < ...` all of them, the null included.
+#[test]
+#[should_panic(
+    expected = "unported: io.deephaven.engine.table.impl.select.RangeFilter#makeInstantRangeFilter"
+)]
+fn a_range_filter_with_an_instant_before_every_column_is_not_ported() {
+    kept(&hours_table(), "T > '1600-01-01T00:00:00 UTC'");
+}

@@ -778,7 +778,9 @@ mod tests {
         assert_eq!(
             literal("'+12024-01-01T00:00:00 UTC'"),
             Err(FormulaError::Unsupported(
-                "time literal '+12024-01-01T00:00:00 UTC'".into()
+                "time literal '+12024-01-01T00:00:00 UTC' outside the range of a 64-bit \
+                 nanosecond timestamp"
+                    .into()
             ))
         );
         // Java knows no zone `NY`.

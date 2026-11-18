@@ -138,6 +138,93 @@ fn control(c: char) -> Option<char> {
     })
 }
 
+/// The character of an escape that names it by number, `escaped` being the letter after
+/// the backslash and `chars[*i]` what follows it: `\xhh` (two hexadecimal digits),
+/// `\x{h...h}` (a code point), `\uhhhh` (a UTF-16 unit; a high surrogate followed by
+/// `\u` and a low one is the pair's code point) and `\0n`, `\0nn`, `\0mnn` (octal, `m`
+/// at most 3). Moves `*i` past the escape. `None` when `escaped` is none of `x`, `u`, `0`.
+/// A surrogate left alone names no character a string here can hold, and is not ported.
+///
+/// Behavior: the escapes of java.util.regex.Pattern, as its documentation lists them;
+/// what JDK 21 answers and the messages of its errors are in `java_patterns.txt`
+fn numeric_escape(chars: &[char], i: &mut usize, escaped: char) -> Result<Option<char>, String> {
+    let hex_digits = |from: usize, count: usize| -> Option<u32> {
+        let digits: String = chars.get(from..from + count)?.iter().collect();
+        if digits.chars().all(|c| c.is_ascii_hexdigit()) {
+            u32::from_str_radix(&digits, 16).ok()
+        } else {
+            None
+        }
+    };
+    let code = match escaped {
+        'x' if chars.get(*i) == Some(&'{') => {
+            let illegal = || "Illegal hexadecimal escape sequence".to_string();
+            let close = chars[*i..]
+                .iter()
+                .position(|&c| c == '}')
+                .ok_or("Unclosed hexadecimal escape sequence")?;
+            let digits: String = chars[*i + 1..*i + close].iter().collect();
+            if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_hexdigit()) {
+                return Err(illegal());
+            }
+            let code = match digits.trim_start_matches('0') {
+                "" => 0,
+                significant if significant.len() <= 6 => {
+                    u32::from_str_radix(significant, 16).map_err(|_| illegal())?
+                }
+                _ => u32::MAX,
+            };
+            if code > 0x10FFFF {
+                return Err("Hexadecimal codepoint is too big".to_string());
+            }
+            *i += close + 1;
+            code
+        }
+        'x' => {
+            let code = hex_digits(*i, 2).ok_or("Illegal hexadecimal escape sequence")?;
+            *i += 2;
+            code
+        }
+        'u' => {
+            let code = hex_digits(*i, 4).ok_or("Illegal Unicode escape sequence")?;
+            *i += 4;
+            let low = (chars.get(*i..*i + 2) == Some(&['\\', 'u'][..]))
+                .then(|| hex_digits(*i + 2, 4))
+                .flatten()
+                .filter(|low| (0xDC00..=0xDFFF).contains(low));
+            match low {
+                Some(low) if (0xD800..=0xDBFF).contains(&code) => {
+                    *i += 6;
+                    0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00)
+                }
+                _ => code,
+            }
+        }
+        '0' => {
+            let octal = |at: usize| chars.get(at).and_then(|c| c.to_digit(8));
+            let first = octal(*i).ok_or("Illegal octal escape sequence")?;
+            let mut code = first;
+            *i += 1;
+            let longest = if first <= 3 { 2 } else { 1 };
+            for _ in 0..longest {
+                match octal(*i) {
+                    Some(digit) => {
+                        code = code * 8 + digit;
+                        *i += 1;
+                    }
+                    None => break,
+                }
+            }
+            code
+        }
+        _ => return Ok(None),
+    };
+    match char::from_u32(code) {
+        Some(c) => Ok(Some(c)),
+        None => not_ported(&format!("the surrogate \\u{code:04X} alone")),
+    }
+}
+
 /// A range inside a class, with the other case of its ASCII letters when case is ignored.
 ///
 /// Behavior: java.util.regex.Pattern#CIRange
@@ -195,12 +282,16 @@ fn class(chars: &[char], at: usize, ignore_case: bool, out: &mut String) -> Resu
                     }
                     continue;
                 }
-                match control(escaped) {
-                    Some(c) => c,
-                    None if escaped.is_alphanumeric() => {
-                        not_ported(&format!("the escape \\{escaped} in a character class"))
+                if let Some(c) = numeric_escape(chars, &mut i, escaped)? {
+                    c
+                } else {
+                    match control(escaped) {
+                        Some(c) => c,
+                        None if escaped.is_alphanumeric() => {
+                            not_ported(&format!("the escape \\{escaped} in a character class"))
+                        }
+                        None => escaped,
                     }
-                    None => escaped,
                 }
             }
             c => c,
@@ -259,22 +350,109 @@ fn counted(chars: &[char], at: usize, out: &mut String) -> Result<usize, String>
     Ok(at + close + 1)
 }
 
+/// The flags in force at a point of a pattern: `CASE_INSENSITIVE` and `DOTALL`, which the
+/// filter sets and inline flags change until the end of the group they are in.
+#[derive(Clone, Copy)]
+struct Flags {
+    ignore_case: bool,
+    dotall: bool,
+}
+
+/// What follows `(` at `chars[at]`.
+enum GroupStart {
+    /// A group, capturing or not, with the flags inside it; and the index after its opening.
+    Group(Flags, usize),
+    /// `(?flags)`: the flags from here to the end of the enclosing group; and the index after
+    /// the `)`.
+    Flags(Flags, usize),
+}
+
+/// Reads what follows a `(` at `chars[at]`: a plain group, `(?:`, a named group
+/// `(?<name>`, or inline flags `(?is-is)` and `(?is-is:`. Only `i` and `s` are read;
+/// the other flags Java knows (`d`, `m`, `u`, `x`, `c`, `U`) and lookaround, atomic groups
+/// and the like are not ported. A named group takes a name that starts with a US-ASCII
+/// letter followed by letters and digits, once per pattern.
+///
+/// Behavior: the groups and flags of java.util.regex.Pattern, as its documentation lists
+/// them; what JDK 21 answers and the messages of its errors are in `java_patterns.txt`
+fn group_start(
+    chars: &[char],
+    at: usize,
+    flags: Flags,
+    names: &mut Vec<String>,
+) -> Result<GroupStart, String> {
+    if chars.get(at) != Some(&'?') {
+        return Ok(GroupStart::Group(flags, at));
+    }
+    let mut i = at + 1;
+    match chars.get(i) {
+        Some(':') => return Ok(GroupStart::Group(flags, i + 1)),
+        Some('<') if matches!(chars.get(i + 1), Some('=' | '!')) => not_ported("lookbehind"),
+        Some('<') => {
+            i += 1;
+            let start = i;
+            if !chars.get(i).is_some_and(char::is_ascii_alphabetic) {
+                return Err("capturing group name does not start with a Latin letter".into());
+            }
+            while chars.get(i).is_some_and(char::is_ascii_alphanumeric) {
+                i += 1;
+            }
+            if chars.get(i) != Some(&'>') {
+                return Err("named capturing group is missing trailing '>'".into());
+            }
+            let name: String = chars[start..i].iter().collect();
+            if names.contains(&name) {
+                return Err(format!("Named capturing group <{name}> is already defined"));
+            }
+            names.push(name);
+            return Ok(GroupStart::Group(flags, i + 1));
+        }
+        Some('=' | '!') => not_ported("lookahead"),
+        Some('>') => not_ported("an atomic group"),
+        _ => {}
+    }
+    let mut flags = flags;
+    let mut on = true;
+    loop {
+        let c = *chars.get(i).ok_or("Unknown inline modifier")?;
+        i += 1;
+        match c {
+            'i' => flags.ignore_case = on,
+            's' => flags.dotall = on,
+            '-' if on => on = false,
+            ')' => return Ok(GroupStart::Flags(flags, i)),
+            ':' => return Ok(GroupStart::Group(flags, i)),
+            'd' | 'm' | 'u' | 'x' | 'c' | 'U' => not_ported(&format!("the inline flag {c}")),
+            _ => return Err("Unknown inline modifier".into()),
+        }
+    }
+}
+
 /// A regular expression in Java's syntax, compiled with `DOTALL` and optionally
 /// `CASE_INSENSITIVE`, as a `regex` crate expression that matches the same whole strings.
 ///
 /// The accepted subset is literals, `.`, bracket classes of literals and ranges, the
-/// predefined classes `\d \w \s` and their negations, groups, alternation, the greedy and
-/// lazy quantifiers, `\Q...\E`, a leading `^` and a trailing `$`. An invalid pattern is an
-/// error; a valid construct outside the subset is `unported!`.
+/// predefined classes `\d \w \s` and their negations, groups (named ones too, which match
+/// as any group does when only the whole string counts), the inline flags `i` and `s`,
+/// alternation, the greedy and lazy quantifiers, `\Q...\E`, escapes by number (`\x`, `\u`,
+/// `\0`), `^` (the start of the input, as without `MULTILINE`) and a trailing `$`. An
+/// invalid pattern is an error; a valid construct outside the subset is `unported!`.
 ///
 /// Behavior: java.util.regex.Pattern#compile(String, int), java.util.regex.Matcher#matches
 pub(super) fn translate(pattern: &str, ignore_case: bool) -> Result<String, String> {
     let chars: Vec<char> = pattern.chars().collect();
     let mut out = String::new();
     let mut i = 0;
-    let mut depth = 0usize;
+    let mut flags = Flags {
+        ignore_case,
+        dotall: true,
+    };
+    // The flags to restore at the end of each open group.
+    let mut outer: Vec<Flags> = Vec::new();
+    let mut names = Vec::new();
     // Whether the last thing translated is something a quantifier can apply to.
     let mut atom = false;
+    let quantifier = |c: Option<&char>| matches!(c, Some('*' | '+' | '?' | '{'));
     while i < chars.len() {
         let c = chars[i];
         i += 1;
@@ -291,47 +469,53 @@ pub(super) fn translate(pattern: &str, ignore_case: bool) -> Result<String, Stri
                         ""
                     };
                     out.push_str(&format!("[{negate}{members}]"));
+                } else if let Some(c) = numeric_escape(&chars, &mut i, escaped)? {
+                    literal(&mut out, c, flags.ignore_case);
                 } else if let Some(c) = control(escaped) {
                     out.push_str(&hex(c));
                 } else if escaped == 'Q' {
+                    // Java removes the quotation before it reads the pattern, quoting each
+                    // character: a quantifier after it applies to the last one, and an
+                    // empty one leaves nothing behind.
                     let rest = &chars[i..];
                     let end = rest
                         .windows(2)
                         .position(|w| w == ['\\', 'E'])
                         .unwrap_or(rest.len());
-                    if end == 0 {
-                        not_ported("an empty \\Q\\E quotation");
-                    }
-                    out.push_str("(?:");
                     rest[..end]
                         .iter()
-                        .for_each(|&c| literal(&mut out, c, ignore_case));
-                    out.push(')');
+                        .for_each(|&c| literal(&mut out, c, flags.ignore_case));
                     i = (i + end + 2).min(chars.len());
+                    if end == 0 {
+                        continue;
+                    }
                 } else if escaped.is_alphanumeric() {
                     not_ported(&format!("the escape \\{escaped}"));
                 } else {
-                    literal(&mut out, escaped, ignore_case);
+                    literal(&mut out, escaped, flags.ignore_case);
                 }
                 atom = true;
             }
             '[' => {
-                i = class(&chars, i - 1, ignore_case, &mut out)?;
+                i = class(&chars, i - 1, flags.ignore_case, &mut out)?;
                 atom = true;
             }
-            '(' => {
-                if chars.get(i) == Some(&'?') {
-                    if chars.get(i + 1) != Some(&':') {
-                        not_ported("a group that starts with (? other than (?:");
-                    }
-                    i += 2;
+            '(' => match group_start(&chars, i, flags, &mut names)? {
+                GroupStart::Group(inner, after) => {
+                    outer.push(flags);
+                    flags = inner;
+                    i = after;
+                    out.push_str("(?:");
+                    atom = false;
                 }
-                out.push_str("(?:");
-                depth += 1;
-                atom = false;
-            }
+                GroupStart::Flags(changed, after) => {
+                    flags = changed;
+                    i = after;
+                    atom = false;
+                }
+            },
             ')' => {
-                depth = depth.checked_sub(1).ok_or("Unmatched closing ')'")?;
+                flags = outer.pop().ok_or("Unmatched closing ')'")?;
                 out.push(')');
                 atom = true;
             }
@@ -340,7 +524,11 @@ pub(super) fn translate(pattern: &str, ignore_case: bool) -> Result<String, Stri
                 atom = false;
             }
             '.' => {
-                out.push_str("(?s:.)");
+                out.push_str(if flags.dotall {
+                    "(?s:.)"
+                } else {
+                    "[^\\n\\r\\x{85}\\x{2028}\\x{2029}]"
+                });
                 atom = true;
             }
             '*' | '+' | '?' | '{' => {
@@ -365,16 +553,20 @@ pub(super) fn translate(pattern: &str, ignore_case: bool) -> Result<String, Stri
                 }
                 atom = false;
             }
-            '^' if i == 1 && !matches!(chars.get(i), Some('*' | '+' | '?' | '{')) => {}
+            // Without `MULTILINE`, `^` is the start of the input wherever it stands.
+            '^' if !quantifier(chars.get(i)) => {
+                out.push_str("\\A");
+                atom = false;
+            }
             '$' if i == chars.len() => {}
             '^' | '$' => not_ported(&format!("{c} inside the pattern")),
             c => {
-                literal(&mut out, c, ignore_case);
+                literal(&mut out, c, flags.ignore_case);
                 atom = true;
             }
         }
     }
-    if depth != 0 {
+    if !outer.is_empty() {
         return Err("Unclosed group".to_string());
     }
     Ok(format!("\\A(?:{out})\\z"))
@@ -466,7 +658,30 @@ mod tests {
     #[test]
     fn constructs_outside_the_subset_are_unported() {
         for pattern in [
-            "(?=a)", "a\\b", "a*+", "\\1", "a^b", "a$b", "[a[b]]", "[a&&b]", "\\p{L}", "(?i)a",
+            "(?=a)",
+            "a\\b",
+            "a*+",
+            "\\1",
+            "a$b",
+            "[a[b]]",
+            "[a&&b]",
+            "\\p{L}",
+            "(?<=a)b",
+            "(?<!a)b",
+            "(?!a)",
+            "(?>a)",
+            "(?x)a",
+            "(?m)a",
+            "(?d)a",
+            "(?u)a",
+            "(?U)a",
+            "(?c)a",
+            "(?-m)a",
+            "(?<n>a)\\k<n>",
+            "\\uD83D",
+            "\\x{DC00}",
+            "^*",
+            "(?i)(a)\\1",
         ] {
             let result = std::panic::catch_unwind(|| full_match(pattern, false).is_ok());
             assert!(result.is_err(), "{pattern} must be unported");
@@ -504,13 +719,23 @@ mod tests {
     /// pattern filters build. Each line is a kind (`M`: a regular expression with `DOTALL`
     /// and `Matcher#matches`; `A` and `L`: the any and all searches of `includes` with
     /// `Matcher#find`), whether case is ignored, the pattern or the strings searched for,
-    /// the value, and the answer. Text is UTF-8 in hexadecimal.
+    /// the value, and the answer; or `E`, whether case is ignored, and a regular expression
+    /// that Java refuses to compile. Text is UTF-8 in hexadecimal.
     #[test]
     fn patterns_answer_as_java_regular_expressions_answer() {
         let mut checked = 0;
         for line in include_str!("java_patterns.txt").lines() {
             let fields: Vec<&str> = line.split(' ').collect();
             let ignore_case = fields[1] == "1";
+            if fields[0] == "E" {
+                let pattern = unhex(fields[2]);
+                assert!(
+                    full_match(&pattern, ignore_case).is_err(),
+                    "{line}: {pattern:?}"
+                );
+                checked += 1;
+                continue;
+            }
             let (pattern, value) = (unhex(fields[2]), unhex(fields[3]));
             let needles = || {
                 pattern
@@ -530,6 +755,6 @@ mod tests {
             );
             checked += 1;
         }
-        assert_eq!(checked, 6512);
+        assert_eq!(checked, 14152);
     }
 }
