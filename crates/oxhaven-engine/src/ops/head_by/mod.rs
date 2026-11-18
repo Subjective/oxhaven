@@ -37,6 +37,7 @@ mod corpus;
 #[cfg(test)]
 mod tests;
 
+use crate::ops::agg;
 use crate::ops::ungroup::keys::MINIMUM_BASE;
 use crate::ops::ungroup::operator::{ungroup_arrays, Ungrouped};
 use crate::table::{tracked_source, QueryTable, TableSpec};
@@ -187,70 +188,27 @@ pub fn tail_by(
 }
 
 /// The name Java prints for the class of the elements of an array, which is the name of
-/// a primitive, and `class` and the binary name of any other class: `int`,
-/// `class java.lang.String`, `class [I` for an `int[]`.
+/// a primitive, and `class` (`interface` for a vector) and the binary name of any other
+/// class: `int`, `class java.lang.String`, `class [I` for an `int[]`,
+/// `class [Ljava.time.LocalDate;` for a `LocalDate[][]`.
 ///
 /// Behavior: `java.lang.Class#toString` of the `getComponentType()` in
 /// io.deephaven.engine.table.impl.by.ChunkedOperatorAggregationHelper#aggregation
 fn component(element: &ColumnType) -> String {
-    match element {
-        ColumnType::Byte => "byte".to_string(),
-        ColumnType::Char => "char".to_string(),
-        ColumnType::Short => "short".to_string(),
-        ColumnType::Int => "int".to_string(),
-        ColumnType::Long => "long".to_string(),
-        ColumnType::Float => "float".to_string(),
-        ColumnType::Double => "double".to_string(),
-        other => format!("class {}", binary_name(other)),
-    }
+    agg::java_class(element)
 }
 
 /// The name of the Java class of a column type as `java.lang.Class#getName` gives it,
 /// which for an array is `[` and the descriptor of its elements.
 ///
-/// Behavior: `java.lang.Class#getName`; the classes are those the contracts name for
-/// each column type
+/// Behavior: `java.lang.Class#getName`
+#[cfg(test)]
 fn binary_name(column_type: &ColumnType) -> String {
-    let name = match column_type {
-        ColumnType::Boolean => "java.lang.Boolean",
-        ColumnType::Byte => "byte",
-        ColumnType::Char => "char",
-        ColumnType::Short => "short",
-        ColumnType::Int => "int",
-        ColumnType::Long => "long",
-        ColumnType::Float => "float",
-        ColumnType::Double => "double",
-        ColumnType::String => "java.lang.String",
-        ColumnType::Instant => "java.time.Instant",
-        ColumnType::Vector(element) => match **element {
-            ColumnType::Byte => "io.deephaven.vector.ByteVector",
-            ColumnType::Char => "io.deephaven.vector.CharVector",
-            ColumnType::Short => "io.deephaven.vector.ShortVector",
-            ColumnType::Int => "io.deephaven.vector.IntVector",
-            ColumnType::Long => "io.deephaven.vector.LongVector",
-            ColumnType::Float => "io.deephaven.vector.FloatVector",
-            ColumnType::Double => "io.deephaven.vector.DoubleVector",
-            _ => "io.deephaven.vector.ObjectVector",
-        },
-        ColumnType::Array(element) => {
-            let descriptor = match &**element {
-                ColumnType::Byte => "B".to_string(),
-                ColumnType::Char => "C".to_string(),
-                ColumnType::Short => "S".to_string(),
-                ColumnType::Int => "I".to_string(),
-                ColumnType::Long => "J".to_string(),
-                ColumnType::Float => "F".to_string(),
-                ColumnType::Double => "D".to_string(),
-                array @ ColumnType::Array(_) => binary_name(array),
-                other => format!("L{};", binary_name(other)),
-            };
-            return format!("[{descriptor}");
-        }
-        other => unported!(
-            "io.deephaven.engine.table.impl.by.ChunkedOperatorAggregationHelper#aggregation",
-            "the Java class of column type {other:?}"
-        ),
-    };
+    let text = agg::java_class(column_type);
+    let name = text
+        .strip_prefix("class ")
+        .or_else(|| text.strip_prefix("interface "))
+        .unwrap_or(&text);
     name.to_string()
 }
 
