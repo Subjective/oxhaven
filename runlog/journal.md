@@ -1293,3 +1293,11 @@ Seven green checks on the run after the label was set. Main is at e9e9a183.
 ## 2026-11-17 23:55 UTC: container restarted, tasks 10.6 and 10.7 resumed
 
 The container restarted at about 23:52 UTC. Worktrees, pushed branches and build directories survived; both agents were resumed from their transcripts with a message.
+
+## 2026-11-18 00:20 UTC: task 10.6 reported, pull request 161 opened
+
+The refusals were in the server, not the engine as the brief said. Two rows of the 10.2 table were wrong (NY is no alias; T24:00:00Z is an error). Owner question 9 goes to review-items-2.md as 7.5.
+
+## 2026-11-18 00:26 UTC: pull request 161 merged
+
+Seven green checks on head 8fc19a47. Main is at 17dcd9f5.
