@@ -72,7 +72,7 @@ macro_rules! java_to_string {
         /// as specified since JDK 19: the shortest decimal that rounds to the value, and
         /// among those the closest to it, but with no fewer than two digits, so the smallest
         /// double is `4.9E-324` although `5E-324` also rounds to it.
-        fn $name(value: $native) -> String {
+        pub(crate) fn $name(value: $native) -> String {
             if value.is_nan() {
                 return "NaN".to_string();
             }

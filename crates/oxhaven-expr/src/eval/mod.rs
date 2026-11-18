@@ -1,6 +1,7 @@
 //! Evaluation of a type-checked formula over Arrow arrays, one batch of rows at a time.
 
 mod arrays;
+mod big;
 mod compare;
 pub(crate) mod numeric;
 mod objects;

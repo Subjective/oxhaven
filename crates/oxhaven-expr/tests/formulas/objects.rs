@@ -200,7 +200,6 @@ fn nothing_else_is_done_with_an_object_column() {
         "Dec",
         "Dec + 1",
         "Date + 1",
-        "Big > 1",
         "Time.getHour()",
         "Dec.toString(1)",
         "Local.toString().length() > 0 ? Local : Local",
@@ -221,4 +220,302 @@ fn nothing_else_is_done_with_an_object_column() {
             "{formula}: {refused:?}"
         );
     }
+}
+
+/// The table of the comparisons seen on Java 42.9: a `BigDecimal` `BD`, a `BigInteger`
+/// `BI` and numbers, with a null in row 2 of each (and in row 7 of `L`, which Java made
+/// as `Long.MIN_VALUE + 1`: null plus one is null).
+fn big_numbers() -> TestTable {
+    let decimal = |unscaled: i128, scale: i32| big_decimal_cell(scale, &big_integer_cell(unscaled));
+    let binary =
+        |cells: Vec<Option<Vec<u8>>>| -> ArrayRef { Arc::new(BinaryArray::from_iter(cells)) };
+    let decimals = vec![
+        Some(decimal(-150, 2)),
+        Some(decimal(10, 2)),
+        None,
+        Some(decimal(1, -20)),
+        Some(decimal(100_000_000_000_000_000_000_000, 3)),
+        Some(decimal(1_000_000_014_901_161_193_847_656_250, 28)),
+        Some(decimal(97, 0)),
+        Some(decimal(0, 3)),
+    ];
+    let integers = vec![
+        Some(big_integer_cell(-2)),
+        Some(big_integer_cell(0)),
+        None,
+        Some(big_integer_cell(100_000_000_000_000_000_000)),
+        Some(big_integer_cell(1 << 63)),
+        Some(big_integer_cell(1)),
+        Some(big_integer_cell(97)),
+        Some(big_integer_cell(i128::from(i64::MIN))),
+    ];
+    TestTable::new([
+        ("BD", (ColumnType::BigDecimal, binary(decimals))),
+        ("BI", (ColumnType::BigInteger, binary(integers))),
+        (
+            "D",
+            doubles([
+                Some(0.1),
+                Some(0.1),
+                None,
+                Some(1e20),
+                Some(f64::NAN),
+                Some(0.1),
+                Some(97.0),
+                Some(-0.0),
+            ]),
+        ),
+        (
+            "F",
+            floats([
+                Some(0.1),
+                Some(0.1),
+                None,
+                Some(1e20),
+                Some(f32::NAN),
+                Some(0.1),
+                Some(97.0),
+                Some(-0.0),
+            ]),
+        ),
+        (
+            "L",
+            longs([
+                Some(-2),
+                Some(0),
+                None,
+                Some(1),
+                Some(i64::MAX),
+                Some(1),
+                Some(97),
+                None,
+            ]),
+        ),
+        (
+            "C",
+            chars([
+                Some('a'),
+                Some('a'),
+                None,
+                Some('a'),
+                Some('a'),
+                Some('a'),
+                Some('a'),
+                Some('a'),
+            ]),
+        ),
+        (
+            "I",
+            ints([
+                Some(0),
+                Some(1),
+                Some(2),
+                Some(3),
+                Some(4),
+                Some(5),
+                Some(6),
+                Some(7),
+            ]),
+        ),
+        ("S", strings([Some("s"); 8])),
+        ("Z", booleans([Some(true); 8])),
+    ])
+}
+
+/// Behavior: `QueryLanguageFunctionUtils#eq`, `#less` and their relatives of `BigDecimal`
+/// and `BigInteger` with each other, the primitive numbers and `char`. Each row is what
+/// Java 42.9 answered for the formula over the same values.
+#[test]
+fn big_numbers_compare_by_value_as_java_does() {
+    let table = big_numbers();
+    for (formula, expected) in [
+        (
+            "BD == D",
+            [false, true, true, true, false, false, true, true],
+        ),
+        (
+            "BD < D",
+            [true, false, false, false, false, false, false, false],
+        ),
+        (
+            "BD > D",
+            [false, false, false, false, false, true, false, false],
+        ),
+        (
+            "BD != D",
+            [true, false, false, false, true, true, false, false],
+        ),
+        (
+            "BD <= D",
+            [true, true, true, true, false, false, true, true],
+        ),
+        (
+            "D >= BD",
+            [true, true, true, true, false, false, true, true],
+        ),
+        (
+            "BD == F",
+            [false, false, true, false, false, false, true, true],
+        ),
+        (
+            "BD > F",
+            [false, false, false, false, false, false, false, false],
+        ),
+        (
+            "BI == D",
+            [false, false, true, true, false, false, true, false],
+        ),
+        (
+            "BI > D",
+            [false, false, false, false, false, true, false, false],
+        ),
+        (
+            "BI < F",
+            [true, true, false, true, false, false, false, true],
+        ),
+        (
+            "BI == L",
+            [true, true, true, false, false, true, true, false],
+        ),
+        (
+            "BI > L",
+            [false, false, false, true, true, false, false, true],
+        ),
+        (
+            "L < BI",
+            [false, false, false, true, true, false, false, true],
+        ),
+        (
+            "BD == L",
+            [false, false, true, false, false, false, true, false],
+        ),
+        ("BD >= L", [true, true, true, true, true, false, true, true]),
+        (
+            "BD == C",
+            [false, false, true, false, false, false, true, false],
+        ),
+        (
+            "BI == C",
+            [false, false, true, false, false, false, true, false],
+        ),
+        (
+            "C <= BD",
+            [false, false, true, true, true, false, true, false],
+        ),
+        (
+            "BD == BI",
+            [false, false, true, true, false, false, true, false],
+        ),
+        (
+            "BD < BI",
+            [false, false, false, false, false, true, false, false],
+        ),
+        (
+            "BI >= BD",
+            [false, false, true, true, false, true, true, false],
+        ),
+        ("BI == BI", [true, true, true, true, true, true, true, true]),
+        (
+            "BD == 0.1",
+            [false, true, false, false, false, false, false, false],
+        ),
+        (
+            "BD == 0.1f",
+            [false, false, false, false, false, false, false, false],
+        ),
+        (
+            "BD > 1e20",
+            [false, false, false, false, false, false, false, false],
+        ),
+        (
+            "BD == 1e20",
+            [false, false, false, true, true, false, false, false],
+        ),
+        (
+            "BD == 97",
+            [false, false, false, false, false, false, true, false],
+        ),
+        (
+            "BD == (byte) 97",
+            [false, false, false, false, false, false, true, false],
+        ),
+        (
+            "BD == (short) 97",
+            [false, false, false, false, false, false, true, false],
+        ),
+        (
+            "BD == 'a'",
+            [false, false, false, false, false, false, true, false],
+        ),
+        (
+            "BI == null",
+            [false, false, true, false, false, false, false, false],
+        ),
+        (
+            "BD != null",
+            [true, true, false, true, true, true, true, true],
+        ),
+        (
+            "BD == S",
+            [false, false, false, false, false, false, false, false],
+        ),
+        (
+            "BD == Z",
+            [false, false, false, false, false, false, false, false],
+        ),
+        (
+            "BD == I + 1",
+            [false, false, false, false, false, false, false, false],
+        ),
+        (
+            "BD == NULL_DOUBLE",
+            [false, false, true, false, false, false, false, false],
+        ),
+        (
+            "BD < NULL_INT",
+            [false, false, false, false, false, false, false, false],
+        ),
+        (
+            "BD > NULL_INT",
+            [true, true, false, true, true, true, true, true],
+        ),
+        (
+            "BD < Double.NaN",
+            [false, false, false, false, false, false, false, false],
+        ),
+    ] {
+        table.assert(formula, flags(expected));
+    }
+}
+
+/// Seen on Java 42.9: `BD < S` fails with `ClassCastException` where neither is null, and
+/// an ordering against `null` does not compile ("reference to less is ambiguous").
+#[test]
+fn big_numbers_refuse_what_java_refuses() {
+    let table = big_numbers();
+    let failure = table.evaluate("BD < S").expect_err("compareTo of a String");
+    assert!(
+        failure.message.contains("ClassCastException"),
+        "{}",
+        failure.message
+    );
+    for formula in ["BI < null", "null >= BD"] {
+        assert!(
+            matches!(table.compile_error(formula), FormulaError::Type(_)),
+            "{formula}"
+        );
+    }
+    table.assert(
+        "(BD > 0) ? 1 : 2",
+        ints([
+            Some(2),
+            Some(1),
+            Some(2),
+            Some(1),
+            Some(1),
+            Some(1),
+            Some(1),
+            Some(2),
+        ]),
+    );
 }
