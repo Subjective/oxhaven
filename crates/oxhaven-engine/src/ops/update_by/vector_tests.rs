@@ -4,7 +4,9 @@
 //! The expected values were observed on Deephaven 42.9 (its Python console, vectors made
 //! by `group_by` and arrays by `new int[]{...}` in `update`), as noted at each test.
 
-use super::{update_by, RollingWindow, UpdateByError, UpdateByOperation, UpdateBySpec};
+use super::{
+    update_by, update_by_with, RollingWindow, UpdateByError, UpdateByOperation, UpdateBySpec,
+};
 use crate::ops::sort::testing::{cells, static_table, Ticking};
 use arrow::array::{
     ArrayRef, BooleanArray, Float64Array, Int32Array, Int64Array, StringArray,
@@ -191,7 +193,9 @@ fn vectors_are_equal_element_by_element() {
 }
 
 /// A vector of vectors is a bucket key too: Java's `ObjectVector#equals` and `#hashCode`
-/// call those of the inner vectors, which compare by value.
+/// call those of the inner vectors, which compare by value. Seen on Deephaven 42.9, before
+/// and after a `select()`: `rolling_group_tick("R=X", rev_ticks=1)` of the `int` vectors
+/// `[0] [1] [0] [0] [1] [0]`, then `cum_sum("S=Y")` by `R`, sums 0 1 2 5 5 10.
 #[test]
 fn vectors_of_vectors_are_equal_element_by_element() {
     let inner = ColumnType::vector(ColumnType::Int);
@@ -225,6 +229,21 @@ fn vectors_of_vectors_are_equal_element_by_element() {
     assert_eq!(
         bucketed_sums(&source, &["V"]),
         expected(&[0, 1, 2, 3, 4, 8])
+    );
+
+    let ones = [0, 1, 0, 0, 1, 0];
+    let inner_cells = singles(&inner, Int32Array::from(ones.to_vec()));
+    let source = static_table(&[
+        (
+            "R",
+            outer.clone(),
+            list_of(&outer, [Some(1); 6], inner_cells),
+        ),
+        ("Y", ColumnType::Long, longs(0..6)),
+    ]);
+    assert_eq!(
+        bucketed_sums(&source, &["R"]),
+        expected(&[0, 1, 2, 5, 5, 10])
     );
 }
 
@@ -402,4 +421,105 @@ fn random_updates_of_vector_columns_match_a_recompute() {
             }
         }
     }
+}
+
+/// The rolling formula `text` with a window of the row and the two before it, over `S`
+/// (`s0 s1 null s3 s4`), `T` (`t0` to `t4`), `I` (0 to 4) and `J` (0 to 40 by 10): its
+/// values as text, or the failure.
+fn objects_formula(text: &str, token: Option<&str>, columns: &[&str]) -> Result<String, String> {
+    let source = static_table(&[
+        (
+            "S",
+            ColumnType::String,
+            Arc::new(StringArray::from(vec![
+                Some("s0"),
+                Some("s1"),
+                None,
+                Some("s3"),
+                Some("s4"),
+            ])),
+        ),
+        (
+            "T",
+            ColumnType::String,
+            Arc::new(StringArray::from(vec!["t0", "t1", "t2", "t3", "t4"])),
+        ),
+        (
+            "I",
+            ColumnType::Int,
+            Arc::new(Int32Array::from(vec![0, 1, 2, 3, 4])),
+        ),
+        (
+            "J",
+            ColumnType::Int,
+            Arc::new(Int32Array::from(vec![0, 10, 20, 30, 40])),
+        ),
+    ]);
+    let spec = UpdateBySpec::RollingFormula {
+        window: RollingWindow::ticks(3, 0),
+        formula: text.into(),
+        param_token: token.map(Into::into),
+    };
+    match update_by_with(
+        &source,
+        &[op(spec, columns)],
+        &[] as &[&str],
+        &oxhaven_expr::Compiler,
+    ) {
+        Ok(table) => {
+            let last = table.definition().columns().len() - 1;
+            Ok(cells(&*table, last).join(" "))
+        }
+        Err(UpdateByError::Failed(failure)) => Err(failure.message),
+        Err(other) => panic!("{text}: {other}"),
+    }
+}
+
+/// Seen on Deephaven 42.9 over the table of [`objects_formula`]: `len` of a condition
+/// between two windows of strings throws `ClassCastException` for the `Object[]` the
+/// window gives, for every row.
+#[test]
+#[should_panic(expected = "ObjectRingBufferVectorWrapper#toArray")]
+fn len_of_a_condition_between_windows_of_objects_is_unported() {
+    let _ = objects_formula("R = len(I[0] > 1 ? S : T)", None, &[]);
+}
+
+/// Seen on Deephaven 42.9 over the table of [`objects_formula`]: `(S.size() > 1 ? I :
+/// J)[0]` is `0 0 0 1 2`, `(S.size() < 2 ? I : J).get(0)` `0 0 0 10 20`, the nested
+/// condition `0 0 0 1 2`, and the guarded `[1]` `-1 1 1 2 3`; `[1]` and `.get(2)` without
+/// a guard fail the first row, whose windows hold one element.
+#[test]
+fn a_read_of_a_window_chosen_by_a_condition_reads_the_chosen_window() {
+    assert_eq!(
+        objects_formula("R = (S.size() > 1 ? I : J)[0]", None, &[]),
+        Ok("0 0 0 1 2".to_string())
+    );
+    assert_eq!(
+        objects_formula("R = (S.size() < 2 ? I : J).get(0)", None, &[]),
+        Ok("0 0 0 10 20".to_string())
+    );
+    assert_eq!(
+        objects_formula(
+            "R = (S.size() > 2 ? I : (S.size() > 1 ? J : I))[0]",
+            None,
+            &[]
+        ),
+        Ok("0 0 0 1 2".to_string())
+    );
+    let fails = objects_formula("R = J[1]", None, &[]);
+    assert!(fails.is_err());
+    for text in [
+        "R = (S.size() > 1 ? I : J)[1]",
+        "R = (S.size() > 1 ? I : J).get(2)",
+    ] {
+        assert_eq!(objects_formula(text, None, &[]), fails, "{text}");
+    }
+    assert_eq!(
+        objects_formula(
+            "R = S.size() > 1 ? (S.size() > 1 ? I : J)[1] : -1",
+            None,
+            &[]
+        ),
+        Ok("-1 1 1 2 3".to_string())
+    );
 }

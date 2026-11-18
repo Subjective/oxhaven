@@ -1323,6 +1323,10 @@ fn everything() -> Vec<UpdateByOperation> {
             "Fm11 = sum(L.subVector(-1, 2)) + (len(I) > 2 ? I.subVector(1, 3)[1] : 0)",
             window(3, 0),
         ),
+        formula_of(
+            "Fm12 = (len(L) > 2 ? L : (L[0] > 0 ? L : L))[len(L) - 1]",
+            window(2, 1),
+        ),
     ]
 }
 
