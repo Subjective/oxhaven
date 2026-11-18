@@ -27,6 +27,11 @@ pub(super) enum Key {
         scale: i32,
         unscaled: Vec<u8>,
     },
+    /// An `Instant` that no column holds, being later (`after`) or earlier than the range
+    /// of a `long` of nanoseconds: it equals no cell, and no range filter is made of it.
+    InstantBeyond {
+        after: bool,
+    },
 }
 
 /// The value of `function` (`parseLocalDate`, `parseLocalTime`, `parseLocalDateTime`,
@@ -374,16 +379,48 @@ fn fixed_digits(text: &str, count: usize) -> Option<i64> {
         .flatten()
 }
 
-/// `yyyy-MM-dd` to days since the epoch; `None` if the text has another shape or names a day
-/// that does not exist.
+/// The year that starts a date, as Java's ISO formats read it: four digits without a sign;
+/// after `+`, five to ten digits; after `-`, four to ten digits that are not all zeros;
+/// at most 999999999 either way. `None` for any other text.
+///
+/// Behavior: `DateTimeFormatter.ISO_LOCAL_DATE`, whose year is
+/// `appendValue(YEAR, 4, 10, SignStyle.EXCEEDS_PAD)` parsed strictly, within
+/// `ChronoField.YEAR`. Seen on Java 42.9: `+10000-…`, `-0001-…` and
+/// `+0999999999-…` are read; `+2024-…`, `10000-…` and `+1000000000-…` are not.
+fn java_year(text: &str) -> Option<i64> {
+    let (sign, digits) = match text.as_bytes().first()? {
+        b'+' => (1, &text[1..]),
+        b'-' => (-1, &text[1..]),
+        _ => (0, text),
+    };
+    let fits = match sign {
+        0 => digits.len() == 4,
+        1 => (5..=10).contains(&digits.len()),
+        _ => (4..=10).contains(&digits.len()),
+    };
+    if !fits || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let year: i64 = digits.parse().ok()?;
+    if year > 999_999_999 || (sign < 0 && year == 0) {
+        return None;
+    }
+    Some(if sign < 0 { -year } else { year })
+}
+
+/// `yyyy-MM-dd` to days since the epoch, the year as [`java_year`] reads it; `None` if the
+/// text has another shape or names a day that does not exist.
 fn parse_date(text: &str) -> Option<i64> {
-    let mut parts = text.split('-');
+    // The sign of a negative year is no separator.
+    let unsigned = text.strip_prefix(['+', '-']).unwrap_or(text);
+    let mut parts = unsigned.split('-');
     let (year, month, day) = (parts.next()?, parts.next()?, parts.next()?);
     if parts.next().is_some() {
         return None;
     }
+    let year = &text[..text.len() - unsigned.len() + year.len()];
     let (year, month, day) = (
-        fixed_digits(year, 4)?,
+        java_year(year)?,
         fixed_digits(month, 2)?,
         fixed_digits(day, 2)?,
     );
@@ -442,12 +479,26 @@ fn parse_time(text: &str) -> Option<i64> {
 /// io.deephaven.time.DateTimeUtils#parseZonedDateTime
 pub(super) fn parse_instant(text: &str) -> Result<i64, String> {
     match read_instant(text)? {
-        Some(nanos) => Ok(nanos),
-        None => unported!(
+        Some(InstantReach::Within(nanos)) => Ok(nanos),
+        _ => unported!(
             "io.deephaven.time.DateTimeUtils#parseZonedDateTime",
             "the date time {text}"
         ),
     }
+}
+
+/// Where an instant falls against the instants a column holds: those of a `long` of
+/// nanoseconds since the epoch that `DateTimeUtils#epochNanos` converts.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) enum InstantReach {
+    /// Nanoseconds since the epoch.
+    Within(i64),
+    /// Later than every instant a column holds: from epoch second
+    /// `Long.MAX_VALUE / 1_000_000_000` on, where `DateTimeUtils#epochNanos` throws.
+    After,
+    /// Earlier than every instant a column holds, or at the smallest `long`, which is the
+    /// null instant.
+    Before,
 }
 
 /// [`parse_instant`], with any zone the formula compiler reads in a time literal: the
@@ -462,8 +513,21 @@ pub(super) fn parse_instant_with(
     text: &str,
     compiler: &dyn FormulaCompiler,
 ) -> Result<i64, String> {
-    if let Some(nanos) = read_instant(text)? {
-        return Ok(nanos);
+    match instant_reach_with(text, compiler)? {
+        InstantReach::Within(nanos) => Ok(nanos),
+        _ => unported!(
+            "io.deephaven.time.DateTimeUtils#parseZonedDateTime",
+            "the date time {text}, outside the instants a column holds"
+        ),
+    }
+}
+
+/// [`parse_instant_with`], with where an instant outside the range of a column falls. Only
+/// the forms [`read_instant`] reads can be outside it: the formula compiler reads no
+/// instant there.
+fn instant_reach_with(text: &str, compiler: &dyn FormulaCompiler) -> Result<InstantReach, String> {
+    if let Some(reach) = read_instant(text)? {
+        return Ok(reach);
     }
     let bad = || format!("Cannot parse instant: {text}");
     // A quote would end the literal, and the rest would be read as a formula.
@@ -471,7 +535,7 @@ pub(super) fn parse_instant_with(
         return Err(bad());
     }
     match compiler.parse(&format!("'{text}'")) {
-        Ok(Expr::Literal(Literal::Instant(nanos))) => Ok(nanos),
+        Ok(Expr::Literal(Literal::Instant(nanos))) => Ok(InstantReach::Within(nanos)),
         Ok(_) | Err(FormulaError::Syntax(_) | FormulaError::Type(_)) => Err(bad()),
         Err(FormulaError::Unsupported(_)) => unported!(
             "io.deephaven.time.DateTimeUtils#parseZonedDateTime",
@@ -481,8 +545,10 @@ pub(super) fn parse_instant_with(
 }
 
 /// [`parse_instant`] for the forms it reads itself; `None` for text with a date or a
-/// time in it that is none of them.
-fn read_instant(text: &str) -> Result<Option<i64>, String> {
+/// time in it that is none of them. A date with a time may have a year of more than four
+/// digits after a sign, or a negative one, as [`java_year`] reads it; a date alone has
+/// four digits (`DateTimeUtils.DATE_TZ_PATTERN`).
+fn read_instant(text: &str) -> Result<Option<InstantReach>, String> {
     let bad = || format!("Cannot parse instant: {text}");
     let digits = text.strip_prefix('-').unwrap_or(text);
     if (1..=19).contains(&digits.len()) && digits.bytes().all(|b| b.is_ascii_digit()) {
@@ -490,10 +556,10 @@ fn read_instant(text: &str) -> Result<Option<i64>, String> {
         // TimeConstants.MICROTIME_THRESHOLD
         const MICROS: u64 = 9_309_341_000_000;
         if offset == NULL_LONG {
-            return Ok(Some(offset));
+            return Ok(Some(InstantReach::Within(offset)));
         }
         let size = offset.unsigned_abs();
-        return Ok(Some(if size > 1000 * MICROS {
+        return Ok(Some(InstantReach::Within(if size > 1000 * MICROS {
             offset
         } else if size > MICROS {
             offset.wrapping_mul(1000)
@@ -501,30 +567,41 @@ fn read_instant(text: &str) -> Result<Option<i64>, String> {
             offset.wrapping_mul(1_000_000)
         } else {
             offset.wrapping_mul(1_000_000_000)
-        }));
+        })));
     }
-    let nanos_of = |date: &str, time: Option<&str>| -> Option<i64> {
+    let reach_of = |date: &str, time: Option<&str>| -> Option<InstantReach> {
+        if time.is_none() && !date.starts_with(|c: char| c.is_ascii_digit()) {
+            return None;
+        }
         let days = parse_date(date)?;
-        let time = match time {
+        let of_day = match time {
             Some(time) => parse_time(time)?,
             None => 0,
         };
-        days.checked_mul(86_400_000_000_000)?.checked_add(time)
+        let seconds = i128::from(days) * 86_400 + i128::from(of_day / 1_000_000_000);
+        let nanos = seconds * 1_000_000_000 + i128::from(of_day % 1_000_000_000);
+        Some(match i64::try_from(nanos) {
+            Ok(nanos) if nanos != NULL_LONG && seconds < i128::from(i64::MAX / 1_000_000_000) => {
+                InstantReach::Within(nanos)
+            }
+            _ if seconds > 0 => InstantReach::After,
+            _ => InstantReach::Before,
+        })
     };
     let utc = if let Some(local) = text.strip_suffix(" UTC") {
         match local.split_once('T') {
-            Some((date, time)) => nanos_of(date, Some(time)),
-            None => nanos_of(local, None),
+            Some((date, time)) => reach_of(date, Some(time)),
+            None => reach_of(local, None),
         }
     } else if let Some(local) = text.strip_suffix('Z') {
         local
             .split_once('T')
-            .and_then(|(date, time)| nanos_of(date, Some(time)))
+            .and_then(|(date, time)| reach_of(date, Some(time)))
     } else {
         None
     };
     match utc {
-        Some(nanos) => Ok(Some(nanos)),
+        Some(reach) => Ok(Some(reach)),
         // Every form Java reads has a date or a time in it.
         None if !text.bytes().any(|b| b.is_ascii_digit()) => Err(bad()),
         None => Ok(None),
@@ -633,14 +710,15 @@ fn convert_literal_with(
                 ));
             }
             let inner = &text[1..text.len() - 1];
-            let nanos = match compiler {
-                Some(compiler) => parse_instant_with(inner, compiler)?,
-                None => parse_instant(inner)?,
+            let reach = match compiler {
+                Some(compiler) => instant_reach_with(inner, compiler)?,
+                None => InstantReach::Within(parse_instant(inner)?),
             };
-            Ok(if nanos == NULL_LONG {
-                Key::Null
-            } else {
-                Key::Int(nanos)
+            Ok(match reach {
+                InstantReach::Within(NULL_LONG) => Key::Null,
+                InstantReach::Within(nanos) => Key::Int(nanos),
+                InstantReach::After => Key::InstantBeyond { after: true },
+                InstantReach::Before => Key::InstantBeyond { after: false },
             })
         }
         // Behavior: the `LocalDate`, `LocalTime`, `LocalDateTime` and `ZonedDateTime`

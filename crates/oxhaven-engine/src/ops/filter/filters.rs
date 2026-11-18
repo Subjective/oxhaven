@@ -268,10 +268,15 @@ fn resolve_match(
         },
     };
     let column = &definition.columns()[index];
-    let keys = values
+    let keys: Vec<Key> = values
         .iter()
         .map(|value| convert_value(column, definition, value, compiler))
         .collect::<Result<_, _>>()?;
+    // An instant no column holds equals no cell (`Objects.equals` of two `Instant`s).
+    let keys = keys
+        .into_iter()
+        .filter(|key| !matches!(key, Key::InstantBeyond { .. }))
+        .collect();
     Ok(Resolved::Match {
         column: index,
         keys,
@@ -323,6 +328,29 @@ fn resolve_range(
         op,
         pivot,
     })
+}
+
+/// A range filter of an `Instant` column with an instant no column holds. Java converts
+/// the literal, and then its nanoseconds since the epoch, with no formula to fall back on:
+/// past the range that throws; before it the multiplication wraps around silently and the
+/// filter compares with another instant (seen on Java 42.9: `T > '1600-01-01T00:00:00
+/// UTC'` keeps no row of 2024, `T > '-0001-01-01T00:00:00 UTC'` keeps them all), which is
+/// refused here (owner question 7.17 of the second batch of review items).
+///
+/// Behavior: io.deephaven.engine.table.impl.select.RangeFilter#init with
+/// io.deephaven.time.DateTimeUtils#epochNanos(Instant)
+fn instant_range_beyond(after: bool, value: &str) -> Result<Resolved, String> {
+    if after {
+        return Err(format!(
+            "io.deephaven.time.DateTimeUtils$DateTimeOverflowException: Numeric overflow \
+             detected during conversion of {value} to nanoseconds"
+        ));
+    }
+    oxhaven_contracts::unported!(
+        "io.deephaven.engine.table.impl.select.RangeFilter#makeInstantRangeFilter",
+        "a range filter with the instant {value}, before the instants a column holds, \
+         which Java wraps around"
+    )
 }
 
 /// Behavior: io.deephaven.engine.table.impl.select.WhereFilterPatternImpl#init
@@ -394,13 +422,17 @@ pub(super) fn resolve(
             op,
             value,
             failover,
-        } => or_failover(
-            resolve_range(column, *op, value, definition, compiler),
-            failover.as_ref(),
-            column,
-            definition,
-            compiler,
-        ),
+        } => {
+            let simple = resolve_range(column, *op, value, definition, compiler);
+            if let Ok(Resolved::Range {
+                pivot: Key::InstantBeyond { after },
+                ..
+            }) = &simple
+            {
+                return instant_range_beyond(*after, value);
+            }
+            or_failover(simple, failover.as_ref(), column, definition, compiler)
+        }
         FilterSpec::Pattern {
             column,
             pattern,
