@@ -1375,3 +1375,7 @@ Calendars work in the Python console for calendar files; about 400 expressions c
 ## 2026-11-18 06:42 UTC: pull request 168 merged
 
 Seven green checks on head 852fe40c, the replay among them. Main is at 7ff844bf.
+
+## 2026-11-18 06:46 UTC: pull request 169 merged; task 11.2 started
+
+Seven green checks on head ac12d2c4. Main is at 603d29f8. Task 11.2 (Java arrays and casts in the console's jpy stand-in, and A10's wording brought up to date) runs on Opus beside task 11.4.
