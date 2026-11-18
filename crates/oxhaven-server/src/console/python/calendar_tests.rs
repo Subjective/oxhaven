@@ -43,7 +43,7 @@ def message(call):
 }
 
 /// The collection of calendars: names, the default, adding, removing, and the calendars
-/// Deephaven ships, which this server does not.
+/// of the names Deephaven ships.
 #[tokio::test]
 async fn calendars_are_named_added_and_removed_as_in_deephaven() {
     let python = Python::start().await;
@@ -58,10 +58,12 @@ assert dcal.calendar("oxtest_ny").name() == 'OXTEST_NY' and dcal.calendar("oxtes
 assert odd.name() == 'oxTest_odd' and odd.description() is None
 assert str(ny) == "Calendar{name='OXTEST_NY', description='Test calendar with a lunch break', timeZone=America/New_York}"
 
-# the calendars Deephaven ships are named and refused
-text = message(lambda: dcal.calendar())
-assert text.startswith('failed to get the default calendar. : not ported: io.deephaven.time.calendar.Calendars#calendar'), text
-assert 'not ported' in message(lambda: dcal.calendar('USNYSE_EXAMPLE'))
+# the calendars of the names Deephaven ships are there, UTC the default
+utc = dcal.calendar()
+assert utc == dcal.calendar('utc') and utc.name() == 'UTC'
+assert str(utc) == "Calendar{name='UTC', description='UTC', timeZone=UTC}"
+assert str(dcal.calendar('USNYSE_EXAMPLE').firstValidDate()) == '1999-01-01'
+assert str(dcal.calendar('USBANK_EXAMPLE').lastValidDate()) == '2027-12-31'
 assert message(lambda: dcal.calendar('nope')) == 'failed to get the default calendar. : java.lang.IllegalArgumentException: No such calendar: nope'
 assert message(lambda: dcal.calendar(5)) == 'failed to get the default calendar. : no matching Java method overloads found'
 
