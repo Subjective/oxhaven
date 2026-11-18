@@ -1,0 +1,26 @@
+{
+  "format": 2,
+  "scenario": "kafka_avro",
+  "scenario_sha256": "b01f6859826b6408ebb1d6a1ce89710b712b6e173d8603b0964642cf13640fd1",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "by_subject",
+      "file": "step000.by_subject.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "mapped",
+      "file": "step000.mapped.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "from_text",
+      "file": "step000.from_text.arrow",
+      "rows": 5
+    }
+  ]
+}

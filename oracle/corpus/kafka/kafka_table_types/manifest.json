@@ -1,0 +1,38 @@
+{
+  "format": 2,
+  "scenario": "kafka_table_types",
+  "scenario_sha256": "7fb7e337201fe9aef45de6c7e6889a3547ab81c46eeeca9779cb11c959558f92",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "ring",
+      "file": "step000.ring.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "ring_last",
+      "file": "step000.ring_last.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "blink",
+      "file": "step000.blink.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "blink_seen",
+      "file": "step000.blink_seen.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "blink_sums",
+      "file": "step000.blink_sums.arrow",
+      "rows": 1
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "format": 2,
+  "scenario": "kafka_cdc",
+  "scenario_sha256": "4d1b2ab564e4d452ebd3f5b60c1457fbcf9f76fe603172fd2d07779da05ab7a5",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "current",
+      "file": "step000.current.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "raw",
+      "file": "step000.raw.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "events",
+      "file": "step000.events.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "events_seen",
+      "file": "step000.events_seen.arrow",
+      "rows": 6
+    }
+  ]
+}

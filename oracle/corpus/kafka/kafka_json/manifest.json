@@ -1,0 +1,26 @@
+{
+  "format": 2,
+  "scenario": "kafka_json",
+  "scenario_sha256": "8d717fbea798ffe662dc6760eec14cf86ff2ffa70f45e9234dc265edf82a02a3",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "typed",
+      "file": "step000.typed.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "narrow",
+      "file": "step000.narrow.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "as_text",
+      "file": "step000.as_text.arrow",
+      "rows": 5
+    }
+  ]
+}

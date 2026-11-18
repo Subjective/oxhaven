@@ -88,7 +88,9 @@ jobs:
     # Builds the server with its Python console, starts it, and compares it with the recorded
     # Java results (table scenarios and script scenarios) and the client smoke checks, against
     # oracle/replay-baseline.json. See oracle/README.md. Its environment has jedi, so the
-    # tests of completion in the console run here too, and must not be skipped. Last, the
+    # tests of completion in the console run here too, and must not be skipped. The same
+    # server then consumes the topics of the Kafka corpus from a broker in Docker and is
+    # compared with the recorded Java results, against oracle/kafka-baseline.json. Last, the
     # short soak test runs against the same binary.
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -119,6 +121,18 @@ jobs:
           ORACLE_GATE_OUT: ${{ runner.temp }}/oracle-replay
           ORACLE_GATE_TIMEOUT: "300"
         run: oracle/bin/ci-replay.sh
+      # The Kafka corpus: what the Java reference made of fixed topics, against what this
+      # server makes of them on a broker (oracle/README.md, "The Kafka corpus"). It runs
+      # here and not in kafka-broker because it needs what this job has by now: the server
+      # built with its console, and the harness's environment. The script starts
+      # apache/kafka from Docker Hub on the runner's own Docker, on 127.0.0.1, and removes
+      # it. No secret, and nothing but the runner connects to the broker.
+      - name: Replay the Kafka corpus on a broker
+        env:
+          VIRTUAL_ENV: ${{ github.workspace }}/oracle/.venv
+          ORACLE_KAFKA_OUT: ${{ runner.temp }}/oracle-replay/kafka
+          ORACLE_GATE_TIMEOUT: "300"
+        run: oracle/bin/kafka-replay.sh
       - name: Completion in the console, answered by jedi
         env:
           VIRTUAL_ENV: ${{ github.workspace }}/oracle/.venv

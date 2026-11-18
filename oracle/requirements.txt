@@ -5,6 +5,8 @@ pydeephaven==42.9
 pydeephaven-ticking==42.9
 pyarrow==26.0.1
 pytest==9.2.0
+# Fills the topics of the Kafka corpus (harness/kafka.py). Pure Python, Apache-2.0.
+kafka-python==3.0.13
 # What they resolved to, pinned so that a recording can be reproduced:
 click==8.5.1
 deephaven-core==42.9

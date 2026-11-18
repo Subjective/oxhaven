@@ -13,6 +13,8 @@ and comment lines that start with `# oracle:` say what to do with it:
                                        key table in `k`, whose action column is `A`
     # oracle: computed by_key.Sum      float columns under the tolerance of PARITY.md A1
     # oracle: fails                    the script of this step must fail on the reference
+    # oracle: await t 12, u fails      after this step's script, wait until the table in `t`
+                                       has 12 rows or more and the one in `u` has failed
     # oracle: step                     what follows is the script of the next step
 
 The text before the first `# oracle: step` is the script of step 0; each `step` starts the
@@ -21,6 +23,13 @@ step the runner waits until the server has finished an update cycle (`runner._Ba
 rule of every ticking scenario), then reads every result variable through its `s/<name>`
 ticket, and every view through a subscription to it (`views.py`). A variable or a view that
 cannot be read is a failure with the gRPC status code, as in a table scenario.
+
+`await` is for a table that something outside the update graph fills, as a Kafka consumer's
+thread does: an update cycle may end before the rows have arrived. The runner asks for the
+table again until it has the rows, or has failed, and only then waits for the cycle and
+reads the results. A wait that is not met within `ORACLE_AWAIT_SECONDS` (default 60) is
+noted on the run: the reference's run is then not recorded, and another server's is compared
+as it is, so that rows that never arrive show as the difference they are.
 
 Every script of a scenario runs in the one Python session the server has, where the variables
 of earlier scenarios would still be there. So the runner removes, after a scenario, every
@@ -34,8 +43,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -73,11 +84,22 @@ _FORGET = (
 
 
 @dataclass(frozen=True)
+class Await:
+    """A table to wait for after a step's script: until it has `rows` rows or more, or,
+    with `rows` `None`, until it has failed."""
+
+    table: str
+    rows: int | None
+
+
+@dataclass(frozen=True)
 class Section:
-    """The script of one step, and whether it must fail on the reference."""
+    """The script of one step, whether it must fail on the reference, and the tables to
+    wait for before the step's results are read."""
 
     script: str
     fails: bool = False
+    awaits: tuple[Await, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -129,6 +151,7 @@ def parse(name: str, text: str) -> ScriptScenario:
     sections: list[Section] = []
     lines: list[str] = []
     fails = False
+    awaits: list[Await] = []
     for number, line in enumerate(text.splitlines(), start=1):
         if not line.startswith("# oracle"):
             lines.append(line)
@@ -168,15 +191,25 @@ def parse(name: str, text: str) -> ScriptScenario:
             if fails:
                 raise fail(f"line {number}: `fails` is given twice for one step")
             fails = True
+        elif word == "await" and items:
+            for item in items:
+                words = item.split()
+                if len(words) != 2 or not _NAME.match(words[0]) or words[0].startswith(_OWN) \
+                        or not (words[1] == "fails" or words[1].isdecimal()):
+                    raise fail(f"line {number}: a wait is written <variable> <rows>, or "
+                               "<variable> fails")
+                if any(other.table == words[0] for other in awaits):
+                    raise fail(f"line {number}: {words[0]!r} is waited for twice in one step")
+                awaits.append(Await(words[0], None if words[1] == "fails" else int(words[1])))
         elif word == "step" and not items:
             lines.pop()
-            sections.append(Section("\n".join(lines) + "\n", fails))
+            sections.append(Section("\n".join(lines) + "\n", fails, tuple(awaits)))
             # Empty lines in place of the earlier steps keep the file's line numbers.
-            lines, fails = [""] * number, False
+            lines, fails, awaits = [""] * number, False, []
         else:
             raise fail(f"line {number}: unknown directive {line[len(DIRECTIVE):].strip()!r}; "
-                       "the directives are results, views, computed, fails and step")
-    sections.append(Section("\n".join(lines) + "\n", fails))
+                       "the directives are results, views, computed, fails, await and step")
+    sections.append(Section("\n".join(lines) + "\n", fails, tuple(awaits)))
     if not results and not views:
         raise fail(f"no `{DIRECTIVE} results` or `{DIRECTIVE} views` line: nothing would be "
                    "compared")
@@ -261,10 +294,11 @@ def parse_error(error_message: str) -> ScriptError:
 @dataclass
 class Run:
     """What one run of a scenario gave: the outcome of each step's script (`None` when it
-    ran to its end) and the result tables of each step."""
+    ran to its end), the result tables of each step, and the waits that were not met."""
 
     outcomes: list[ScriptError | None]
     tables: ResultSet
+    unmet: list[str] = field(default_factory=list)
 
 
 def _open(session: Session, name: str) -> Table | Failure:
@@ -291,6 +325,34 @@ def _view(session: Session, view: View) -> pa.Table | Failure:
         return Failure(code)
 
 
+def _await(session: Session, wait: Await, deadline: float) -> str | None:
+    """Waits until the table in the variable of `wait` has its rows or has failed, or until
+    `deadline`; returns what was missing then, `None` when the wait was met.
+
+    The size of a table is the one the server gave when the table was fetched, so the
+    variable is fetched again each time. A table that has failed ends a wait for rows too:
+    the rows will not come, and the step's snapshot reports the failure.
+    """
+    from .runner import failed_in_cycle
+
+    while True:
+        table = _open(session, wait.table)
+        if isinstance(table, Failure) or failed_in_cycle(table) is not None:
+            # Also a variable the script did not assign: the snapshot reports it.
+            return None
+        if wait.rows is not None and table.size >= wait.rows:
+            return None
+        if time.monotonic() >= deadline:
+            if wait.rows is None:
+                return f"{wait.table} did not fail"
+            return f"{wait.table} has {table.size} rows, not {wait.rows}"
+        time.sleep(0.1)
+
+
+def _await_seconds() -> float:
+    return float(os.environ.get("ORACLE_AWAIT_SECONDS", "60"))
+
+
 def _execute(session: Session, script: str) -> ScriptError | None:
     answer = session.console_service.run_script(script)
     return parse_error(answer.error_message) if answer.error_message else None
@@ -312,6 +374,11 @@ def run_scenario(scenario: ScriptScenario, url: str) -> Run:
             for step, section in enumerate(scenario.sections):
                 ran = _has_code(section.script)
                 out.outcomes.append(_execute(session, section.script) if ran else None)
+                deadline = time.monotonic() + _await_seconds()
+                for wait in section.awaits:
+                    missing = _await(session, wait, deadline)
+                    if missing is not None:
+                        out.unmet.append(f"step {step}: {missing}")
                 barrier.wait()
                 tables = {result.table: _open(session, result.table)
                           for result in scenario.results}
@@ -393,7 +460,9 @@ def _until(tables: ResultSet, steps: int) -> ResultSet:
 
 def undeclared(scenario: ScriptScenario, run: Run) -> list[str]:
     """Why a run on the reference cannot be recorded: a script failed without `fails`, or
-    did not fail with it. A script that fails by mistake must not become the expectation."""
+    did not fail with it, or a table that the scenario waits for never got its rows. A
+    script that fails by mistake, or a table read too early, must not become the
+    expectation."""
     out = []
     for step, (section, outcome) in enumerate(zip(scenario.sections, run.outcomes)):
         if outcome is not None and not section.fails:
@@ -401,6 +470,7 @@ def undeclared(scenario: ScriptScenario, run: Run) -> list[str]:
                        f"if it must, mark the step `{DIRECTIVE} fails`")
         elif outcome is None and section.fails:
             out.append(f"the script of step {step} is marked `fails` and did not fail")
+    out.extend(f"a wait was not met ({missing})" for missing in run.unmet)
     return out
 
 
