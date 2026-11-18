@@ -1,0 +1,22 @@
+{
+  "format": 2,
+  "scenario": "kafka_avro_failures",
+  "scenario_sha256": "74b27e8a826109f3426620ba5286b08b2dd9356075dd9f93c5ebc85cd2d81ab4",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "unknown_id",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "bad_magic",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

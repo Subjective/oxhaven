@@ -1,0 +1,15 @@
+{
+  "format": 2,
+  "scenario": "kafka_simple_bad_number",
+  "scenario_sha256": "43ff11041490497a44a2f875f38c966c5a38120fcb21d289b81160c8d9977ae6",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "numbers",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

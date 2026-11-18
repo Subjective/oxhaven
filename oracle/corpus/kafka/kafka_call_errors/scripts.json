@@ -1,0 +1,58 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to consume a Kafka stream. : ValueError: at least one argument for 'key' or 'value' must be different from KeyValueSpec.IGNORE",
+      "operation": "failed to consume a Kafka stream."
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to consume a Kafka stream. : RuntimeError: org.apache.kafka.common.config.ConfigException: Missing required configuration \"schema.registry.url\" which has no default value.",
+      "operation": "failed to consume a Kafka stream."
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to consume a Kafka stream. : io.confluent.kafka.schemaregistry.client.rest.exceptions.RestClientException: Subject 'no_such_subject' not found.; error code: 40401",
+      "operation": "failed to consume a Kafka stream."
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to consume a Kafka stream. : RuntimeError: java.lang.IllegalArgumentException: Deserializer type org.apache.kafka.common.serialization.StringDeserializer for key.deserializer not supported.",
+      "operation": "failed to consume a Kafka stream."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to consume a Kafka stream. : RuntimeError: io.deephaven.UncheckedDeephavenException: Unable to find the type for column 'Value' (value_spec). Please explicitly set the data type in the constructor, or through the kafka configuration 'deephaven.value.column.type' or 'value.deserializer'.",
+      "operation": "failed to consume a Kafka stream."
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to consume a Kafka stream. : RuntimeError: java.lang.IllegalArgumentException: Capacity must be positive",
+      "operation": "failed to consume a Kafka stream."
+    },
+    {
+      "step": 7,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to consume a Kafka stream. : RuntimeError: java.lang.NullPointerException: Cannot invoke \"io.deephaven.kafka.KafkaTools$StreamPartitionedQueryTable.toPartitionedTable()\" because the return value of \"java.util.concurrent.atomic.AtomicReference.get()\" is null",
+      "operation": "failed to consume a Kafka stream."
+    }
+  ]
+}

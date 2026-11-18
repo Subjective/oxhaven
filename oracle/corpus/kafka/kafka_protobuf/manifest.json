@@ -1,0 +1,33 @@
+{
+  "format": 2,
+  "scenario": "kafka_protobuf",
+  "scenario_sha256": "40aef5791f86d8fedf46ea8640273bc7fa017a03c20f4d4a597e7e8237bcd962",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "serdes",
+      "file": "step000.serdes.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "raw",
+      "file": "step000.raw.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "included",
+      "file": "step000.included.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "tombstone",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

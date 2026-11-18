@@ -867,7 +867,8 @@ documented contents and off this machine, which has the same tools.
 | The translation of `security.protocol`, `ssl.*` and `sasl.*`, Java's JAAS parser and its texts | unit tests in `src/security.rs` | nothing | every pull request |
 | TLS and SASL against a broker: consuming, producing and listing over SSL with a PKCS#12 key store, a PEM key store file and PEM texts; hostname verification on and off; an untrusted broker and a missing client certificate; SASL PLAIN, SCRAM-SHA-256 and SCRAM-SHA-512 over SASL_PLAINTEXT and SASL_SSL; a wrong password, failing in seconds | `tests/security.rs`, ignored unless asked for | Docker, openssl | `tests/broker.sh`: the `kafka-broker` job |
 | The client against a broker: offsets, groups and what is committed, gzip (written by Java's producer and by librdkafka's), snappy, lz4, zstd, the listing of topics, a broker that restarts, an Avro round trip (a registry served by the test, no registry image), a partitioned table of a topic of two partitions and of records that arrive later, and a topic made by the request that has no partitions | `tests/broker.rs`, ignored unless asked for | Docker | `tests/broker.sh`: the `kafka-broker` job |
-| The same rows as Java | probes of both servers on one broker | Docker, the Java reference | by hand, in tasks 7.4.1, 7.4.4, 7.4.6, 7.4.7, 7.5.1 and 7.5.2; a recorded corpus is a task of its own, not yet sized (it changes `oracle/`) |
+| The same tables as Java, recorded: what Deephaven 42.9 made of fixed topics on a broker (19 scenarios, 48 tables: simple, JSON, Avro, Protobuf and change data capture specs, the table types, partitions and offsets, the common columns, a table per partition, records that fail a table, calls that fail), against what Oxhaven makes of the same topics through its Python package | the Kafka corpus: `oracle/scenarios/kafka`, `oracle/corpus/kafka`, judged against `oracle/kafka-baseline.json` (`oracle/README.md`, "The Kafka corpus"; task 12.2) | Docker, Python | `oracle/bin/kafka-replay.sh`: the `oracle-replay` job, on every pull request |
+| The same rows as Java, beyond the corpus: producing, TLS and SASL, committed offsets, records arriving under open tables, a broker that restarts, and the hundreds of cases of each format | probes of both servers on one broker | Docker, the Java reference | by hand, in tasks 7.4.1, 7.4.3 to 7.4.8 and 7.5.1 to 7.5.3; not recorded |
 
 **A broker on this machine.** Docker is installed but no daemon runs. One started by hand
 (`dockerd` with its own socket and data root, no bridge and no iptables rules, the
@@ -897,6 +898,16 @@ on `ubuntu-latest`, whose Docker daemon may pull public images. It uses no secre
 other runner. It was added by task 7.4.4 without having been run on GitHub: the first
 pull request shows whether the runner's Docker takes `--network host` with a broker on
 `127.0.0.1` as this machine's does.
+
+**The recorded corpus** (task 12.2, `tasks/12.2-kafka-corpus.md`). `oracle/bin/kafka-replay.sh`
+starts a broker of its own (the same image, one plaintext listener, port 19192), fills it
+with the topics of `oracle/corpus/kafka/topics.json`, serves their schema registry from the
+harness, and replays the Kafka scenarios against the tables the Java reference made of the
+same topics. It runs in the `oracle-replay` job, which has the server with its Python
+console and the harness's environment; the `kafka-broker` job is as it was. Two scenarios
+are listed as differences in `oracle/kafka-baseline.json`, both known before: bytes that
+are not UTF-8 in a `String` column (item 7 below, ruled) and a Protobuf enum field (item
+23). The corpus found no other difference.
 
 **Not verified anywhere:** brokers other than 3.9.1; more than one broker, so a
 partition that changes leader while its old leader stays up (a single broker that
@@ -1296,7 +1307,8 @@ These replace 7.4 and 7.5. Sizes: S is a day of one implementer, M two to three,
 | 7.4.3 | JSON completely: the refused conversions (`NumberInput#parseAsInt` and friends, `BigDecimal#intValue`, Jackson's compact output), nested pointers and arrays, `char` and `Instant` columns; simple `byte[]`; raw spec | done (`tasks/7.4.3-kafka-json.md`); raw spec not reachable from Python | 7.4.1 |
 | 7.4.4 | Client: librdkafka as the record source and the translation of properties; committed offsets and `auto.offset.reset` (`DONT_SEEK`), snappy, lz4 and zstd, reconnects, `kafka.topics`; the `kafka-broker` CI job | done (`tasks/7.4.4-kafka-librdkafka.md`) | |
 | 7.4.5 | gzip, TLS and SASL: `libz-static` and `ssl`, the translation of Java's `ssl.*` and `sasl.*` properties and its JAAS line | done (`tasks/7.4.5-kafka-security.md`); Kerberos and OIDC stay off by the owner's ruling | owner's rulings 2 and 3 |
-| 7.4.6 | `consume_to_partitioned_table`; a recorded Java corpus for consumption in `oracle/corpus` and a replay of it through a scripted source | done without the corpus (`tasks/7.4.6-kafka-partitioned.md`): the corpus changes the protected `oracle/` and is a task of its own | 7.4.2 |
+| 7.4.6 | `consume_to_partitioned_table`; a recorded Java corpus for consumption in `oracle/corpus` and a replay of it through a scripted source | done without the corpus (`tasks/7.4.6-kafka-partitioned.md`): the corpus changes the protected `oracle/` and is a task of its own, 12.2 | 7.4.2 |
+| 12.2 | The recorded corpus for consumption: fixed topics, what Deephaven 42.9 made of them, a replay on a broker in CI | done (`tasks/12.2-kafka-corpus.md`); replayed through the server and a broker, not through a scripted source | 7.4.x, 7.5.3 |
 | 7.4.7 | Avro specs and the schema registry client | done (`tasks/7.4.7-kafka-avro.md`); no new crate | 7.4.3 |
 | 7.4.8 | Protobuf specs (`prost-reflect` is in the tree), both protocols | done (`tasks/7.4.8-kafka-protobuf.md`); no new crate | 7.4.7 for the registry |
 | 7.5.1 | Produce: librdkafka's producer, simple and JSON specs, `publish_initial`, `last_by_key_columns`, how removes and modifies are published; `deephaven.stream.kafka.producer` | done (`tasks/7.5.1-kafka-produce.md`) | 7.4.4 |

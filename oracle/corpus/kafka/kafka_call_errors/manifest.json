@@ -1,0 +1,56 @@
+{
+  "format": 2,
+  "scenario": "kafka_call_errors",
+  "scenario_sha256": "593d248bb82bb83386ba65ab017ba62e02671a8c547fdd7cc923b9531cbfc03b",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "ok",
+      "file": "step000.ok.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "ok",
+      "file": "step001.ok.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "ok",
+      "file": "step002.ok.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "ok",
+      "file": "step003.ok.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "ok",
+      "file": "step004.ok.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "ok",
+      "file": "step005.ok.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "ok",
+      "file": "step006.ok.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "ok",
+      "file": "step007.ok.arrow",
+      "rows": 1
+    }
+  ]
+}
