@@ -279,7 +279,8 @@ without `deephaven-core` and `jpy`, against Java 42.9 with the same plugin.
 - What the plugin does with `jpy` now ends in a refusal that names the class:
   - `dx.data.marketing()`: `not ported: io.deephaven.engine.table.impl.util.ColumnsToRowsTransform#columnsToRows`;
   - `dx.data.gapminder()` when it ticks: `not ported: java.lang.String[]: jpy.array`
-    (`gapminder(ticking=False)` does not make the arrays and works);
+    (`gapminder(ticking=False)` does not make the arrays and works); made since task
+    11.2, below;
   - a figure with `calendar=`, once calendars exist:
     `not ported: io.deephaven.time.DateTimeUtils#timeZone`.
 - Of the example data, `tips`, `gapminder(ticking=False)`, `wind`, `election` and `jobs`
@@ -335,6 +336,22 @@ Business calendars exist (`docs/CONSOLE.md`, "Business calendars"), and `jpy` ca
   and are not here (`not ported: io.deephaven.time.calendar.Calendars#calendar`).
 - The business time of an axis of a `deephaven.plot` figure (`Figure#businessTime`) is
   still refused, as the table of "Refused" says.
+
+### After task 11.2
+
+`jpy.array` makes Java arrays (`docs/CONSOLE.md`, "Java arrays"), and a formula reads one
+that a variable holds as a column of its class. The plugin makes three in
+`dx.data.gapminder()` when it ticks (`data_generators.py:912-914`, two `String[]` and a
+`long[]`), puts them in every row with `update_view` and `ungroup`s them.
+
+- `dx.data.gapminder()` (ticking) is made, run as above with the plugin as `pip` installs
+  it and no `jpy`: the columns and types are Java's (`Country` and `Continent` `String`,
+  `Year`, `Month` and `Pop` `long`, `LifeExp` and `GdpPerCap` `double`), the first rows and
+  the first rows of 1961 are Java's, and it grows by 142 rows a cycle, as on Java; the
+  size at a moment depends on when the time table started, on either server.
+  `dx.scatter` of it makes a figure.
+- No other call of the three plugins makes a Java array, casts or converts
+  (`tasks/11.2-console-jpy-arrays.md`, "Survey").
 
 ## Not started
 
