@@ -713,7 +713,25 @@ fn random_updates_of_vector_columns_match_a_recompute() {
             UpdateBySpec::RollingMin(window.clone()),
             &["RNV = V", "RNS = S"],
         ),
-        op(UpdateBySpec::RollingMax(window), &["RXV = V", "RXS = S"]),
+        op(
+            UpdateBySpec::RollingMax(window.clone()),
+            &["RXV = V", "RXS = S"],
+        ),
+        op(
+            UpdateBySpec::CumCountWhere {
+                result_column: "CW".into(),
+                filters: vec!["V != null".into(), "A == null".into()],
+            },
+            &[],
+        ),
+        op(
+            UpdateBySpec::RollingCountWhere {
+                window,
+                result_column: "RW".into(),
+                filters: vec!["len(V) > 1".into()],
+            },
+            &[],
+        ),
     ];
     for by in [&["K"][..], &["K", "S"], &["V"]] {
         for seed in test_seeds(0..16) {
@@ -727,7 +745,7 @@ fn random_updates_of_vector_columns_match_a_recompute() {
             let operations = operations.clone();
             let by: Vec<&'static str> = by.to_vec();
             let t = Ticking::new([0, 2, 4, 6, 8, 10, 12, 14], &columns, move |source| {
-                update_by(source, &operations, &by).unwrap()
+                update_by_with(source, &operations, &by, &oxhaven_expr::Compiler).unwrap()
             });
             for _ in 0..30 {
                 let change = random.next_change(&*t.script.table(), 5);
@@ -836,4 +854,96 @@ fn a_read_of_a_window_chosen_by_a_condition_reads_the_chosen_window() {
         ),
         Ok("-1 1 1 2 3".to_string())
     );
+}
+
+/// The table of the count-where tests, `group_by("B")` of nine rows in Java: `E` is
+/// `[5, 1] [3, 7, 2] [1] [5, 1] [0]`, `S` `[s0, s1] [s2, s0, s1] [s2] [s0, s1] [s2]`, `V`
+/// is `E` with a null third cell, `A` (an `int[]`) is `[B, 1]` with a null fourth cell, and
+/// `K` is 1.
+fn count_where_source() -> Arc<dyn Table> {
+    let (ints, e) = vector_column(
+        ColumnType::Int,
+        &[Some(2), Some(3), Some(1), Some(2), Some(1)],
+        Int32Array::from(vec![5, 1, 3, 7, 2, 1, 5, 1, 0]),
+    );
+    let (_, v) = vector_column(
+        ColumnType::Int,
+        &[Some(2), Some(3), None, Some(2), Some(1)],
+        Int32Array::from(vec![5, 1, 3, 7, 2, 5, 1, 0]),
+    );
+    let (strings, s) = vector_column(
+        ColumnType::String,
+        &[Some(2), Some(3), Some(1), Some(2), Some(1)],
+        StringArray::from(vec!["s0", "s1", "s2", "s0", "s1", "s2", "s0", "s1", "s2"]),
+    );
+    let arrays = ColumnType::array(ColumnType::Int);
+    let a = list_of(
+        &arrays,
+        [Some(2), Some(2), Some(2), None, Some(2)],
+        Arc::new(Int32Array::from(vec![0, 1, 1, 1, 2, 1, 4, 1])),
+    );
+    static_table(&[
+        ("E", ints.clone(), e),
+        ("S", strings, s),
+        ("V", ints, v),
+        ("A", arrays, a),
+        ("K", ColumnType::Int, Arc::new(Int32Array::from(vec![1; 5]))),
+    ])
+}
+
+/// The cumulative count by `K`, and the rolling count over the row and the one before it,
+/// of the rows that pass `filter`, as text; or the refusal.
+fn vector_counts(filter: &str) -> Result<[String; 2], UpdateByError> {
+    let filters = vec![filter.to_string()];
+    let cumulative = UpdateBySpec::CumCountWhere {
+        result_column: "C".into(),
+        filters: filters.clone(),
+    };
+    let rolling = UpdateBySpec::RollingCountWhere {
+        window: RollingWindow::ticks(2, 0),
+        result_column: "C".into(),
+        filters,
+    };
+    let source = count_where_source();
+    let count = |spec: UpdateBySpec, by: &[&str]| {
+        let table = update_by_with(&source, &[op(spec, &[])], by, &oxhaven_expr::Compiler)?;
+        let column = table.definition().index_of("C").unwrap();
+        Ok::<_, UpdateByError>(cells(&*table, column).join(" "))
+    };
+    Ok([count(cumulative, &["K"])?, count(rolling, &[])?])
+}
+
+/// Seen on Deephaven 42.9 over the table of [`count_where_source`], with
+/// `cum_count_where("C", filter)` by `K` and `rolling_count_where_tick("C", filter,
+/// rev_ticks=2)`: the same rows pass as in `where(filter)`, and a filter that `where` fails
+/// on a null vector or array (`NullPointerException`) fails the `update_by`.
+///
+/// Behavior: io.deephaven.engine.table.impl.updateby.countwhere.CountWhereOperator.Context#applyFilters
+#[test]
+fn a_count_where_filters_vector_and_array_columns_as_where_does() {
+    let counts = |cumulative: &str, rolling: &str| Ok([cumulative.into(), rolling.into()]);
+    for (filter, expected) in [
+        ("V == null", counts("0 0 1 1 1", "0 0 1 1 0")),
+        ("V = null", counts("0 0 1 1 1", "0 0 1 1 0")),
+        ("V != null", counts("1 2 2 3 4", "1 2 1 1 2")),
+        ("!isNull(V)", counts("1 2 2 3 4", "1 2 1 1 2")),
+        ("len(V) > 1", counts("1 2 2 3 3", "1 2 1 1 1")),
+        ("sum(V) > 5", counts("1 2 2 3 3", "1 2 1 1 1")),
+        ("A == null", counts("0 0 0 1 1", "0 0 0 1 1")),
+        ("S.size() > 2", counts("0 1 1 1 1", "0 1 1 0 0")),
+    ] {
+        assert_eq!(vector_counts(filter), expected, "{filter}");
+    }
+    for filter in ["V.size() > 1", "V[0] > 2", "V.get(1) == 1", "A.length > 1"] {
+        match vector_counts(filter) {
+            Err(UpdateByError::Failed(_)) => {}
+            other => panic!("{filter}: {other:?}"),
+        }
+    }
+    // Java: `Failed to convert value <E> for column "V" of type
+    // io.deephaven.vector.IntVector; it is a column name`.
+    match vector_counts("V == E") {
+        Err(UpdateByError::InvalidArgument(_)) => {}
+        other => panic!("V == E: {other:?}"),
+    }
 }
