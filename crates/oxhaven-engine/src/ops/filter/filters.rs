@@ -402,7 +402,7 @@ pub(super) fn resolve(
             invert_pattern,
         } => resolve_pattern(column, pattern, *ignore_case, *invert_pattern, definition),
         FilterSpec::Condition(text) => resolve_condition(text, definition, compiler),
-        FilterSpec::Search { text, columns } => search::expand(definition, text, columns),
+        FilterSpec::Search { text, columns } => search::expand(definition, text, columns, compiler),
         FilterSpec::And(specs) => {
             let mut parts = Vec::new();
             for part in resolve_all(specs)? {
