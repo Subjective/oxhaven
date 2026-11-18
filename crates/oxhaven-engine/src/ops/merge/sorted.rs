@@ -6,6 +6,7 @@
 //! procedure gives.
 
 use super::MergeError;
+use crate::ops::agg;
 use crate::table::{QueryTable, TableSpec};
 use arrow::array::{Array, ArrayRef, AsArray};
 use arrow::compute::interleave;
@@ -187,24 +188,10 @@ impl Queue {
     }
 }
 
-/// `Class#toString` of a column's data type, as `Require#eq` prints it.
-fn java_class(column_type: &ColumnType) -> &'static str {
-    match column_type {
-        ColumnType::Boolean => "class java.lang.Boolean",
-        ColumnType::Byte => "byte",
-        ColumnType::Char => "char",
-        ColumnType::Short => "short",
-        ColumnType::Int => "int",
-        ColumnType::Long => "long",
-        ColumnType::Float => "float",
-        ColumnType::Double => "double",
-        ColumnType::String => "class java.lang.String",
-        ColumnType::Instant => "class java.time.Instant",
-        other => unported!(
-            "io.deephaven.engine.table.impl.util.MergeSortedHelper.SortedMergeColumnSource#addSource",
-            "columns of one name with the types {other:?} and another"
-        ),
-    }
+/// `Class#toString` of a column's data type, as `Require#eq` prints it: the name of a
+/// primitive, else `class` (`interface` for a vector) and the class's binary name.
+fn java_class(column_type: &ColumnType) -> String {
+    agg::java_class(column_type)
 }
 
 fn names(definition: &TableDefinition) -> String {
