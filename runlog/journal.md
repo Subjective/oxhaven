@@ -1379,3 +1379,7 @@ Seven green checks on head 852fe40c, the replay among them. Main is at 7ff844bf.
 ## 2026-11-18 06:46 UTC: pull request 169 merged; task 11.2 started
 
 Seven green checks on head ac12d2c4. Main is at 603d29f8. Task 11.2 (Java arrays and casts in the console's jpy stand-in, and A10's wording brought up to date) runs on Opus beside task 11.4.
+
+## 2026-11-18 07:28 UTC: task 11.2 reported, pull request 170
+
+Java arrays and casts work in the console's jpy stand-in; about 800 expressions compared with jpy inside Deephaven. The agent stopped its gate for low disk (two build directories), so the pull request's checks are the first run of the workspace tests and the replay. A formula keeps a copy of an array where Deephaven reads the live one: owner question 7.10, recommendation to keep. A10's wording is brought up to date in the same pull request (label oracle-change).
