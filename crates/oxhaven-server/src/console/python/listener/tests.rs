@@ -801,27 +801,20 @@ handle.stop()
     );
 }
 
-/// The business calendars are refused by the Java method each function stands for.
+/// The business calendars Deephaven ships are refused by the Java method that hands them
+/// out; the rest of `deephaven.calendar` works (`calendar_tests.rs`).
 #[tokio::test]
-async fn a_business_calendar_is_refused_by_the_name_of_its_java_method() {
+async fn a_shipped_business_calendar_is_refused_by_the_name_of_its_java_method() {
     let python = Python::start().await;
     python.run(SETUP);
     python.run(
         r#"
 from deephaven import calendar as cal
-calendars = 'not ported: io.deephaven.time.calendar.Calendars#'
-for call, message, method in (
-    (cal.calendar, 'failed to get the default calendar.', 'calendar'),
-    (lambda: cal.calendar('USNYSE'), 'failed to get the default calendar.', 'calendar'),
-    (cal.calendar_name, 'failed to get the default calendar name.', 'calendarName'),
-    (cal.calendar_names, 'failed to obtain the available calendar names.', 'calendarNames'),
-    (lambda: cal.set_calendar('X'), "failed to set the default calendar name to 'X'", 'setCalendar'),
-    (lambda: cal.remove_calendar('X'), "failed to remove calendar 'X'", 'removeCalendar'),
-    (lambda: cal.add_calendar('/x.calendar'), "failed to add calendar from file '/x.calendar'", 'addCalendarFromFile'),
-    (lambda: cal.add_calendar(object()), 'failed to add calendar', 'addCalendar'),
-):
-    kind, text = raised(call)
-    assert kind == 'DHError' and text.startswith(message) and text.endswith(calendars + method), text
+calendars = 'not ported: io.deephaven.time.calendar.Calendars#calendar'
+for name in ('UTC', 'usnyse_example', 'USBANK_EXAMPLE'):
+    kind, text = raised(lambda: cal.calendar(name))
+    assert kind == 'DHError' and text.startswith('failed to get the default calendar. : ' + calendars), text
+assert raised(lambda: cal.add_calendar(object())) == ('DHError', 'failed to add calendar : no matching Java method overloads found')
 assert raised(lambda: cal.add_calendar(None)) == ('DHError', 'cal must be specified')
 "#,
     );
