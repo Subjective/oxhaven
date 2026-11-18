@@ -1,5 +1,6 @@
 //! Tests of aggregation.
 
+mod by_rows;
 mod corpus;
 mod fixtures;
 mod formula;

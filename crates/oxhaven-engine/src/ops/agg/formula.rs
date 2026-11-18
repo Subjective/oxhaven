@@ -140,13 +140,13 @@ impl AggOperator for FormulaAgg {
         let evaluated: Vec<usize> = slots
             .iter()
             .copied()
-            .filter(|&slot| self.evaluate_empty || !groups.rows(slot).is_empty())
+            .filter(|&slot| self.evaluate_empty || !groups.is_empty(slot))
             .collect();
         let mut row_keys: Vec<RowKey> = Vec::new();
         let mut lengths: Vec<usize> = Vec::with_capacity(evaluated.len());
         for &slot in &evaluated {
             let before = row_keys.len();
-            row_keys.extend(groups.rows(slot).iter());
+            groups.extend_row_keys(slot, &mut row_keys);
             lengths.push(row_keys.len() - before);
         }
         // The vectors of one input are one Arrow list array, whose offsets are 32 bits wide.

@@ -1,6 +1,6 @@
 //! Group: the values of a column in the rows of each group, as one vector per group.
 
-use super::operator::{AggOperator, Effect, GroupReader};
+use super::operator::{AggOperator, Effect, GroupReader, Marks, Rows};
 use super::values::{failure, Run};
 use arrow::array::{new_empty_array, ArrayRef, ListArray, UInt32Array};
 use arrow::buffer::OffsetBuffer;
@@ -74,6 +74,16 @@ impl AggOperator for Group {
         Effect::RECOMPUTE
     }
 
+    fn adds_rows(&self) -> bool {
+        true
+    }
+
+    fn add_rows(&mut self, rows: &Rows<'_>, marks: &mut Marks) {
+        for &slot in rows.distinct {
+            marks.note(slot, Effect::RECOMPUTE);
+        }
+    }
+
     fn remove(&mut self, _slot: usize, _run: &Run<'_>) -> Effect {
         Effect::RECOMPUTE
     }
@@ -93,7 +103,7 @@ impl AggOperator for Group {
         self.spans.clear();
         for &slot in slots {
             let first = row_keys.len();
-            row_keys.extend(groups.rows(slot).iter());
+            groups.extend_row_keys(slot, &mut row_keys);
             self.spans.insert(slot, (first, row_keys.len() - first));
         }
         // The vectors written in one cycle are one Arrow list array, whose offsets are 32

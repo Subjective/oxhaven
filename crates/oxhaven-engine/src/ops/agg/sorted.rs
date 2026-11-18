@@ -308,7 +308,7 @@ impl AggOperator for SortedFirstLast {
         }
         let mut row_keys = Vec::with_capacity(slots.len());
         for &slot in slots {
-            self.best[slot] = self.best_of(groups.rows(slot))?;
+            self.best[slot] = self.best_of(&groups.rows(slot))?;
             row_keys.push(self.best[slot].0);
         }
         let values = Values::decode(

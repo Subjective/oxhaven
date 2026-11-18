@@ -1,12 +1,13 @@
 //! The interface between the aggregation framework and one aggregation.
 
 use super::slot_source::ResultColumn;
-use super::values::{Run, Runs};
+use super::values::{Run, Runs, Values};
 use arrow::array::ArrayRef;
 use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{ColumnSource, TableFailure};
 use oxhaven_contracts::update::TableUpdate;
+use std::borrow::Cow;
 use std::sync::Arc;
 
 /// What a call did to a group's result. Both can be true: a removal that needs the
@@ -53,9 +54,60 @@ impl Effect {
     }
 }
 
+/// The parent's rows by group as two flat arrays, as [`Aggregator::initial`] has them
+/// before any row set is made: the rows of group `slot` are
+/// `row_keys[starts[slot]..starts[slot + 1]]`, increasing.
+///
+/// [`Aggregator::initial`]: super::aggregator::Aggregator::initial
+pub struct FlatGroups {
+    row_keys: Vec<RowKey>,
+    starts: Vec<usize>,
+}
+
+impl FlatGroups {
+    /// Brings `rows` together by group, each group's rows increasing: the row at
+    /// position `i` of `rows` is in group `slots[i]`, and `counts[slot]` is the number of
+    /// rows of group `slot`. A counting sort.
+    pub fn new(counts: &[u64], slots: &[u32], rows: &RowSet) -> FlatGroups {
+        let mut starts = Vec::with_capacity(counts.len() + 1);
+        let mut total = 0usize;
+        starts.push(0);
+        for &count in counts {
+            total += count as usize;
+            starts.push(total);
+        }
+        assert_eq!(
+            total,
+            slots.len(),
+            "the row counts of the groups are of the rows"
+        );
+        let mut next: Vec<usize> = starts[..counts.len()].to_vec();
+        let mut sorted = vec![0; total];
+        let mut slots = slots.iter();
+        for range in rows.ranges() {
+            for (row_key, &slot) in (range.first()..=range.last()).zip(&mut slots) {
+                let at = &mut next[slot as usize];
+                sorted[*at] = row_key;
+                *at += 1;
+            }
+        }
+        FlatGroups {
+            row_keys: sorted,
+            starts,
+        }
+    }
+
+    /// The rows of group `slot`, increasing.
+    pub fn of(&self, slot: usize) -> &[RowKey] {
+        &self.row_keys[self.starts[slot]..self.starts[slot + 1]]
+    }
+}
+
 /// The rows of each group and the operator's input column, for [`AggOperator::recompute`].
 pub struct GroupReader<'a> {
     rows: &'a [RowSet],
+    /// The rows of each group while the first result is made, when `rows` are not yet.
+    flat: Option<&'a FlatGroups>,
     input: Option<&'a dyn ColumnSource>,
     keys: &'a [ResultColumn],
 }
@@ -66,7 +118,17 @@ impl<'a> GroupReader<'a> {
         input: Option<&'a dyn ColumnSource>,
         keys: &'a [ResultColumn],
     ) -> Self {
-        GroupReader { rows, input, keys }
+        GroupReader {
+            rows,
+            flat: None,
+            input,
+            keys,
+        }
+    }
+
+    /// The reader with the rows of each group read from `flat` instead of the row sets.
+    pub(super) fn with_flat(self, flat: Option<&'a FlatGroups>) -> Self {
+        GroupReader { flat, ..self }
     }
 
     /// The values of key column `index` of the aggregation, one per group: the key of
@@ -79,8 +141,45 @@ impl<'a> GroupReader<'a> {
     }
 
     /// The parent's rows that are in group `slot` now, in the parent's current key space.
-    pub fn rows(&self, slot: usize) -> &'a RowSet {
-        &self.rows[slot]
+    /// While the first result is made this builds the row set; an operator that wants
+    /// the keys, the ends or whether there are any asks for those.
+    pub fn rows(&self, slot: usize) -> Cow<'a, RowSet> {
+        match self.flat {
+            Some(flat) => Cow::Owned(RowSet::from_keys(flat.of(slot).iter().copied())),
+            None => Cow::Borrowed(&self.rows[slot]),
+        }
+    }
+
+    /// Appends the row keys of group `slot`, increasing, to `out`.
+    pub fn extend_row_keys(&self, slot: usize, out: &mut Vec<RowKey>) {
+        match self.flat {
+            Some(flat) => out.extend_from_slice(flat.of(slot)),
+            None => out.extend(self.rows[slot].iter()),
+        }
+    }
+
+    /// Whether group `slot` has no rows.
+    pub fn is_empty(&self, slot: usize) -> bool {
+        match self.flat {
+            Some(flat) => flat.of(slot).is_empty(),
+            None => self.rows[slot].is_empty(),
+        }
+    }
+
+    /// The first row key of group `slot`, if it has rows.
+    pub fn first_row_key(&self, slot: usize) -> Option<RowKey> {
+        match self.flat {
+            Some(flat) => flat.of(slot).first().copied(),
+            None => self.rows[slot].first_row_key(),
+        }
+    }
+
+    /// The last row key of group `slot`, if it has rows.
+    pub fn last_row_key(&self, slot: usize) -> Option<RowKey> {
+        match self.flat {
+            Some(flat) => flat.of(slot).last().copied(),
+            None => self.rows[slot].last_row_key(),
+        }
     }
 
     /// The operator's input column. Read current values only.
@@ -90,6 +189,23 @@ impl<'a> GroupReader<'a> {
     pub fn input(&self) -> &'a dyn ColumnSource {
         self.input.expect("the operator has no input column")
     }
+}
+
+/// The added rows of one chunk in row order, not brought together by group: what
+/// [`AggOperator::add_rows`] is given.
+pub struct Rows<'a> {
+    /// The slot each row joins.
+    pub slots: &'a [usize],
+    /// Each of those slots once, in the order of its first row.
+    pub distinct: &'a [usize],
+    /// Where each row's slot is in `distinct`: a number below `distinct.len()` that an
+    /// operator can keep what a chunk brought each slot by, in an array as small as the
+    /// chunk.
+    pub groups: &'a [u32],
+    /// The row key of each row, increasing.
+    pub row_keys: &'a [RowKey],
+    /// The chunk of the operator's input column; `None` for an operator without one.
+    pub values: Option<&'a Values>,
 }
 
 /// One aggregation of one input column into one result column, for every group.
@@ -158,21 +274,23 @@ pub trait AggOperator: Send {
         effects.extend(runs.iter().map(|(slot, run)| self.add(slot, &run)));
     }
 
-    /// Whether the operator takes added rows one at a time in row order
-    /// ([`AggOperator::add_rows`]), without their values and without the rows of a group
-    /// brought together. When every operator of an aggregation does and none needs group
-    /// rows, the framework does not group a chunk's rows by slot.
+    /// Whether the operator takes the added rows of a chunk in row order
+    /// ([`AggOperator::add_rows`]), without the rows of a group brought together. When
+    /// every operator of an aggregation does, the framework does not group the added
+    /// rows of a chunk by slot.
     fn adds_rows(&self) -> bool {
         false
     }
 
-    /// Rows added, in row order: the row `row_keys[i]` joins slot `slots[i]`. Notes the
-    /// effect of each row on its slot in `marks`; together they must be what
-    /// [`AggOperator::add_runs`] says of the same rows grouped. Only called when
-    /// [`AggOperator::adds_rows`] says so.
-    fn add_rows(&mut self, slots: &[usize], row_keys: &[RowKey], marks: &mut Marks) {
-        let _ = (slots, row_keys, marks);
-        unreachable!("add_rows of an operator that does not take rows one at a time");
+    /// The added rows of one chunk, in row order. Notes the effect on each slot in
+    /// `marks`; the state and the marks afterwards must be what [`AggOperator::add_runs`]
+    /// leaves for the same rows grouped, so an operator whose result depends on which
+    /// rows of a group came in one chunk (a sum) keeps what the chunk brought each slot
+    /// apart until the chunk's last row. Only called when [`AggOperator::adds_rows`] says
+    /// so.
+    fn add_rows(&mut self, rows: &Rows<'_>, marks: &mut Marks) {
+        let _ = (rows, marks);
+        unreachable!("add_rows of an operator that does not take rows in row order");
     }
 
     /// [`AggOperator::remove`] for every group of a chunk, as
@@ -280,23 +398,29 @@ pub struct Marks {
     state: Vec<u8>,
     /// The slots with a non-zero state.
     touched: Vec<usize>,
+    /// Whether [`MODIFIED`] is not noted: while the first result is made, every slot is
+    /// written whatever its marks.
+    recompute_only: bool,
 }
 
 impl Marks {
+    /// Notes `effect` on `slot`. Whether that changed what is noted of the slot.
     #[inline]
-    pub fn note(&mut self, slot: usize, effect: Effect) {
+    pub fn note(&mut self, slot: usize, effect: Effect) -> bool {
         let bits = if effect.modified { MODIFIED } else { 0 }
             | if effect.recompute { RECOMPUTE } else { 0 };
-        if bits == 0 {
-            return;
+        if bits == 0 || (self.recompute_only && !effect.recompute) {
+            return false;
         }
         if self.state.len() <= slot {
             self.state.resize(slot + 1, 0);
         }
-        if self.state[slot] == 0 {
+        let before = self.state[slot];
+        if before == 0 {
             self.touched.push(slot);
         }
-        self.state[slot] |= bits;
+        self.state[slot] = before | bits;
+        before | bits != before
     }
 
     /// The slots marked with `bit`, increasing.
@@ -321,6 +445,11 @@ impl Marks {
         if self.state.len() < slots {
             self.state.resize(slots, 0);
         }
+    }
+
+    /// Whether only [`RECOMPUTE`] is noted from now on.
+    pub(super) fn note_recompute_only(&mut self, on: bool) {
+        self.recompute_only = on;
     }
 
     pub(super) fn clear(&mut self) {
