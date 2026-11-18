@@ -95,6 +95,13 @@ RESTRICTIONS: dict[str, str] = {
           "java.lang.String)",
     "V8": "vector_filter: no count-where filter that reads an element of a vector of "
           "booleans (F5: Oxhaven's filter compiler refuses it)",
+    "V10": "has_lists: no ungroup of a table with a vector group-by column of an aggregation "
+           "or the distinct of a vector column, or with a column an ungroup took out of one "
+           "(F7: the reference fails to ungroup such a column a second time, and to read a "
+           "null-filled result over these columns)",
+    "V11": "pick_table, pick: on a refreshing table the result of a minimum or maximum of "
+           "vectors is not the source of a later operation (F8: the reference's result holds "
+           "views of the groups, and what reads it is not told when a group changes)",
     "C1": "build_asof: no raj with exact match columns of a static left table and a "
           "refreshing right table that is not an input table (F1: the reference fails "
           "the result when the right table reports a change that touches neither a match "
@@ -124,8 +131,9 @@ class _Third(_Second):
         self.asof: list[str] = []  # the results of as-of joins, in the order made
         # Per table: its vector columns that hold neither a null nor an empty vector.
         self.solid: dict[str, set[str]] = {}
-        # Per table: its columns that are a minimum or maximum of a vector of strings (V6).
+        # Per table: its columns that `ungroup` is not asked to take (V6, V10).
         self.untyped: dict[str, set[str]] = {}
+        self.leaves: set[str] = set()  # tables that no later operation reads (V11)
 
     # ------------------------------------------------------------ bookkeeping
 
@@ -152,7 +160,12 @@ class _Third(_Second):
         untyped: set[str] = set()
         first = self.tables[op.get("source") or op.get("left") or name]
         untyped |= {column for column in self.untyped.get(first.name, ())
-                    if types.get(column) == first.type_of(column)}
+                    if types.get(column) == first.type_of(column)
+                    or (kind == "ungroup" and column in types)}
+        if kind == "agg_by":  # V10
+            untyped |= {column for column in op["by"] if types[column].startswith(LIST)}
+            untyped |= {column for column, column_kind in columns
+                        if column_kind.startswith(LIST + LIST)}
         if "right" in op:
             carried = self.untyped.get(op["right"], set())
             pairs = [pair.split("=") for pair in op.get("joins", [])]
@@ -164,11 +177,13 @@ class _Third(_Second):
                 if spec["op"].startswith(("cum_min", "cum_max", "rolling_min", "rolling_max")):
                     outs = [pair.split("=")[0].strip() for pair in spec["columns"]]
                     untyped |= {out for out in outs if types[out] == LIST + "string"}
+                    if first.live and any(types[out].startswith(LIST) for out in outs):
+                        self.leaves.add(name)  # V11
         self.untyped[name] = untyped
 
     def has_lists(self, table: _Table, besides: tuple[str, ...] | list[str] = ()) -> bool:
         if self.kind == "ungroup" and self.untyped.get(table.name):
-            return False  # V6
+            return False  # V6, V10
         return _Wide.has_lists(table, besides)
 
     def results(self) -> list[str]:
@@ -235,7 +250,16 @@ class _Third(_Second):
             with_vectors = self.pick(lambda t: bool(self.vectors(t, tuple(_KEYED) + FLOATS)))
             if with_vectors is not None:
                 return with_vectors
-        return super().pick_table()
+        for _ in range(20):
+            table = super().pick_table()
+            if table.name not in self.leaves:  # V11
+                return table
+        return self.tables[self.inputs[0]["name"]]
+
+    def pick(self, wanted: Any) -> _Table | None:
+        if not self.leaves:
+            return super().pick(wanted)
+        return super().pick(lambda table: table.name not in self.leaves and wanted(table))  # V11
 
     def keys(self, table: _Table, low: int, high: int,
              exclude: set[str] = frozenset()) -> list[str]:

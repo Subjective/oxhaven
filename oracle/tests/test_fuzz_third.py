@@ -102,9 +102,9 @@ def test_generation_is_the_same_in_another_process():
 
 @pytest.mark.parametrize("family, digest", [
     ("asof_chains", "5b92d8fa3d07643e"),
-    ("vectors", "3bbf94d59b1435ad"),
-    ("windows", "f0385c7187d59dc4"),
-    ("all3", "d9d3b7551a1f223a"),
+    ("vectors", "416a52da972b769a"),
+    ("windows", "4786f10992febd1f"),
+    ("all3", "dd02c4cbe6b4521d"),
 ])
 def test_a_seed_of_the_third_generator_is_the_scenario_it_was(family, digest):
     """Digests over the scenarios of seeds 0 to 99 as the generator was when the runs of
@@ -303,6 +303,35 @@ def test_what_an_owner_item_or_a_finding_restricts_is_not_drawn():
             seen["C1"] += kind == "raj"
             seen["aj of the shape of C1"] += kind == "aj" and op["right"] not in inputs
             assert kind == "aj" or op["right"] in inputs, where
+    for family, runs in GENERATED.items():
+        for doc, predicted in runs:
+            live = _live(doc)
+            # V10: the columns `ungroup` is not asked to take, by table, and the tables that
+            # have one. V11: the tables that nothing reads.
+            marked: dict[str, set[str]] = {}
+            leaves = set()
+            for op in doc["operations"]:
+                kind, name = op["op"], op["name"]
+                types = dict(predicted[name])
+                first = op.get("source") or op.get("left")
+                before = dict(predicted[first]) if first else {}
+                marks = {column for column in marked.get(first, ()) if column in types and (
+                    types[column] == before[column] or kind == "ungroup")}
+                if kind == "agg_by":
+                    marks |= {column for column in op["by"] if types[column].startswith(LIST)}
+                    marks |= {column for column, column_kind in types.items()
+                              if column_kind.startswith(LIST + LIST)}
+                view = kind == "ungroup" and name == first + "v"  # made by `results`
+                if kind == "ungroup" and not view:
+                    seen["V10"] += bool(marked)
+                    assert not marked.get(first), (family, doc["name"], op)
+                marked[name] = marks
+                assert not leaves.intersection(sc.references(op)), (family, doc["name"], op)
+                if kind == "update_by" and first in live and any(
+                        operator["op"].startswith(COMPARING) and before[_source(pair)].startswith(LIST)
+                        for operator in op["ops"] for pair in operator["columns"]):
+                    leaves.add(name)
+            seen["V11"] += len(leaves)
     assert not {name: seen[name] for name in fuzz_third.RESTRICTIONS if seen[name] <= 5}, seen
     # What C1 keeps from raj is drawn for aj (PARITY.md, A13).
     assert seen["aj of the shape of C1"] > 5, seen
