@@ -99,11 +99,18 @@ TOKEN_EXPIRE_MS = 30_000
 
 
 class Server:
-    def __init__(self, binary: str, cycle_ms: int, log_path: str, console: str):
+    def __init__(self, binary: str, cycle_ms: int, log_path: str, console: str, huge_pages: bool):
         self.psk = secrets.token_hex(8)
         self.log_path = log_path
         self.log = open(log_path, "wb")
         env = dict(os.environ, NO_COLOR="1")
+        if not huge_pages:
+            # The allocator asks the kernel for transparent huge pages in the memory it
+            # reserves, and the kernel then gives and takes resident memory in pieces of
+            # 2 MB on a schedule of its own, which hides a trend of the size the memory
+            # limit is there to find (docs/SOAK.md, "Memory"). This turns them off for the
+            # server process, and changes nothing else in it.
+            env["MIMALLOC_ALLOW_THP"] = "0"
         # A server with the Python console needs the libpython it was linked against.
         libdir = sysconfig.get_config_var("LIBDIR") or ""
         if libdir:
@@ -1073,7 +1080,7 @@ def run_soak(args: argparse.Namespace) -> int:
     log_path = args.server_log or os.path.join(tempfile.mkdtemp(prefix="soak-"), "server.log")
     run = Run()
     count_and_bound_client_calls(run)
-    server = Server(args.binary, args.cycle_ms, log_path, args.console)
+    server = Server(args.binary, args.cycle_ms, log_path, args.console, args.huge_pages == "keep")
     print(f"server pid {server.pid}, log {log_path}", flush=True)
     result: dict[str, Any] = {
         "meta": {
@@ -1081,7 +1088,7 @@ def run_soak(args: argparse.Namespace) -> int:
             "profile": args.profile, "duration_s": profile.duration, "warmup_s": profile.warmup,
             "seed": args.seed, "cycle_ms": args.cycle_ms, "round_s": args.round_seconds,
             "cpus": os.cpu_count(), "loadavg_start": os.getloadavg(), "inject": args.inject,
-            "write_steps": WRITE_STEPS,
+            "write_steps": WRITE_STEPS, "huge_pages": args.huge_pages,
         },
     }
     skip = set(filter(None, args.skip.split(",")))
@@ -1227,7 +1234,7 @@ def print_summary(result: dict) -> None:
     print()
     print(f"soak {result['status']}: profile {meta['profile']}, {meta.get('seconds', 0):.0f}s "
           f"({meta['warmup_s']:.0f}s warm-up), seed {meta['seed']}, cycle {meta['cycle_ms']}ms, "
-          f"console {'yes' if meta.get('console') else 'no'}, "
+          f"console {'yes' if meta.get('console') else 'no'}, huge pages {meta.get('huge_pages', 'keep')}, "
           f"{'without ' + ', '.join(meta['skip']) + ', ' if meta.get('skip') else ''}{meta['cpus']} cpus, "
           f"load {meta['loadavg_start'][0]:.1f} -> {meta.get('loadavg_end', [0])[0]:.1f}")
     if s.get("rss_mb"):
@@ -1244,7 +1251,7 @@ def print_summary(result: dict) -> None:
         print(f"  rss MB: start {r['start']}, after warm-up {r['after_warmup']}, end {r['end']}, peak {r['peak']}, "
               f"slope {r['slope_mb_per_hour']} MB/h (allowed {r['allowed_mb_per_hour']})")
         hp, ct = s.get("huge_pages_mb"), s.get("control_ms")
-        if hp:
+        if hp and hp["max"] > 0:
             print(f"  of the rss, in huge pages: {hp['median_first_third']} -> {hp['median_last_third']} MB "
                   f"(between {hp['min']} and {hp['max']})")
         print(f"  cpu: {c['total_s']}s, per round {c['per_round_first_third_s']}s -> {c['per_round_last_third_s']}s "
@@ -1340,6 +1347,9 @@ def main(argv: list[str]) -> int:
                    help="seconds one step of the workload may take before the run is ended as stalled")
     r.add_argument("--console", choices=["auto", "python", "none"], default="auto", help="the server's --console")
     r.add_argument("--server-log", help="where the server's output goes (default: a temporary directory)")
+    r.add_argument("--huge-pages", choices=["off", "keep"], default="off",
+                   help="off: the server runs without transparent huge pages, so that resident memory shows "
+                        "what it holds; keep: as the allocator and the machine have them")
     r.add_argument("--inject", choices=["leak", "mismatch", "stall"],
                    help="break one thing on purpose, to see the run fail: keep every round's tables, "
                         "recompute one check from the wrong rows, or stop making progress")
