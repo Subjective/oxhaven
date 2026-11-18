@@ -1387,3 +1387,7 @@ Java arrays and casts work in the console's jpy stand-in; about 800 expressions 
 ## 2026-11-18 07:33 UTC: task 11.4 reported, pull request 171; task 11.5 started
 
 update_by now serves vector minima and maxima, count-where over vector columns and condition reads in rolling formulas; every gate passed locally. Of 18 refusals, the rest wait on owner items or on vectors of vectors in the formula language. The agent filed owner question 7.10 (rolling min and max of float vectors follow Deephaven's buffer layout); the array question from task 11.2 is renumbered 7.11. Task 11.5 (aggregation refusals) runs on Opus beside task 11.3.
+
+## 2026-11-18 07:38 UTC: pull request 170 merged
+
+Seven green checks on head 817dc83f in the run the label started. Main is at d9370bb5.
