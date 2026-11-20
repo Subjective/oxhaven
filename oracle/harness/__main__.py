@@ -20,6 +20,10 @@ No Java counterpart: harness entry point.
     kafka-registry  serve the schema registry of the Kafka corpus until interrupted
     kafka-record    store what the Java reference answers to the Kafka scenarios
     kafka-gate      replay the Kafka scenarios against the checked-in Kafka baseline
+    remote-seed     run the seed's scope script in the console of a remote of the remote-table corpus
+    remote-record   store what the Java reference's console makes of the remote scenarios
+    remote-gate     replay the remote scenarios against the checked-in remote baseline
+    remote-compare  compare two recordings of the remote scenarios exactly
     formulas      record the formula corpus from Java, or compare one server with it
 
 With `ORACLE_STACKS_AFTER=<seconds>` in the environment, a command that is still running after
@@ -58,6 +62,9 @@ KAFKA_CORPUS = CORPUS / "kafka"
 KAFKA_BASELINE = ORACLE / "kafka-baseline.json"
 # Written by `kafka-record` when it records every scenario: the topic contents they saw.
 KAFKA_RECORDED_FROM = "recorded-from.json"
+REMOTE_SCENARIOS = SCENARIOS / "remote"
+REMOTE_CORPUS = CORPUS / "remote"
+REMOTE_BASELINE = ORACLE / "remote-baseline.json"
 FUZZ_OUT = ORACLE / ".fuzz"
 KNOWN = ORACLE / "fuzz-known-findings.json"
 REFERENCE = "42.9"  # oracle/REFERENCE.md
@@ -342,6 +349,59 @@ def cmd_kafka_record(args: argparse.Namespace) -> int:
             json.dump({"topics_sha256": topics, "reference": REFERENCE}, handle, indent=2)
             handle.write("\n")
     return status
+
+
+def _remote_scenarios(args: argparse.Namespace) -> list:
+    from . import remote
+
+    select = [name.strip() for name in (args.scripts or "").split(",") if name.strip()]
+    return remote.load_all(Path(args.scenarios), select or None)
+
+
+def cmd_remote_seed(args: argparse.Namespace) -> int:
+    from . import remote
+
+    remote.seed_remote(args.remote, REMOTE_CORPUS / remote.SEED)
+    print(f"seeded {args.remote}")
+    return 0
+
+
+def cmd_remote_record(args: argparse.Namespace) -> int:
+    from . import remote
+
+    corpus = Path(args.corpus)
+    seed = remote.seed_digest(REMOTE_CORPUS / remote.SEED)
+    if args.scripts and remote.recorded_from(corpus) not in (None, seed):
+        print("error: the seed is not the one the recordings were made from; record every "
+              "remote scenario (no --scripts)", file=sys.stderr)
+        return 2
+    status = remote.record(args.url, args.remote, _remote_scenarios(args), corpus, REFERENCE)
+    if status == 0 and not args.scripts:
+        with open(corpus / remote.RECORDED_FROM, "w", encoding="utf-8") as handle:
+            json.dump({"seed_sha256": seed, "reference": REFERENCE,
+                       "remote": args.remote_kind}, handle, indent=2)
+            handle.write("\n")
+    return status
+
+
+def cmd_remote_gate(args: argparse.Namespace) -> int:
+    from . import remote
+
+    corpus = Path(args.corpus)
+    if remote.recorded_from(corpus) != remote.seed_digest(REMOTE_CORPUS / remote.SEED):
+        print("error: the seed is not the one the recordings were made from; record the "
+              "remote scenarios again against the Java reference", file=sys.stderr)
+        return 2
+    return remote.gate(args.url, args.remote, _remote_scenarios(args), corpus,
+                       Path(args.baseline), Path(args.report) if args.report else None,
+                       bool(args.scripts))
+
+
+def cmd_remote_compare(args: argparse.Namespace) -> int:
+    from . import remote
+
+    return remote.compare_recordings(_remote_scenarios(args), Path(args.expected),
+                                     Path(args.actual))
 
 
 def cmd_kafka_gate(args: argparse.Namespace) -> int:
@@ -811,6 +871,41 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--baseline", default=str(KAFKA_BASELINE))
     p.add_argument("--report", help="write the full outcome to this JSON file")
     p.set_defaults(run=cmd_kafka_gate)
+
+    def remote_scripts(p: argparse.ArgumentParser) -> None:
+        p.add_argument("--scenarios", default=str(REMOTE_SCENARIOS))
+        p.add_argument("--scripts", help="comma-separated names, or starts of names: only "
+                                         "these remote scenarios")
+
+    p = sub.add_parser("remote-seed", help="run the seed's scope script on a remote")
+    p.add_argument("--remote", required=True, help="the remote's URL (dh://host:port)")
+    p.set_defaults(run=cmd_remote_seed)
+
+    p = sub.add_parser("remote-record",
+                       help="store what the Java reference answers to the remote scenarios")
+    p.add_argument("--url", required=True)
+    p.add_argument("--remote", required=True)
+    p.add_argument("--corpus", default=str(REMOTE_CORPUS))
+    p.add_argument("--remote-kind", default="oxhaven", choices=["oxhaven", "deephaven"])
+    remote_scripts(p)
+    p.set_defaults(run=cmd_remote_record)
+
+    p = sub.add_parser("remote-gate", help="replay the remote scenarios against the "
+                                           "checked-in remote baseline")
+    p.add_argument("--url", required=True)
+    p.add_argument("--remote", required=True)
+    p.add_argument("--corpus", default=str(REMOTE_CORPUS))
+    p.add_argument("--baseline", default=str(REMOTE_BASELINE))
+    p.add_argument("--report", help="write the full outcome to this JSON file")
+    remote_scripts(p)
+    p.set_defaults(run=cmd_remote_gate)
+
+    p = sub.add_parser("remote-compare", help="compare two recordings of the remote "
+                                              "scenarios exactly")
+    p.add_argument("--expected", required=True, help="a corpus directory")
+    p.add_argument("--actual", default=str(REMOTE_CORPUS))
+    remote_scripts(p)
+    p.set_defaults(run=cmd_remote_compare)
 
     p = sub.add_parser("client-smoke", help="exercise one area of the client protocol")
     p.add_argument("area", choices=["session", "tables", "flight", "barrage", "inputtable",
