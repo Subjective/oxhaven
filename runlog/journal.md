@@ -1487,3 +1487,7 @@ Neither open question of the soak test is a server defect. Processor time per ro
 ## 2026-11-18 22:09 UTC: pull request 182 merged after one CI failure
 
 The first run failed the short soak: the copy of a subscribed table was behind for one key. Not a race and not the server: the Deephaven Python client's `modified()` goes through `RowSequenceBuilder::AddInterval` in Deephaven's C++ client, which drops a row modified in only some columns of a message. The agent reproduced the failure to the digit by forcing three changes into one message. The soak's copy now applies each column's modified rows itself. The check was wrong since task 12.3; twelve earlier runs did not hit it. Per Josh's standing answer, the Deephaven defect is not reported upstream. Seven green checks on head 0f8b5dc1; main is at 53b4b39c. Tokens and tool uses in the task row are the sum of the agent's two runs.
+
+## 2026-11-20 07:28 UTC: Josh approved remote tables; tasks 13.1 and 13.2a started
+
+Josh answered "Yes" (2026-11-20 07:25 UTC) to adding Oxhaven as a Barrage client: a Rust client, dh:// URI resolving, deephaven.barrage and deephaven.uri, tests against real Deephaven. Split: 13.1 the client and its refreshing table (default model, design work); 13.2a the URI types (opus, a defined port, independent of 13.1); 13.2b resolvers and the two Python modules once both are merged; 13.3 recorded scenarios and soak coverage. Owner questions 7.1 to 7.22 are still open.
