@@ -171,20 +171,15 @@ pub(crate) fn check_chars(
     Ok(())
 }
 
-/// Appends `s` to `out`, keeping unreserved and other characters, escaped octets and what
-/// `also` allows, and writing every other character as the escaped octets of its UTF-8
-/// form, in upper case.
+/// Appends `s` to `out`, keeping unreserved and other characters and what `also` allows,
+/// and writing every other character as the escaped octets of its UTF-8 form, in upper
+/// case. A `%` is always quoted, also where it begins what reads as an escaped octet: the
+/// components are decoded text (observed on Deephaven 42.9's JVM, `/a%41` gives `/a%2541`).
 ///
-/// Behavior: the quoting of java.net.URI's constructors from components, as their
-/// documentation describes it
+/// Behavior: the quoting of java.net.URI's constructors from components
 fn quote(out: &mut String, s: &str, also: impl Fn(char) -> bool) {
-    let bytes = s.as_bytes();
-    for (at, c) in s.char_indices() {
-        let escaped = c == '%'
-            && bytes
-                .get(at + 1..at + 3)
-                .is_some_and(|pair| pair.iter().all(u8::is_ascii_hexdigit));
-        if escaped || is_unreserved(c) || is_other(c) || also(c) {
+    for c in s.chars() {
+        if is_unreserved(c) || is_other(c) || also(c) {
             out.push(c);
         } else {
             let mut buffer = [0; 4];
@@ -216,8 +211,9 @@ impl Uri {
 
     /// A hierarchical URI made of decoded components, each quoted where it has a character
     /// its place does not allow: in the user information anything but unreserved,
-    /// punctuation, escaped and other characters; in the path the same and `/` and `@`; in
-    /// the query and the fragment anything that is not a legal URI character. A quoted
+    /// punctuation and other characters; in the path the same and `/` and `@`; in the query
+    /// and the fragment anything that is not a legal URI character, and `%` everywhere. A
+    /// quoted
     /// character becomes the escaped octets of its UTF-8 form. `//` comes before the
     /// authority when there is user information, a host or a port; an IPv6 host gets its
     /// brackets. The string is then parsed as [`Uri::parse`] does.
@@ -226,8 +222,9 @@ impl Uri {
     /// (`java.net.URI#parseServerAuthority`), which a host taken from a parsed URI always
     /// passes.
     ///
-    /// Behavior: java.net.URI#URI(String, String, String, int, String, String, String), as
-    /// its documentation describes it
+    /// Behavior: java.net.URI#URI(String, String, String, int, String, String, String), from
+    /// its documentation and the answers of Deephaven 42.9's JVM
+    /// (`tasks/13.2b-uri-python/check.py`)
     pub fn from_components(
         scheme: Option<&str>,
         user_info: Option<&str>,

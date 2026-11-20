@@ -161,6 +161,8 @@ fn a_csv_uri_is_rebuilt_as_a_file_or_web_url() {
     // decoded, then quoted again: Java reads the file `/tmp/a%20b.csv`
     assert_eq!(rebuilt("csv:///tmp/a%20b.csv").unwrap(), "file:/tmp/a%20b.csv");
     assert_eq!(rebuilt("csv:///tmp/%C3%A9.csv").unwrap(), "file:/tmp/é.csv");
+    // every `%` of the decoded path is quoted: Java reads the file `/tmp/a%2541.csv`
+    assert_eq!(rebuilt("csv:///tmp/a%2541.csv").unwrap(), "file:/tmp/a%2541.csv");
     assert_eq!(
         rebuilt("csv+https://user@example.com:8443/a%20b.csv?q=1#f").unwrap(),
         "https://user@example.com:8443/a%20b.csv?q=1#f"

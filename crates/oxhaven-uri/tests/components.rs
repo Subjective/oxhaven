@@ -1,6 +1,7 @@
 //! `Uri::from_components`, the constructor the CSV resolver rebuilds a URI with. The expected
 //! strings are what Deephaven 42.9's JVM answered for `new java.net.URI(scheme, userInfo,
-//! host, port, path, query, fragment)` (`tasks/13.2b-uri-python/check.py`, "components").
+//! host, port, path, query, fragment)` (`tasks/13.2b-uri-python/check.py`, "components"),
+//! where an error is Java's `URISyntaxException` message.
 
 use oxhaven_uri::Uri;
 
@@ -23,9 +24,9 @@ fn built(
 fn a_path_alone_has_no_authority() {
     let file = |path| built(Some("file"), None, None, None, Some(path), None, None);
     assert_eq!(file("/tmp/x.csv"), "file:/tmp/x.csv");
-    // a decoded space is quoted again; an escape that decoding left is kept
+    // a decoded space is quoted again, and so is every `%`
     assert_eq!(file("/tmp/a b.csv"), "file:/tmp/a%20b.csv");
-    assert_eq!(file("/tmp/a%41.csv"), "file:/tmp/a%41.csv");
+    assert_eq!(file("/tmp/a%41.csv"), "file:/tmp/a%2541.csv");
     assert_eq!(file("/tmp/100%.csv"), "file:/tmp/100%25.csv");
     assert_eq!(file("/a@b:c;d=e/f"), "file:/a@b:c;d=e/f");
     assert_eq!(file("/é/ü"), "file:/é/ü");

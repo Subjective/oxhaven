@@ -30,6 +30,9 @@ def resolve(uri: str) -> Any:
         DHError
     """
     try:
+        if not isinstance(uri, str):
+            # what jpy raises when no overload of `ResolveTools#resolve` takes the argument
+            raise RuntimeError("no matching Java method overloads found")
         return _pythonify(_engine.native.resolve_uri(uri))
     except Exception as e:
         raise DHError(e, "failed to resolve the URI.") from e

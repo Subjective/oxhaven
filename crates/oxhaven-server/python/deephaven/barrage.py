@@ -15,6 +15,15 @@ from .dherror import DHError
 from .table import Table
 
 
+def _ticket_bytes(ticket):
+    """A ticket as bytes: a string is its UTF-8 bytes.
+
+    Behavior: `io.deephaven.qst.table.TableSpec#ticket(String)`, the overload jpy picks for
+    a `str`
+    """
+    return ticket.encode("utf-8") if isinstance(ticket, str) else ticket
+
+
 class BarrageSession:
     """A Deephaven Barrage session to a remote server."""
 
@@ -61,7 +70,7 @@ class BarrageSession:
             DHError
         """
         try:
-            return Table(self.j_barrage_session.subscribe(ticket))
+            return Table(self.j_barrage_session.subscribe(_ticket_bytes(ticket)))
         except Exception as e:
             raise DHError(
                 e, "failed to subscribe to the remote table with the provided ticket."
@@ -84,7 +93,7 @@ class BarrageSession:
             DHError
         """
         try:
-            return Table(self.j_barrage_session.snapshot(ticket))
+            return Table(self.j_barrage_session.snapshot(_ticket_bytes(ticket)))
         except Exception as e:
             raise DHError(
                 e,

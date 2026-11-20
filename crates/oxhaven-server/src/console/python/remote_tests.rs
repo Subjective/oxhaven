@@ -90,6 +90,8 @@ subscribed = session.subscribe(b"s/ticking")
 assert subscribed.is_refreshing and subscribed.size == 2
 snapped = session.snapshot(b"s/ticking")
 assert not snapped.is_refreshing and snapped.size == 2
+# a string ticket is its UTF-8 bytes
+assert session.snapshot("s/ticking").size == 2
 
 with barrage_session("127.0.0.1", {port}, auth_type="Anonymous", extra_headers={{"x-test": "1"}}) as other:
     from_field = other.snapshot(b"a/my_app/f/fixed")
@@ -168,6 +170,10 @@ async fn failures_are_dherrors_with_the_references_messages() {
         resolving("dh:///scope/a b"),
         "java.lang.IllegalArgumentException: Illegal character in path at index 13: \
          dh:///scope/a b"
+    );
+    assert_eq!(
+        raised(&python, "resolve(5)", RESOLVE),
+        "no matching Java method overloads found"
     );
     assert_eq!(
         resolving("dh:///scope/a%2Fb"),
