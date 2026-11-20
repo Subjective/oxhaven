@@ -556,8 +556,8 @@ async fn a_blink_table_is_snapshotted_and_its_subscription_answers_as_the_server
         .unwrap();
     assert_eq!(rows_of(snapshot.as_ref()), rows_of(blink.as_ref()));
     assert_eq!(snapshot.row_set().size(), 2);
-    // the snapshot carries the remote's attributes, as Java's does
-    assert!(snapshot.attributes().blink && snapshot.is_flat());
+    // flat, as the remote table says it is; not a blink table (owner's item 7.25)
+    assert!(snapshot.is_flat() && !snapshot.attributes().blink);
     server.state.graph.run_cycle();
 
     // This crate's server does not serve subscriptions to blink tables yet; what it

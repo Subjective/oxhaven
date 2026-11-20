@@ -461,17 +461,17 @@ fn subscription_request(ticket: &[u8], options: &SubscriptionOptions) -> FlightD
     )
 }
 
-/// The request of a snapshot of the table behind `ticket`.
+/// The static table of a snapshot: the rows of `rows`, flat only when the remote's schema
+/// says the remote table is, as the subscription's table is. A table that holds its rows
+/// at `0..size` is not therefore flat: Java's snapshot of a table that is not flat does not
+/// say it is.
 ///
-/// Behavior: `io.deephaven.client.impl.BarrageSnapshotImpl#makeRequestInternal`
-/// The static table of a snapshot: the rows of `rows`, with the attributes the remote's
-/// schema gives and flat only when the schema says the remote table is, as the
-/// subscription's table is. A table that holds its rows at `0..size` is not therefore
-/// flat: Java's snapshot of a table that is not flat does not say it is.
+/// The other attributes of the schema (`BlinkTable` among them) are left off a snapshot:
+/// owner's item 7.25 (open), whose recommendation is to keep it so.
 ///
-/// Behavior: `io.deephaven.extensions.barrage.table.BarrageTable#make` (the attributes of
-/// the schema, and `setFlat` of `BarrageRedirectedTable` and `BarrageBlinkTable`), which
-/// `BarrageSnapshotImpl` uses as `BarrageSubscriptionImpl` does
+/// Behavior: `io.deephaven.extensions.barrage.table.BarrageTable#make` (`setFlat` of
+/// `BarrageRedirectedTable`), which `BarrageSnapshotImpl` uses as `BarrageSubscriptionImpl`
+/// does
 pub(super) fn snapshot_table(schema: &RemoteSchema, rows: &dyn Table) -> Arc<dyn Table> {
     let columns = (0..schema.definition.columns().len())
         .map(|index| rows.column(index))
@@ -480,14 +480,16 @@ pub(super) fn snapshot_table(schema: &RemoteSchema, rows: &dyn Table) -> Arc<dyn
         schema.definition.clone(),
         (*rows.row_set()).clone(),
         columns,
-    )
-    .with_attributes(schema.table_attributes());
-    if schema.is_blink() || schema.is_flat() {
+    );
+    if schema.is_flat() {
         spec = spec.flat();
     }
     QueryTable::new_static(spec)
 }
 
+/// The request of a snapshot of the table behind `ticket`.
+///
+/// Behavior: `io.deephaven.client.impl.BarrageSnapshotImpl#makeRequestInternal`
 fn snapshot_request(
     ticket: &[u8],
     options: &SnapshotOptions,
