@@ -6,6 +6,7 @@
 
 use super::{
     update_by, update_by_with, RollingWindow, UpdateByError, UpdateByOperation, UpdateBySpec,
+    WindowScale,
 };
 use crate::ops::sort::testing::{cells, static_table, Ticking};
 use arrow::array::{
@@ -285,17 +286,80 @@ fn bucket_by(column_type: ColumnType, cells: ArrayRef) {
     let _ = update_by(&source, &[op(UpdateBySpec::CumSum, &["S = Y"])], &["V"]);
 }
 
-/// Deephaven 42.9 puts `[0.0]` and `[-0.0]` in one bucket where the vectors come from a
-/// `group_by`, and in two after a `select()`.
+/// Buckets of vectors of `double` and `float` treat `-0.0` as `0.0` and every NaN as one
+/// value, as Java's buckets of a plain `double` column do (owner item 7.6, allowed
+/// difference A19 of `PARITY.md`). Seen on Deephaven 42.9 for vectors made by `group_by`:
+/// `D` is `[0.0] [-0.0] [NaN] [1.5] [0.0] [NaN] null [-0.0, 1.5] [0.0, 1.5] [] null [1.5]`
+/// and `cum_sum("S = Y")` by `D` sums `0 1 2 3 5 7 6 7 15 9 16 14`. After a `select()`
+/// Java puts `[0.0]` and `[-0.0]` in two buckets (`0 1 2 3 4 7 6 7 8 9 16 14`); that is
+/// the difference.
+#[test]
+fn a_bucket_column_of_floating_vectors_treats_zeros_as_equal() {
+    let lengths = [
+        Some(1),
+        Some(1),
+        Some(1),
+        Some(1),
+        Some(1),
+        Some(1),
+        None,
+        Some(2),
+        Some(2),
+        Some(0),
+        None,
+        Some(1),
+    ];
+    let elements = [
+        0.0,
+        -0.0,
+        f64::NAN,
+        1.5,
+        0.0,
+        // Another NaN than the first.
+        f64::from_bits(f64::NAN.to_bits() | 1),
+        -0.0,
+        1.5,
+        0.0,
+        1.5,
+        1.5,
+    ];
+    let sums = expected(&[0, 1, 2, 3, 5, 7, 6, 7, 15, 9, 16, 14]);
+    let (doubles, cells) = vector_column(
+        ColumnType::Double,
+        &lengths,
+        Float64Array::from(elements.to_vec()),
+    );
+    let (floats, float_cells) = vector_column(
+        ColumnType::Float,
+        &lengths,
+        Float32Array::from(elements.iter().map(|&e| e as f32).collect::<Vec<_>>()),
+    );
+    let source = static_table(&[
+        ("D", doubles, cells),
+        ("F", floats, float_cells),
+        ("Y", ColumnType::Long, longs(0..12)),
+    ]);
+    assert_eq!(bucketed_sums(&source, &["D"]), sums);
+    assert_eq!(bucketed_sums(&source, &["F"]), sums);
+    assert_eq!(bucketed_sums(&source, &["D", "F"]), sums);
+}
+
+/// A vector of vectors of doubles is not named by the owner's answer to item 7.6, and
+/// stays refused: Java's equality of the inner vectors depends on their class.
 #[test]
 #[should_panic(
     expected = "unported: io.deephaven.engine.table.impl.updateby.UpdateBy#updateBy: \
-                           bucket column V of type Vector(Double)"
+                           bucket column V of type Vector(Vector(Double))"
 )]
-fn a_bucket_column_of_double_vectors_is_unported() {
+fn a_bucket_column_of_vectors_of_double_vectors_is_unported() {
     let doubles = ColumnType::vector(ColumnType::Double);
-    let cells = singles(&doubles, Float64Array::from(vec![0.0, -0.0]));
-    bucket_by(doubles, cells);
+    let vectors = ColumnType::vector(doubles.clone());
+    let cells = list_of(
+        &vectors,
+        [Some(1), Some(1)],
+        singles(&doubles, Float64Array::from(vec![0.0, -0.0])),
+    );
+    bucket_by(vectors, cells);
 }
 
 /// Deephaven 42.9 puts each of the equal vectors `[[0]]` of a rolling group of an `int[]`
@@ -615,26 +679,79 @@ fn a_minimum_of_boolean_vectors_is_unported() {
     let _ = update_by(&source, &[op(UpdateBySpec::CumMin, &[])], &[] as &[&str]);
 }
 
-/// A rolling minimum of `[0.0]` and `[-0.0]`, which compare equal, keeps the one that the
-/// layout of Java's ring buffer favours. Seen on Deephaven 42.9: over 400 rows that
-/// alternate `[-0.0]` and `[0.0]`, `rolling_min_tick` with `rev_ticks=3` keeps the earliest
-/// vector of the window except at rows 128, 256 and 384. Owner question 7.10 of the second
-/// batch.
+/// A rolling minimum or maximum of vectors of `double` or `float` keeps the earliest of
+/// equal vectors in the window (owner item 7.10, allowed difference A20 of `PARITY.md`).
+/// Seen on Deephaven 42.9: over 400 rows that alternate `[-0.0]` and `[0.0]`, from
+/// `[-0.0]`, `rolling_min_tick` and `rolling_max_tick` with `rev_ticks=3` and
+/// `rolling_min_time` and `rolling_max_time` with `rev_time="PT2s"` over one row a second
+/// keep the earliest vector of the window except at rows 128, 256 and 384, where Java
+/// shows `[0.0]`.
 #[test]
-#[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.updateby.rollingminmax.ComparableRollingMinMaxOperator: \
-                rolling minimum or maximum of vector column V of type Vector(Double)"
-)]
-fn a_rolling_minimum_of_double_vectors_is_unported() {
+fn a_rolling_minimum_of_floating_vectors_keeps_the_earliest_of_equal_ones() {
+    let rows = 400;
+    let zeros: Vec<f64> = (0..rows)
+        .map(|r| if r % 2 == 0 { -0.0 } else { 0.0 })
+        .collect();
+    let lengths = vec![Some(1); rows];
     let (doubles, cells) = vector_column(
         ColumnType::Double,
-        &[Some(1), Some(1)],
-        Float64Array::from(vec![0.0, -0.0]),
+        &lengths,
+        Float64Array::from(zeros.clone()),
     );
-    let source = static_table(&[("V", doubles, cells)]);
-    let window = RollingWindow::ticks(2, 0);
-    let operation = op(UpdateBySpec::RollingMin(window), &["M = V"]);
-    let _ = update_by(&source, &[operation], &[] as &[&str]);
+    let (floats, float_cells) = vector_column(
+        ColumnType::Float,
+        &lengths,
+        Float32Array::from(zeros.iter().map(|&z| z as f32).collect::<Vec<_>>()),
+    );
+    let second = 1_000_000_000_i64;
+    let times: TimestampNanosecondArray = (0..rows as i64).map(|r| Some(r * second)).collect();
+    let source = static_table(&[
+        ("D", doubles, cells),
+        ("F", floats, float_cells),
+        (
+            "Ts",
+            ColumnType::Instant,
+            Arc::new(times.with_timezone("UTC")),
+        ),
+    ]);
+    let ticks = RollingWindow::ticks(3, 0);
+    let time = RollingWindow {
+        rev: WindowScale::Time {
+            column: "Ts".into(),
+            nanos: 2 * second,
+        },
+        fwd: WindowScale::Time {
+            column: "Ts".into(),
+            nanos: 0,
+        },
+    };
+    let all = columns_of(
+        &source,
+        &[
+            op(
+                UpdateBySpec::RollingMin(ticks.clone()),
+                &["ND = D", "NF = F"],
+            ),
+            op(UpdateBySpec::RollingMax(ticks), &["XD = D", "XF = F"]),
+            op(
+                UpdateBySpec::RollingMin(time.clone()),
+                &["MD = D", "MF = F"],
+            ),
+            op(UpdateBySpec::RollingMax(time), &["YD = D", "YF = F"]),
+        ],
+        &[],
+        &["ND", "NF", "XD", "XF", "MD", "MF", "YD", "YF"],
+    );
+    // The earliest row of the window of row r is r - 2, or 0.
+    let earliest: Vec<String> = (0..rows)
+        .map(|r| {
+            let first = r.saturating_sub(2);
+            if first % 2 == 0 { "[-0.0]" } else { "[0.0]" }.to_string()
+        })
+        .collect();
+    for column in &all {
+        assert_eq!(column, &earliest);
+    }
 }
 
 /// Seen on Deephaven 42.9: `N` is `[0] null [2] [3] null [5]`, a vector column of a
@@ -714,11 +831,11 @@ fn random_updates_of_vector_columns_match_a_recompute() {
         op(UpdateBySpec::CumMax, &["XV = V", "XS = S", "XD = D"]),
         op(
             UpdateBySpec::RollingMin(window.clone()),
-            &["RNV = V", "RNS = S"],
+            &["RNV = V", "RNS = S", "RND = D"],
         ),
         op(
             UpdateBySpec::RollingMax(window.clone()),
-            &["RXV = V", "RXS = S"],
+            &["RXV = V", "RXS = S", "RXD = D"],
         ),
         op(
             UpdateBySpec::CumCountWhere {
@@ -736,7 +853,7 @@ fn random_updates_of_vector_columns_match_a_recompute() {
             &[],
         ),
     ];
-    for by in [&["K"][..], &["K", "S"], &["V"]] {
+    for by in [&["K"][..], &["K", "S"], &["V"], &["D"]] {
         for seed in test_seeds(0..16) {
             let mut random = RandomUpdates::new(seed);
             let columns: Vec<(&str, ColumnType, ArrayRef)> = types
