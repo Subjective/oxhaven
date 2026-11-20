@@ -1523,3 +1523,7 @@ Seven green checks on head a8360632, the run that included the whole workspace t
 ## 2026-11-20 08:56 UTC: task 14.1 reported, pull request 185; task 13.2b started
 
 The five owner-approved items are served, each compared with Deephaven 42.9, with PARITY.md entries A18 to A21 (additions only; the owner's answer of 2026-11-20 is the sign-off for exactly these). The answer to 7.6 names update_by buckets only, so float-vector keys elsewhere (aggregation group-by, joins, select_distinct, keyed input tables) stay refused. Task 13.2b (resolvers and Python modules, Opus) starts on the merged client; TLS stays refused until Josh answers 7.24, and 7.23 is kept as Java does behind one switch. Task 14.2 (PARITY entries for 7.19 to 7.22) waits for 185, since both edit PARITY.md.
+
+## 2026-11-20 09:09 UTC: pull request 185 merged; task 14.2 started
+
+Seven green checks on head 3b7ffcae in the run the label started (the first run's rules job failed only for want of the label). Main is at 2d1571b1. Task 14.2 records 7.19 to 7.22 in PARITY.md and lifts the fuzzer restrictions those and 14.1's items made necessary.
