@@ -1491,3 +1491,11 @@ The first run failed the short soak: the copy of a subscribed table was behind f
 ## 2026-11-20 07:28 UTC: Josh approved remote tables; tasks 13.1 and 13.2a started
 
 Josh answered "Yes" (2026-11-20 07:25 UTC) to adding Oxhaven as a Barrage client: a Rust client, dh:// URI resolving, deephaven.barrage and deephaven.uri, tests against real Deephaven. Split: 13.1 the client and its refreshing table (default model, design work); 13.2a the URI types (opus, a defined port, independent of 13.1); 13.2b resolvers and the two Python modules once both are merged; 13.3 recorded scenarios and soak coverage. Owner questions 7.1 to 7.22 are still open.
+
+## 2026-11-20 07:29 UTC: Josh approved the recommendations for owner questions 7.1 to 7.22
+
+Josh wrote "Do what's recommended" (2026-11-20 07:28 UTC, attached by the coordinator for review-items-2 7.1 to 7.22). What follows from it:
+- Keep refusing, no change: 7.1, 7.2, 7.3, 7.5, 7.7, 7.12, 7.14, 7.16, 7.17, 7.18. 7.8 and 7.9 are done, 7.11 stays as built.
+- Serve, each as a recorded allowed difference in PARITY.md (task 14.1): 7.4 two column-array distances on a refreshing table; 7.6 update_by bucketed by float vectors; 7.10 rolling min/max of float vectors; 7.13 distinct of float vectors; 7.15 downsample by any long column.
+- Record as allowed differences and stop the fuzzer stepping around them (task 14.2): 7.19 (A13 names its chain case as a Deephaven failure, holds for raj; vectors of a refreshing group_by), 7.20 kept element types, 7.21 three ungroup requests, 7.22 the twelve calendar dates.
+Both tasks edit PARITY.md, so they run one after the other, and wait for a free builder (13.1 and 13.2a hold both). Sections 2 to 4 of the same file were not named in the approval and are left as they are.
