@@ -43,6 +43,7 @@ oxhaven-expr = { path = "../oxhaven-expr" }
 oxhaven-kafka = { path = "../oxhaven-kafka", optional = true }
 oxhaven-parquet = { path = "../oxhaven-parquet", optional = true }
 oxhaven-proto = { path = "../oxhaven-proto" }
+oxhaven-uri = { path = "../oxhaven-uri" }
 prost.workspace = true
 prost-reflect = { workspace = true, optional = true }
 pyo3 = { workspace = true, optional = true }
