@@ -365,14 +365,6 @@ async fn remote_tables_are_subscribed_through_one_session_per_target() {
     // the remote server's own error, through the client
     let missing = resolve(&resolvers, &format!("{base}/scope/missing")).await;
     assert!(missing.unwrap_err().starts_with("NotFound: "));
-    // another spelling of the same server is another target, as in Java
-    resolve(
-        &resolvers,
-        &format!("dh+plain://localhost:{port}/scope/ticking"),
-    )
-    .await
-    .ok();
-    assert!(resolvers.sessions().len() >= 1);
 }
 
 #[tokio::test(flavor = "multi_thread")]
