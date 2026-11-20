@@ -2,6 +2,7 @@
 
 pub mod app;
 pub mod barrage;
+pub mod barrage_client;
 pub mod config;
 pub mod console;
 pub mod figure;
