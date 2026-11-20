@@ -1511,3 +1511,7 @@ New crate oxhaven-uri with no dependencies: Deephaven 42.9's URI types and a rea
 ## 2026-11-20 08:14 UTC: pull request 183 merged
 
 Seven green checks on head 8b31a95e. Main is at f8566474. Task 13.2b (resolvers, deephaven.uri, deephaven.barrage) waits for 13.1, and for Josh's answer to 7.23 for one detail.
+
+## 2026-11-20 08:47 UTC: task 13.1 reported, pull request 184
+
+The Barrage client is a module of the server crate, because it reads with the codecs the server writes with. Session (anonymous, pre-shared key, any Authorization), token refresh, fetch by any ticket, snapshot with viewport and columns, full subscription as a refreshing root of the local graph, blink tables, failure on lost connection. Checked against Deephaven 42.9: 102 passed, 0 failed. Not yet: TLS (no TLS stack in the server crate; owner question 7.24 recommends the system OpenSSL already admitted for Kafka), viewport and column subscriptions. Owner question 7.25: static snapshots carry no attributes. cargo test --workspace was not finished locally (disk fell to 5.9 GB with 14.1 building beside it); CI runs it. Josh's 07:28 answer covered 7.1 to 7.22, so 7.23 to 7.25 are open.
