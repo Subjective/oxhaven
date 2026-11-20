@@ -1507,3 +1507,7 @@ Josh is low on Fable usage and agreed (2026-11-20 07:31 UTC, via the coordinator
 ## 2026-11-20 08:05 UTC: task 13.2a reported, pull request 183
 
 New crate oxhaven-uri with no dependencies: Deephaven 42.9's URI types and a reader of URIs that behaves as java.net.URI, written from its documentation and recorded answers (no JDK source). 2,142 cases recorded from Java through jpy; all 12,842 answers match. Owner question 7.23: Java reads a dh:// URI whose host it cannot parse as local and drops the host; the crate matches Java, and the question is whether resolving should refuse it. Josh's "do what's recommended" of 07:28 covered 7.1 to 7.22 only, so 7.23 is open. No UriRouter or resolution config exists in 42.9.
+
+## 2026-11-20 08:14 UTC: pull request 183 merged
+
+Seven green checks on head 8b31a95e. Main is at f8566474. Task 13.2b (resolvers, deephaven.uri, deephaven.barrage) waits for 13.1, and for Josh's answer to 7.23 for one detail.
