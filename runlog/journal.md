@@ -1503,3 +1503,7 @@ Both tasks edit PARITY.md, so they run one after the other, and wait for a free 
 ## 2026-11-20 07:31 UTC: Opus for every task from now on, except the Barrage client
 
 Josh is low on Fable usage and agreed (2026-11-20 07:31 UTC, via the coordinator) that every worker and task runs on Opus from now on. The one exception is task 13.1, the Rust Barrage client, which was started on Fable and stays there. Tasks 13.2b, 13.3, 14.1 and 14.2 will run on Opus; 13.2a already does. The orchestrating session itself is on Opus now.
+
+## 2026-11-20 08:05 UTC: task 13.2a reported, pull request 183
+
+New crate oxhaven-uri with no dependencies: Deephaven 42.9's URI types and a reader of URIs that behaves as java.net.URI, written from its documentation and recorded answers (no JDK source). 2,142 cases recorded from Java through jpy; all 12,842 answers match. Owner question 7.23: Java reads a dh:// URI whose host it cannot parse as local and drops the host; the crate matches Java, and the question is whether resolving should refuse it. Josh's "do what's recommended" of 07:28 covered 7.1 to 7.22 only, so 7.23 is open. No UriRouter or resolution config exists in 42.9.
