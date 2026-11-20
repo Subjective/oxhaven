@@ -1,0 +1,105 @@
+{
+  "format": 2,
+  "scenario": "remote_scope_static",
+  "scenario_sha256": "317ad0667a9d6640da723598a25c4d266dd3c5a09dd26ed1ee3e469b9d5ccf24",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "r_types",
+      "file": "step000.r_types.arrow",
+      "rows": 40
+    },
+    {
+      "step": 0,
+      "table": "b_types",
+      "file": "step000.b_types.arrow",
+      "rows": 40
+    },
+    {
+      "step": 0,
+      "table": "s_types",
+      "file": "step000.s_types.arrow",
+      "rows": 40
+    },
+    {
+      "step": 0,
+      "table": "w_types",
+      "file": "step000.w_types.arrow",
+      "rows": 40
+    },
+    {
+      "step": 0,
+      "table": "r_vectors",
+      "file": "step000.r_vectors.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "s_vectors",
+      "file": "step000.s_vectors.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "r_empty",
+      "file": "step000.r_empty.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "s_empty",
+      "file": "step000.s_empty.arrow",
+      "rows": 0
+    },
+    {
+      "step": 1,
+      "table": "r_types",
+      "file": "step001.r_types.arrow",
+      "rows": 40
+    },
+    {
+      "step": 1,
+      "table": "b_types",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 1,
+      "table": "s_types",
+      "file": "step001.s_types.arrow",
+      "rows": 40
+    },
+    {
+      "step": 1,
+      "table": "w_types",
+      "file": "step001.w_types.arrow",
+      "rows": 40
+    },
+    {
+      "step": 1,
+      "table": "r_vectors",
+      "file": "step001.r_vectors.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "s_vectors",
+      "file": "step001.s_vectors.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "r_empty",
+      "file": "step001.r_empty.arrow",
+      "rows": 0
+    },
+    {
+      "step": 1,
+      "table": "s_empty",
+      "file": "step001.s_empty.arrow",
+      "rows": 0
+    }
+  ]
+}

@@ -1,0 +1,223 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to resolve the URI. : RuntimeError: java.lang.UnsupportedOperationException: Unable to find resolver for uri 'dh+plain:///scope/x'",
+      "operation": "failed to resolve the URI."
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to resolve the URI. : RuntimeError: java.lang.UnsupportedOperationException: Unable to find resolver for uri 'dh:///field/f'",
+      "operation": "failed to resolve the URI."
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to resolve the URI. : RuntimeError: java.lang.UnsupportedOperationException: Unable to find resolver for uri 'DH:///scope/x'",
+      "operation": "failed to resolve the URI."
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to resolve the URI. : RuntimeError: java.lang.UnsupportedOperationException: Unable to find resolver for uri 'scope/x'",
+      "operation": "failed to resolve the URI."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to resolve the URI. : RuntimeError: java.lang.UnsupportedOperationException: Unable to find resolver for uri ''",
+      "operation": "failed to resolve the URI."
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to resolve the URI. : RuntimeError: java.lang.UnsupportedOperationException: Unable to find resolver for uri 'parquet://host/x.parquet'",
+      "operation": "failed to resolve the URI."
+    },
+    {
+      "step": 7,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to resolve the URI. : java.net.URISyntaxException: Illegal character in path at index 13: dh:///scope/a b",
+      "operation": "failed to resolve the URI."
+    },
+    {
+      "step": 8,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to resolve the URI. : java.net.URISyntaxException: Expected scheme-specific part at index 3: dh:",
+      "operation": "failed to resolve the URI."
+    },
+    {
+      "step": 9,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to resolve the URI. : RuntimeError: java.lang.IllegalArgumentException: Invalid variable name 'a/b'",
+      "operation": "failed to resolve the URI."
+    },
+    {
+      "step": 10,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to resolve the URI. : RuntimeError: java.lang.IllegalArgumentException: Invalid field name 'b c'",
+      "operation": "failed to resolve the URI."
+    },
+    {
+      "step": 11,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to resolve the URI. : RuntimeError: no matching Java method overloads found",
+      "operation": "failed to resolve the URI."
+    },
+    {
+      "step": 12,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to resolve the URI. : RuntimeError: java.lang.UnsupportedOperationException: Proxying not supported yet, see https://github.com/deephaven/deephaven-core/issues/1483",
+      "operation": "failed to resolve the URI."
+    },
+    {
+      "step": 13,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to resolve the URI. : RuntimeError: java.lang.UnsupportedOperationException: Remote custom URIs not supported yet, see https://github.com/deephaven/deephaven-core/issues/1483",
+      "operation": "failed to resolve the URI."
+    },
+    {
+      "step": 14,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to resolve the URI. : io.deephaven.client.impl.TableHandle$TableHandleException: 612b5da8-0960-4dda-bf06-94ac30118f83 cause: NOT_FOUND: Could not resolve 'sourceId: variable 'missing' not found",
+      "operation": "failed to resolve the URI."
+    },
+    {
+      "step": 15,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to resolve the URI. : io.grpc.StatusRuntimeException: NOT_FOUND: Could not resolve 'sourceId': no application exists with the identifier: none",
+      "operation": "failed to resolve the URI."
+    },
+    {
+      "step": 16,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to resolve the URI. : io.netty.handler.ssl.NotSslRecordException: not an SSL/TLS record: 485454502f312e31203430302042616420526571756573740d0a636f6e6e656374696f6e3a20636c6f73650d0a636f6e74656e742d6c656e6774683a20300d0a646174653a204672692c203230204e6f7620323032362031303a32343a303920474d540d0a0d",
+      "operation": "failed to resolve the URI."
+    },
+    {
+      "step": 17,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to resolve the URI. : java.net.ConnectException: Connection refused",
+      "operation": "failed to resolve the URI."
+    },
+    {
+      "step": 18,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to resolve the URI. : java.net.URISyntaxException: Expected scheme-specific part at index 5: file:",
+      "operation": "failed to resolve the URI."
+    },
+    {
+      "step": 19,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to resolve the URI. : java.nio.file.NoSuchFileException: /nonexistent-oracle-directory/missing.csv",
+      "operation": "failed to resolve the URI."
+    },
+    {
+      "step": 20,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to resolve the URI. : java.io.IOException: Unable to tunnel through proxy. Proxy returns \"HTTP/1.1 502 Bad Gateway\"",
+      "operation": "failed to resolve the URI."
+    },
+    {
+      "step": 21,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to resolve the URI. : java.nio.file.NoSuchFileException: /nonexistent-oracle-directory/missing.parquet",
+      "operation": "failed to resolve the URI."
+    },
+    {
+      "step": 22,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to get a barrage session to the target remote Deephaven server. : io.netty.handler.ssl.NotSslRecordException: not an SSL/TLS record: 485454502f312e31203430302042616420526571756573740d0a636f6e6e656374696f6e3a20636c6f73650d0a636f6e74656e742d6c656e6774683a20300d0a646174653a204672692c203230204e6f",
+      "operation": "failed to get a barrage session to the target remote Deephaven server."
+    },
+    {
+      "step": 23,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to get a barrage session to the target remote Deephaven server. : deephaven.dherror.DHError: tls_root_certs is provided but use_tls is False : tls_root_certs is provided but use_tls is False",
+      "operation": "failed to get a barrage session to the target remote Deephaven server."
+    },
+    {
+      "step": 24,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to get a barrage session to the target remote Deephaven server. : RuntimeError: java.lang.IllegalArgumentException: Invalid target Deephaven URI 'dh+plain://my_host:36653'",
+      "operation": "failed to get a barrage session to the target remote Deephaven server."
+    },
+    {
+      "step": 25,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to get a barrage session to the target remote Deephaven server. : RuntimeError: java.net.URISyntaxException: Illegal character in authority at index 12: dh+plain://a b:10000",
+      "operation": "failed to get a barrage session to the target remote Deephaven server."
+    },
+    {
+      "step": 26,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to get a barrage session to the target remote Deephaven server. : java.net.ConnectException: Connection refused",
+      "operation": "failed to get a barrage session to the target remote Deephaven server."
+    },
+    {
+      "step": 27,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to subscribe to the remote table with the provided ticket. : RuntimeError: io.deephaven.client.impl.TableHandle$TableHandleException: f5aea83d-e7d8-4c91-ad46-0892d882cecd cause: NOT_FOUND: Could not resolve 'sourceId: variable 'missing' not found",
+      "operation": "failed to subscribe to the remote table with the provided ticket."
+    },
+    {
+      "step": 28,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to take a snapshot of the remote table with the provided ticket. : RuntimeError: io.deephaven.client.impl.TableHandle$TableHandleException: d82c7fa0-1d5e-4560-ad7c-c5f618d63841 cause: NOT_FOUND: Could not resolve 'sourceId: variable 'missing' not found",
+      "operation": "failed to take a snapshot of the remote table with the provided ticket."
+    },
+    {
+      "step": 29,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to take a snapshot of the remote table with the provided ticket. : io.grpc.StatusRuntimeException: UNAVAILABLE: Channel shutdown invoked",
+      "operation": "failed to take a snapshot of the remote table with the provided ticket."
+    },
+    {
+      "step": 30,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to take a snapshot of the remote table with the provided ticket. : io.grpc.StatusRuntimeException: UNAVAILABLE: Channel shutdown invoked",
+      "operation": "failed to take a snapshot of the remote table with the provided ticket."
+    },
+    {
+      "step": 31,
+      "outcome": "ok"
+    }
+  ]
+}

@@ -107,10 +107,12 @@ fn list_fields_are_described_as_java_recorded_them() {
     // The kinds of array and vector the corpus has. One that is added shows up here, and
     // a walk that finds no files does not pass.
     let expected: BTreeSet<(String, String)> = [
+        ("char[]", "char"),
         ("double[]", "double"),
         ("float[]", "float"),
         ("int[]", "int"),
         ("io.deephaven.vector.ByteVector", "byte"),
+        ("io.deephaven.vector.CharVector", "char"),
         ("io.deephaven.vector.DoubleVector", "double"),
         ("io.deephaven.vector.FloatVector", "float"),
         ("io.deephaven.vector.IntVector", "int"),
@@ -576,7 +578,9 @@ fn a_list_column_without_rows_has_nodes_and_no_bytes() {
     assert_eq!(batch.nodes, [(0, 0); 5]);
     // validity and offsets per list, validity and values of the innermost elements
     assert_eq!(batch.buffers, [(0, 0); 10]);
-    assert!(batch.body.is_empty());
+    // no bytes of any buffer; the body is the aligned one every batch without bytes has
+    // (encode.rs, BatchWriter::finish)
+    assert_eq!(batch.body, [0; 8]);
 }
 
 #[test]

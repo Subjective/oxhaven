@@ -311,8 +311,18 @@ pub(crate) mod support {
             "{case}: schema"
         );
         let ours: Vec<Batch> = ours[1..].iter().map(batch_of).collect();
-        let java: Vec<Batch> = java[1..].iter().map(batch_of).collect();
+        let java: Vec<Batch> = java[1..].iter().map(batch_of).map(as_sent_here).collect();
         assert_eq!(ours, java, "{case}: record batches");
+    }
+
+    /// Java's batch as this server sends it: where Java's body is empty, eight zero bytes
+    /// (see `BatchWriter::finish`). Java writes the body field with length zero, which
+    /// prost cannot write; everything else is compared as Java sent it.
+    fn as_sent_here(mut batch: Batch) -> Batch {
+        if batch.body.is_empty() && batch.buffers.iter().all(|&(_, length)| length == 0) {
+            batch.body = vec![0; 8];
+        }
+        batch
     }
 }
 
@@ -571,6 +581,57 @@ fn batches_follow_the_client_options_and_the_message_size_limit() {
     assert_eq!(empty.len(), 1);
     assert_eq!(batch_of(&empty[0]).rows, 0);
     assert_eq!(&empty[0].app_metadata[..], b"meta");
+}
+
+/// Deephaven's reader takes a record batch message only with its body field
+/// (`BarrageMessageReaderImpl#parseFrom`, "Missing body tag"), and protobuf leaves an empty
+/// `data_body` out: a batch without bytes is sent with an aligned body that no buffer reads.
+#[test]
+fn a_batch_without_bytes_still_carries_a_body() {
+    // field 1000, length-delimited: (1000 << 3) | 2 as a varint
+    const BODY_TAG: [u8; 2] = [0xc2, 0x3e];
+    let has_body_field = |message: &FlightData| {
+        message
+            .encode_to_vec()
+            .windows(BODY_TAG.len())
+            .any(|w| w == BODY_TAG)
+    };
+    let ints: ArrayRef = Arc::new(Int32Array::from((0..10).collect::<Vec<i32>>()));
+    let cases: [(Vec<ArrayRef>, usize); 3] = [
+        // a table, or an update, without rows
+        (vec![ints.slice(0, 0)], 0),
+        // a table without columns
+        (vec![], 5),
+        (vec![], 0),
+    ];
+    for (columns, rows) in cases {
+        let nullable = vec![true; columns.len()];
+        let messages = record_batch_messages(
+            &columns,
+            &nullable,
+            rows,
+            BatchOptions::default(),
+            Vec::new(),
+            true,
+        )
+        .unwrap();
+        let batch = batch_of(&messages[0]);
+        assert_eq!(batch.rows, rows as i64);
+        assert_eq!(batch.body, [0; 8]);
+        assert!(batch.buffers.iter().all(|&(_, length)| length == 0));
+        assert!(has_body_field(&messages[0]));
+    }
+    let some = record_batch_messages(
+        std::slice::from_ref(&ints),
+        &[true],
+        10,
+        BatchOptions::default(),
+        Vec::new(),
+        false,
+    )
+    .unwrap();
+    assert!(has_body_field(&some[0]));
+    assert_eq!(batch_of(&some[0]).body.len() % 8, 0);
 }
 
 #[test]

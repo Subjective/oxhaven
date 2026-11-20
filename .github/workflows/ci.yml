@@ -133,6 +133,16 @@ jobs:
           ORACLE_KAFKA_OUT: ${{ runner.temp }}/oracle-replay/kafka
           ORACLE_GATE_TIMEOUT: "300"
         run: oracle/bin/kafka-replay.sh
+      # The remote-table corpus: what the Java reference's console read from a remote
+      # server, against what this server's console reads from the same remote
+      # (oracle/README.md, "The remote-table corpus"). The remote is a second instance of
+      # this binary on a free port of 127.0.0.1, seeded from oracle/corpus/remote/seed.
+      - name: Replay the remote-table corpus
+        env:
+          VIRTUAL_ENV: ${{ github.workspace }}/oracle/.venv
+          ORACLE_REMOTE_OUT: ${{ runner.temp }}/oracle-replay/remote
+          ORACLE_GATE_TIMEOUT: "300"
+        run: oracle/bin/remote-replay.sh
       - name: Completion in the console, answered by jedi
         env:
           VIRTUAL_ENV: ${{ github.workspace }}/oracle/.venv

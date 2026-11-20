@@ -337,10 +337,21 @@ impl BatchWriter {
         Ok(())
     }
 
+    /// A batch whose buffers are all empty (no rows, or no columns) gets a body of eight
+    /// zero bytes, an aligned body that no buffer reads. Protobuf leaves an empty
+    /// `FlightData.data_body` out of the message, and Deephaven's reader refuses a record
+    /// batch message without it ("Missing body tag"): Java writes the field, of length
+    /// zero, for every record batch. So a Java client could not read an empty table, a
+    /// snapshot of a blink table, or an update that only removes or shifts rows.
+    ///
     /// Behavior: `io.deephaven.extensions.barrage.BarrageMessageWriterImpl#getInputStream`
     /// (the record batch header) and
-    /// `io.deephaven.extensions.barrage.util.MessageHelper#wrapInMessage`
-    fn finish(self, rows: usize) -> EncodedBatch {
+    /// `io.deephaven.extensions.barrage.util.MessageHelper#wrapInMessage`;
+    /// `io.deephaven.extensions.barrage.util.BarrageMessageReaderImpl#parseFrom`
+    fn finish(mut self, rows: usize) -> EncodedBatch {
+        if self.body.is_empty() {
+            self.body = vec![0; 8];
+        }
         let mut builder = FlatBufferBuilder::new();
         let nodes = builder.create_vector(&self.nodes);
         let buffers = builder.create_vector(&self.buffers);

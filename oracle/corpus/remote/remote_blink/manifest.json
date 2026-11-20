@@ -1,0 +1,84 @@
+{
+  "format": 2,
+  "scenario": "remote_blink",
+  "scenario_sha256": "481adf17e0b7a810f09764c984ff78d21d8489a1fd5389e6b3281f3fcf39a828",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "s_blink",
+      "file": "step000.s_blink.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "outcome",
+      "file": "step000.outcome.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "s_blink",
+      "file": "step001.s_blink.arrow",
+      "rows": 0
+    },
+    {
+      "step": 1,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "outcome",
+      "file": "step001.outcome.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "s_blink",
+      "file": "step002.s_blink.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "outcome",
+      "file": "step002.outcome.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "s_blink",
+      "file": "step003.s_blink.arrow",
+      "rows": 0
+    },
+    {
+      "step": 3,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "outcome",
+      "file": "step003.outcome.arrow",
+      "rows": 1
+    }
+  ]
+}

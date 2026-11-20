@@ -774,6 +774,84 @@ class Subscriber:
 
 
 # ---------------------------------------------------------------------------------------------
+# The remote chain: a second Oxhaven server that holds the trades of the soak server as a
+# remote table (its Barrage client, deephaven.barrage in its console), and chains of
+# operations of its own on that copy.
+
+REMOTE_PIPELINES = ["where", "agg_by_sym", "update_by", "sort_descending_head"]
+
+REMOTE_SETUP = """
+from deephaven.barrage import barrage_session as _soak_barrage_session
+_soak_remote_session = _soak_barrage_session("127.0.0.1", PORT, auth_type="PSK_TYPE", auth_token="PSK")
+soak_remote_trades = _soak_remote_session.subscribe(TICKET)
+"""
+
+
+class RemoteChain:
+    """The second server's copy of `trades` and the chains on it. The copy is made in the
+    second server's console, as a user makes one; the chains are the soak's own pipelines,
+    built through a client session of the second server on the copy, so that each is
+    checked against the same recomputation as on the soak server."""
+
+    def __init__(self, run: Run, server: Server, world: World, soak_url: str):
+        from harness.connect import PSK_AUTH_TYPE, parse_url
+
+        self.run = run
+        self.server = server
+        self.s = open_session(server.url)
+        soak = parse_url(soak_url)
+        ticket = world.shared["trades"].bytes
+        self.s.run_script(REMOTE_SETUP.replace("PORT", str(soak.port)).replace("PSK_TYPE", PSK_AUTH_TYPE)
+                          .replace("PSK", soak.psk or "").replace("TICKET", repr(bytes(ticket))))
+        run.count()
+        self.barrier = Barrier(self.s)
+        self.copy = self.s.open_table("soak_remote_trades")
+        by_name = {p.name: p for p in world.pipes}
+        self.pipes = [by_name[name] for name in REMOTE_PIPELINES]
+        self.live = {p.name: p.build({"trades": self.copy}) for p in self.pipes}
+
+    def fetch(self, t: Table) -> pa.Table:
+        self.run.count()
+        return t.to_arrow()
+
+    def check(self, world: World, mismatch: bool) -> None:
+        """After the soak server's barrier nothing changes `trades` until the next write:
+        the copy must come to hold a snapshot of it (an update reaches a subscriber at most
+        once a second), then, after a barrier on the second server, each chain on the copy
+        must equal the same operations on that snapshot, made on the soak server."""
+        snap = world.inputs["trades"].snapshot()
+        if mismatch:  # --inject mismatch: a snapshot that lacks a row
+            whole = snap
+            snap = whole.head(whole.size - 1)
+            whole.close()
+        want = world.fetch(snap)
+        deadline = time.monotonic() + 15
+        while True:
+            got = self.fetch(self.copy)
+            diff = difference(got, want, None)
+            if diff is None:
+                break
+            if time.monotonic() > deadline:
+                self.run.violate("correctness", "remote copy of trades", diff)
+                break
+            time.sleep(0.05)
+        self.run.checked("remote_copy")
+        self.barrier.wait()
+        for p in self.pipes:
+            self.run.beat(f"check remote {p.name}")
+            expected = p.build({"trades": snap})
+            diff = difference(self.fetch(self.live[p.name]), world.fetch(expected), p.keys)
+            expected.close()
+            self.run.checked(f"remote_{p.name}")
+            if diff is not None:
+                self.run.violate("correctness", f"remote pipeline {p.name}", diff)
+        snap.close()
+
+    def close(self) -> None:
+        self.s.close()
+
+
+# ---------------------------------------------------------------------------------------------
 # Churn: what comes and goes. Each round a new session makes tables, reads them, listens to
 # one, and releases everything; some sessions are abandoned instead and left to expire.
 
@@ -1009,6 +1087,28 @@ def judge(rounds: list[dict], profile: Profile, subscriber: dict, cycle_ms: int)
         if last > base + profile.handles_slack:
             violate("memory", f"{what} do not return to their baseline", out[what])
 
+    # The second server of the remote chain, with the same limits: its copy of the trades
+    # stops growing with the key space, as the trades do.
+    if all("remote_rss_kb" in r for r in steady):
+        remote_rss = [r["remote_rss_kb"] / 1024 for r in steady]
+        remote_slope = theil_sen(ts, remote_rss) * 3600
+        out["remote_rss_mb"] = {
+            "after_warmup": round(remote_rss[0], 1), "end": round(remote_rss[-1], 1),
+            "median_first_third": round(statistics.median(third(remote_rss, 0)), 1),
+            "median_last_third": round(statistics.median(third(remote_rss, 2)), 1),
+            "slope_mb_per_hour": round(remote_slope, 2), "allowed_mb_per_hour": profile.rss_slope_mb_per_hour,
+        }
+        if remote_slope > profile.rss_slope_mb_per_hour:
+            violate("memory", "resident memory of the second server grows", out["remote_rss_mb"])
+        for what in ("fds", "threads"):
+            values = [r[f"remote_{what}"] for r in steady]
+            base = statistics.median(third(values, 0))
+            last = statistics.median(third(values, 2))
+            out[f"remote_{what}"] = {"baseline": base, "last_third": last, "max": max(values),
+                                     "allowed_above_baseline": profile.handles_slack}
+            if last > base + profile.handles_slack:
+                violate("memory", f"{what} of the second server do not return to their baseline", out[f"remote_{what}"])
+
     barrier = [r["barrier_s"] for r in rounds]
     first, last = statistics.median(third(barrier, 0)), statistics.median(third(barrier, 2))
     out["barrier_s"] = {"median": round(statistics.median(barrier), 4), "max": round(max(barrier), 4),
@@ -1108,13 +1208,16 @@ def run_soak(args: argparse.Namespace) -> int:
     count_and_bound_client_calls(run)
     server = Server(args.binary, args.cycle_ms, log_path, args.console, args.huge_pages == "keep")
     print(f"server pid {server.pid}, log {log_path}", flush=True)
+    # The second server of the remote chain; it needs a console, which is asked below.
+    remote_server: Server | None = None
+    remote_log = args.remote_log or os.path.join(os.path.dirname(log_path), "remote-server.log")
     result: dict[str, Any] = {
         "meta": {
             "started": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
             "profile": args.profile, "duration_s": profile.duration, "warmup_s": profile.warmup,
             "seed": args.seed, "cycle_ms": args.cycle_ms, "round_s": args.round_seconds,
             "cpus": os.cpu_count(), "loadavg_start": os.getloadavg(), "inject": args.inject,
-            "write_steps": WRITE_STEPS, "huge_pages": args.huge_pages,
+            "write_steps": WRITE_STEPS, "huge_pages": args.huge_pages, "remote": args.remote,
         },
     }
     skip = set(filter(None, args.skip.split(",")))
@@ -1134,7 +1237,7 @@ def run_soak(args: argparse.Namespace) -> int:
             f.write(result_text(result, rounds))
 
     threading.Thread(target=watchdog, args=(run, server, args.step_timeout, write_result), daemon=True).start()
-    world = subscriber = None
+    world = subscriber = chain = None
     abandoned = Abandoned(run, server.url)
     leak: list | None = [] if args.inject == "leak" else None
     churn_rng = random.Random(args.seed + 1)
@@ -1152,6 +1255,11 @@ def run_soak(args: argparse.Namespace) -> int:
         result["meta"]["console"] = console
         world = World(run, server.url, args.seed, args.cycle_ms, console)
         subscriber = Subscriber(run, server.url, world)
+        if args.remote == "on" and console:
+            remote_server = Server(args.binary, args.cycle_ms, remote_log, args.console, args.huge_pages == "keep")
+            print(f"second server (remote chain) pid {remote_server.pid}, log {remote_log}", flush=True)
+            chain = RemoteChain(run, remote_server, world, server.url)
+        result["meta"]["remote_chain"] = chain is not None
         base = server.sample()
         last_cpu = base["cpu_s"]
         n = 0
@@ -1172,6 +1280,8 @@ def run_soak(args: argparse.Namespace) -> int:
                 step("check pipelines", lambda: world.check_pipelines(args.inject == "mismatch" and n == 3))
                 step("check blink input", world.check_events)
                 step("check replica", lambda: subscriber.check_replica(world))
+                if chain is not None:
+                    step("check remote chain", lambda: chain.check(world, args.inject == "mismatch" and n == 3))
                 step("check time tables", world.check_time)
                 if console:
                     step("check rollup", world.check_rollup)
@@ -1201,6 +1311,13 @@ def run_soak(args: argparse.Namespace) -> int:
             if sample is None:
                 run.violate("liveness", "the server process is gone", {"exit_code": server.proc.poll()})
                 break
+            remote_sample: dict[str, Any] = {}
+            if remote_server is not None:
+                second = remote_server.sample()
+                if second is None:
+                    run.violate("liveness", "the second server process is gone", {"exit_code": remote_server.proc.poll()})
+                    break
+                remote_sample = {f"remote_{k}": second[k] for k in ("rss_kb", "fds", "threads", "cpu_s")}
             stats = subscriber.stats()
             state["subscriber"] = stats
             cycles: dict[str, Any] = {}
@@ -1214,7 +1331,7 @@ def run_soak(args: argparse.Namespace) -> int:
             rounds.append({"t": run.now(), "work_s": round(work, 3), "barrier_s": round(barrier_s, 4), **cycles,
                            "cpu_round_s": round(sample["cpu_s"] - last_cpu, 3), **sample,
                            "updates": stats["updates"], "load": os.getloadavg()[0],
-                           "control_s": round(control_work(), 4)})
+                           "control_s": round(control_work(), 4), **remote_sample})
             last_cpu = sample["cpu_s"]
             if n % 15 == 0:
                 print(f"t={run.now():7.0f}s round {n} rss={sample['rss_kb'] / 1024:.1f}MB cpu={sample['cpu_s']:.0f}s "
@@ -1233,18 +1350,30 @@ def run_soak(args: argparse.Namespace) -> int:
             if subscriber is not None:
                 state["subscriber"] = subscriber.stats()
                 subscriber.close()
+            if chain is not None:
+                chain.close()
             if world is not None:
                 world.s.close()
         except Exception as e:  # noqa: BLE001
             run.violate("requests", "closing the long-lived sessions failed", failure(e))
+        # The second server first: it holds a subscription to the soak server.
+        if remote_server is not None:
+            result["remote_shutdown"] = remote_server.stop()
         result["shutdown"] = server.stop()
         run.beat("done")
     if not result["shutdown"]["clean"]:
         run.violate("shutdown", "the server did not stop cleanly", result["shutdown"])
+    if remote_server is not None and not result["remote_shutdown"]["clean"]:
+        run.violate("shutdown", "the second server did not stop cleanly", result["remote_shutdown"])
     errors = scan_log(log_path)
     result["server_log_errors"] = errors
     if errors:
         run.violate("requests", "the server logged errors", errors[:5])
+    if remote_server is not None:
+        remote_errors = scan_log(remote_log)
+        result["remote_server_log_errors"] = remote_errors
+        if remote_errors:
+            run.violate("requests", "the second server logged errors", remote_errors[:5])
     result["meta"]["loadavg_end"] = os.getloadavg()
     result["meta"]["seconds"] = run.now()
     result["summary"], trend = judge(rounds, profile, state["subscriber"], args.cycle_ms) if rounds else ({}, [])
@@ -1283,6 +1412,12 @@ def print_summary(result: dict) -> None:
         print(f"  cpu: {c['total_s']}s, per round {c['per_round_first_third_s']}s -> {c['per_round_last_third_s']}s "
               f"(growth {c['growth_over_window']:+.1%}, allowed {c['allowed_growth']:.0%})"
               + (f"; the driver's fixed work {ct['median_first_third']} -> {ct['median_last_third']} ms" if ct else ""))
+        rr = s.get("remote_rss_mb")
+        if rr:
+            print(f"  second server (remote chain): rss MB after warm-up {rr['after_warmup']}, end {rr['end']}, "
+                  f"slope {rr['slope_mb_per_hour']} MB/h; fds {s['remote_fds']['baseline']:.0f} -> "
+                  f"{s['remote_fds']['last_third']:.0f}, threads {s['remote_threads']['baseline']:.0f} -> "
+                  f"{s['remote_threads']['last_third']:.0f}")
         print(f"  barrier: median {b['median'] * 1000:.1f}ms, max {b['max'] * 1000:.0f}ms; "
               f"fds {s['fds']['baseline']:.0f} -> {s['fds']['last_third']:.0f}, threads {s['threads']['baseline']:.0f} -> {s['threads']['last_third']:.0f}")
     sd = result.get("shutdown", {})
@@ -1308,7 +1443,8 @@ def selftest(_: argparse.Namespace) -> int:
     profile = PROFILES["long"]
     rng = random.Random(7)
 
-    def series(rss_per_hour=0.0, cpu_factor=1.0, barrier_end=0.02, fds_end=40, spike=False, cycle_share=1.0, cycle_gap_end=0.0):
+    def series(rss_per_hour=0.0, cpu_factor=1.0, barrier_end=0.02, fds_end=40, spike=False, cycle_share=1.0, cycle_gap_end=0.0,
+               remote_rss_per_hour=0.0, remote_fds_end=30):
         rows = []
         for i in range(600):
             t = i * 4.5
@@ -1319,6 +1455,8 @@ def selftest(_: argparse.Namespace) -> int:
                 "fds": 40 + int((fds_end - 40) * frac), "threads": 12,
                 "barrier_s": 0.02 + (barrier_end - 0.02) * frac + rng.uniform(0, 0.005),
                 "cycles": int(t * 10 * cycle_share), "cycle_gap_s": 0.12 + cycle_gap_end * frac + rng.uniform(0, 0.02),
+                "remote_rss_kb": int((90 + rng.uniform(-2, 2) + remote_rss_per_hour * t / 3600) * 1024),
+                "remote_fds": 30 + int((remote_fds_end - 30) * frac), "remote_threads": 10, "remote_cpu_s": i * 0.1,
             })
         return rows
 
@@ -1336,6 +1474,10 @@ def selftest(_: argparse.Namespace) -> int:
         ("one cycle in three runs", series(cycle_share=0.33), sub, ["fewer than half the cycles the period allows"]),
         ("cycles come ever later", series(cycle_gap_end=1.0), sub, ["cycles get slower"]),
         ("a cycle never came", series(cycle_gap_end=12.0), sub, ["a cycle took too long to come", "cycles get slower"]),
+        ("the second server leaks 60 MB per hour", series(remote_rss_per_hour=60), sub,
+         ["resident memory of the second server grows"]),
+        ("open files of the second server climb", series(remote_fds_end=70), sub,
+         ["fds of the second server do not return to their baseline"]),
     ]
     failed = 0
     for name, rows, subscriber, want in cases:
@@ -1373,6 +1515,10 @@ def main(argv: list[str]) -> int:
                    help="seconds one step of the workload may take before the run is ended as stalled")
     r.add_argument("--console", choices=["auto", "python", "none"], default="auto", help="the server's --console")
     r.add_argument("--server-log", help="where the server's output goes (default: a temporary directory)")
+    r.add_argument("--remote", choices=["on", "off"], default="on",
+                   help="the remote chain: a second server that subscribes to the trades (needs the console)")
+    r.add_argument("--remote-log", help="where the second server's output goes (default: remote-server.log "
+                                        "beside the server's log)")
     r.add_argument("--huge-pages", choices=["off", "keep"], default="off",
                    help="off: the server runs without transparent huge pages, so that resident memory shows "
                         "what it holds; keep: as the allocator and the machine have them")

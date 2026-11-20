@@ -12,7 +12,7 @@ use flatbuffers::FlatBufferBuilder;
 use oxhaven_contracts::graph::{locked, UpdateGraph};
 use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::table::{Table, TableFailure};
-use oxhaven_engine::table::uploaded_table;
+use oxhaven_engine::table::{uploaded_table, QueryTable, TableSpec};
 use oxhaven_proto::barrage::{
     BarrageMessageType, BarrageMessageWrapper, BarrageMessageWrapperArgs, BarrageSnapshotOptions,
     BarrageSnapshotOptionsArgs, BarrageSnapshotRequest, BarrageSnapshotRequestArgs,
@@ -461,6 +461,32 @@ fn subscription_request(ticket: &[u8], options: &SubscriptionOptions) -> FlightD
     )
 }
 
+/// The static table of a snapshot: the rows of `rows`, flat only when the remote's schema
+/// says the remote table is, as the subscription's table is. A table that holds its rows
+/// at `0..size` is not therefore flat: Java's snapshot of a table that is not flat does not
+/// say it is.
+///
+/// The other attributes of the schema (`BlinkTable` among them) are left off a snapshot:
+/// owner's item 7.25 (open), whose recommendation is to keep it so.
+///
+/// Behavior: `io.deephaven.extensions.barrage.table.BarrageTable#make` (`setFlat` of
+/// `BarrageRedirectedTable`), which `BarrageSnapshotImpl` uses as `BarrageSubscriptionImpl`
+/// does
+pub(super) fn snapshot_table(schema: &RemoteSchema, rows: &dyn Table) -> Arc<dyn Table> {
+    let columns = (0..schema.definition.columns().len())
+        .map(|index| rows.column(index))
+        .collect();
+    let mut spec = TableSpec::new(
+        schema.definition.clone(),
+        (*rows.row_set()).clone(),
+        columns,
+    );
+    if schema.is_flat() {
+        spec = spec.flat();
+    }
+    QueryTable::new_static(spec)
+}
+
 /// The request of a snapshot of the table behind `ticket`.
 ///
 /// Behavior: `io.deephaven.client.impl.BarrageSnapshotImpl#makeRequestInternal`
@@ -818,8 +844,8 @@ impl BarrageSession {
             .map_err(protocol)?;
             batches.push(batch);
         }
-        let table = uploaded_table(definition.clone(), &batches)?;
-        Ok(table)
+        let rows = uploaded_table(definition.clone(), &batches)?;
+        Ok(snapshot_table(&table.schema, rows.as_ref()))
     }
 
     /// The table behind `ticket`, kept up to date: a refreshing table of the session's
