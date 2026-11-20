@@ -171,6 +171,30 @@ pub(crate) fn check_chars(
     Ok(())
 }
 
+/// Appends `s` to `out`, keeping unreserved and other characters, escaped octets and what
+/// `also` allows, and writing every other character as the escaped octets of its UTF-8
+/// form, in upper case.
+///
+/// Behavior: the quoting of java.net.URI's constructors from components, as their
+/// documentation describes it
+fn quote(out: &mut String, s: &str, also: impl Fn(char) -> bool) {
+    let bytes = s.as_bytes();
+    for (at, c) in s.char_indices() {
+        let escaped = c == '%'
+            && bytes
+                .get(at + 1..at + 3)
+                .is_some_and(|pair| pair.iter().all(u8::is_ascii_hexdigit));
+        if escaped || is_unreserved(c) || is_other(c) || also(c) {
+            out.push(c);
+        } else {
+            let mut buffer = [0; 4];
+            for byte in c.encode_utf8(&mut buffer).bytes() {
+                out.push_str(&format!("%{byte:02X}"));
+            }
+        }
+    }
+}
+
 fn find_any(s: &str, from: usize, end: usize, set: &[u8]) -> Option<usize> {
     s.as_bytes()[from..end]
         .iter()
@@ -188,6 +212,77 @@ impl Uri {
             reason: f.reason,
             index: f.at.map(|at| input[..at].encode_utf16().count()),
         })
+    }
+
+    /// A hierarchical URI made of decoded components, each quoted where it has a character
+    /// its place does not allow: in the user information anything but unreserved,
+    /// punctuation, escaped and other characters; in the path the same and `/` and `@`; in
+    /// the query and the fragment anything that is not a legal URI character. A quoted
+    /// character becomes the escaped octets of its UTF-8 form. `//` comes before the
+    /// authority when there is user information, a host or a port; an IPv6 host gets its
+    /// brackets. The string is then parsed as [`Uri::parse`] does.
+    ///
+    /// Not done: the check that an authority is server-based
+    /// (`java.net.URI#parseServerAuthority`), which a host taken from a parsed URI always
+    /// passes.
+    ///
+    /// Behavior: java.net.URI#URI(String, String, String, int, String, String, String), as
+    /// its documentation describes it
+    pub fn from_components(
+        scheme: Option<&str>,
+        user_info: Option<&str>,
+        host: Option<&str>,
+        port: Option<u32>,
+        path: Option<&str>,
+        query: Option<&str>,
+        fragment: Option<&str>,
+    ) -> Result<Uri, UriSyntaxError> {
+        const PUNCT: &[char] = &[',', ';', ':', '$', '&', '+', '='];
+        const RESERVED: &[char] = &[';', '/', '?', ':', '@', '&', '=', '+', '$', ',', '[', ']'];
+        let mut s = String::new();
+        if let Some(scheme) = scheme {
+            s.push_str(scheme);
+            s.push(':');
+        }
+        if user_info.is_some() || host.is_some() || port.is_some() {
+            s.push_str("//");
+        }
+        if let Some(user_info) = user_info {
+            quote(&mut s, user_info, |c| PUNCT.contains(&c));
+            s.push('@');
+        }
+        if let Some(host) = host {
+            if host.contains(':') && !host.starts_with('[') {
+                s.push('[');
+                s.push_str(host);
+                s.push(']');
+            } else {
+                s.push_str(host);
+            }
+        }
+        if let Some(port) = port {
+            s.push(':');
+            s.push_str(&port.to_string());
+        }
+        if let Some(path) = path {
+            if scheme.is_some() && !path.is_empty() && !path.starts_with('/') {
+                return Err(UriSyntaxError {
+                    input: s + path,
+                    reason: "Relative path in absolute URI",
+                    index: None,
+                });
+            }
+            quote(&mut s, path, |c| PUNCT.contains(&c) || c == '/' || c == '@');
+        }
+        if let Some(query) = query {
+            s.push('?');
+            quote(&mut s, query, |c| RESERVED.contains(&c));
+        }
+        if let Some(fragment) = fragment {
+            s.push('#');
+            quote(&mut s, fragment, |c| RESERVED.contains(&c));
+        }
+        Uri::parse(&s)
     }
 
     fn slice(&self, (start, end): (usize, usize)) -> &str {
