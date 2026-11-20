@@ -182,6 +182,31 @@ RAW = [
     "/:x", "?:x", "#:x", "a/b:c", "a?b:c", "a#b:c", "%41:x", "a%41:x", "dh/:x", "dh:/",
     "x:/p;q", "x:/p;q/r;s", "x:/a@b:c&d=e+f$g,h", "x://h/a@b:c&d=e+f$g,h;i", "x://h/~!*'()-._",
     "x://h/?a/b?c:d@e", "x://h/#a/b?c:d@e",
+    # More calibration: IPv6 lengths, IPv4 inside IPv6, strict host names, decoding, line ends.
+    "x://[1:2:3]/p", "x://[::1:2:3:4:5:6:7:8]/p", "x://[1:2:3:4:5:6:7:8:9::]/p", "x://[1::2:3:4:5:6:7:8]/p",
+    "x://[1:2:3:4:5:6:7]/p", "x://[1:2:3:4:5:6::1.2.3.4]/p", "x://[::1.256.1.1]/p", "x://[::1.2.3.]/p",
+    "x://[::1..2.3]/p", "x://[::1234.1.1.1]/p", "x://[::0001.1.1.1]/p", "x://[::a.2.3.4]/p", "x://[::1.2.3.4]/p",
+    "x://[::1.2.3.4%x]/p", "x://[::1.2.3.4a]/p", "x://[1.2.3.4::]/p", "x://[::1:]/p", "x://[::1:%x]/p",
+    "x://[1:2:3:4:5:6:7:8%x]/p", "x://[g::%e-0]/p", "x://[::%e-0]/p", "x://[::1%x]x/p", "x://[::1%x/p",
+    "x://[::1]:65536/p", "x://[::1]:2147483647/p", "x://[::1]:2147483648/p", "x://u@[::1]:/p",
+    "x://a.1:[/p", "x://1.2.3:[/p", "x://a-:[/p", "x://a-[/p", "x://a-.b[/p", "x://a.b-[/p", "x://.[/p",
+    "x://a.:[/p", "x://-[/p", "x://h:[/p", "x://h:1:2[/p", "x://u@u@h[/p", "x://h@[/p", "x://[@h/p",
+    "x://h]@x/p", "x://[::1]:1@h/p", "x://h:1x[/p", "x://u:p@[::1]:1/p", "x://u%41@h:1/p",
+    "x:/%ED%A0", "x:/%ED%A0%41", "x:/%ED%9F%BF", "x:/%ED%C0", "x:/%ED", "x:/%ED%80%80%ED%A0%80",
+    "x:/%F0%9F%98", "x:/%F0%9F", "x:/%F0%9F%98%41", "x:/%E2%41", "x:/%F4%8F", "x:/%C3%A9%A9",
+    "dh:///scope/a%0Ab", "dh:///scope/a%0D", "dh:///scope/a%C2%85", "dh:///scope/a%E2%80%A8",
+    "dh:///scope/a%E2%80%A9b", "dh:///scope/%0A", "dh:///app/a%0A/field/f", "dh:///field/%0D%0A",
+    "dh:///app/a/field/b%0A/field/c", "dh://gw?uri=a%0Ab", "dh://gw?uri=dh://h/scope/x%0A",
+    "dh:///scope/a%0B", "dh:///scope/a%0C", "dh:///scope/%00", "dh:///app/a/field/b/field/",
+    "dh:///app/a/field//field/b", "dh:///app//field//field/b", "dh:///app/field/field/field/field",
+    "dh://h:1/app/a/field/b/field/", "dh:///scope/%2A", "dh:///scope/%2a",
+    "x://:80/p", "x://u@/p", "x://u@:80/p", "x://:/p", "x://:[/p", "x://u@:[/p", "x://:1[/p", "x://@/p",
+    "x://0001.1.1.1/p", "x://1.2.3.4:80/p", "x://1.2.3.4:/p", "x://1.2.3.4.:[/p", "x://1.2.3.4x:[/p",
+    "dh://:80/scope/x", "dh://u@/scope/x", "dh://@host/scope/x",
+    "x://h/p?[%41]%41", "x://h/p#[%41]%41", "x:[%41]%41", "x://[::1%25]/p?[%25]", "x://u%41@[::1%25]:1/p",
+    "x://h/p?%5B%41%5D", "x://[%41]/p", "x://[::1]%41/p", "x://u%zz@[::1]/p", "x://[::1%zz]/p",
+    "x://%zz[/p", "x://[%zz/p", "x://h[%zz/p", "x://h /%zz", "x://h\"%zz/p",
+    "dh:///scope/%F0%9F%98%80", "dh://gw?uri=x%3A%2F%F0%9F%98%80",
 ]
 
 
@@ -221,6 +246,28 @@ EQUAL_PAIRS = [
     ("dh://gw?uri=x://h/a", "dh://gw?uri=x%3A%2F%2Fh%2Fa"), ("dh://gw?uri=X://h/a", "dh://gw?uri=x://h/a"),
     ("dh://g?uri=dh://h/field/f", "dh://g?uri=dh://h/field/f"),
 ]
+
+
+def fix_garbled(case, s):
+    """Java messages reach Python through modified UTF-8, which jpy reads as UTF-8: a character
+    outside the BMP comes back as six U+FFFD, a NUL as two. Put the input's character back
+    (inputs have at most one such character)."""
+    astral = {ch for ch in s if ord(ch) >= 0x10000} | ({"\U0001F600"} if "%F0%9F%98%80" in s else set())
+    if "%00" in s:
+        garbled, ch = "\ufffd" * 2, "\x00"
+    elif len(astral) == 1:
+        garbled, ch = "\ufffd" * 6, next(iter(astral))
+    else:
+        return case
+
+    def fix(value):
+        if isinstance(value, str):
+            return value.replace(garbled, ch)
+        if isinstance(value, dict):
+            return {k: fix(v) for k, v in value.items()}
+        return value
+
+    return {k: (fix(v) if k != "input" else v) for k, v in case.items()}
 
 
 def join_surrogates(value):
@@ -381,7 +428,7 @@ def main() -> int:
             case["is_remote_path"] = bool(UriHelper.isRemotePath(u))
             case["is_remote_target"] = bool(UriHelper.isRemoteTarget(u))
             case["is_remote_query"] = bool(UriHelper.isRemoteQuery(u))
-        cases.append(case)
+        cases.append(fix_garbled(case, s))
 
     for name in NAMES:
         for kind, fn in [

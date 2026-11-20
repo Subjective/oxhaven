@@ -1469,6 +1469,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "oxhaven-uri"
+version = "0.0.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "parquet"
 version = "60.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
