@@ -172,8 +172,9 @@ async fn a_downsample_the_engine_refuses_is_an_internal_error() {
         assert_internal(&chart(&mut c, request).await.unwrap_err());
     }
 
-    // a sorted table reads its columns through a redirection; every `long` column is taken
-    // (allowed difference A21 of PARITY.md): here its values fall, which Java refuses
+    // a sorted table reads its columns through a redirection, which Java takes as a `long`
+    // x column as Oxhaven takes every one (A21 of PARITY.md): here its values fall, which
+    // Java refuses (seen on Deephaven 42.9)
     let sorted = sorted(2, vec![sort_by(SortDirection::Descending, "X")]);
     let Op::Sort(mut sort) = sorted else {
         unreachable!()

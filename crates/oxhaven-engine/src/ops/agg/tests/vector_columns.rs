@@ -231,7 +231,7 @@ fn the_distinct_vectors_of_a_group_are_ordered_as_vectors() {
 }
 
 /// `N` and the vectors of doubles `D` (and the same as floats in `F`) of the distinct
-/// tests: `[0.0] [-0.0] [1.5, NaN] [-0.0] [0.0] null [NaN] [NaN] [] [2.5]` with `N`
+/// tests: `[0.0] [-0.0] [1.5, NaN] [-0.0] [0.0] null [NaN] [NaN] null [2.5]` with `N`
 /// `0 0 0 1 1 0 1 1 0 1`.
 fn floating_vectors() -> Vec<(&'static str, ColumnType, ArrayRef)> {
     let cells = [
@@ -243,7 +243,7 @@ fn floating_vectors() -> Vec<(&'static str, ColumnType, ArrayRef)> {
         None,
         Some(1),
         Some(1),
-        Some(0),
+        None,
         Some(1),
     ];
     let elements = [0.0, -0.0, 1.5, f64::NAN, -0.0, 0.0, f64::NAN, f64::NAN, 2.5];
@@ -275,7 +275,8 @@ fn floating_vectors() -> Vec<(&'static str, ColumnType, ArrayRef)> {
 /// equal to `0.0` and NaN after every number; of two vectors that differ only in the sign
 /// of a zero the one shown is the first the group was given (owner item 7.13, allowed
 /// difference A20 of `PARITY.md`). Seen on Deephaven 42.9 for the same vectors made by
-/// `group_by`: the same rows, except that Java may show the other zero.
+/// `group_by` (the floats by a cast before it): the same rows. On a static table Java
+/// showed the same zeros; see the next test for a ticking one.
 ///
 /// Behavior: io.deephaven.engine.table.impl.by.ssmcountdistinct.distinct.ObjectChunkedDistinctOperator,
 /// io.deephaven.vector.DoubleVector#compareTo
@@ -293,20 +294,20 @@ fn the_distinct_vectors_of_doubles_show_the_first_of_equal_ones() {
     assert_eq!(
         distinct(false, &["N"]),
         [
-            "0|[[], [0.0], [1.5, NaN]]|[[], [0.0], [1.5, NaN]]",
+            "0|[[0.0], [1.5, NaN]]|[[0.0], [1.5, NaN]]",
             "1|[[-0.0], [2.5], [NaN]]|[[-0.0], [2.5], [NaN]]"
         ]
     );
     assert_eq!(
         distinct(true, &["N"]),
         [
-            "0|[null, [], [0.0], [1.5, NaN]]|[null, [], [0.0], [1.5, NaN]]",
+            "0|[null, [0.0], [1.5, NaN]]|[null, [0.0], [1.5, NaN]]",
             "1|[[-0.0], [2.5], [NaN]]|[[-0.0], [2.5], [NaN]]"
         ]
     );
     assert_eq!(
         distinct(true, &[]),
-        ["[null, [], [0.0], [1.5, NaN], [2.5], [NaN]]|[null, [], [0.0], [1.5, NaN], [2.5], [NaN]]"]
+        ["[null, [0.0], [1.5, NaN], [2.5], [NaN]]|[null, [0.0], [1.5, NaN], [2.5], [NaN]]"]
     );
     let spec = AggSpec::Distinct {
         include_nulls: false,

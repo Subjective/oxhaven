@@ -288,11 +288,11 @@ fn bucket_by(column_type: ColumnType, cells: ArrayRef) {
 
 /// Buckets of vectors of `double` and `float` treat `-0.0` as `0.0` and every NaN as one
 /// value, as Java's buckets of a plain `double` column do (owner item 7.6, allowed
-/// difference A19 of `PARITY.md`). Seen on Deephaven 42.9 for vectors made by `group_by`:
-/// `D` is `[0.0] [-0.0] [NaN] [1.5] [0.0] [NaN] null [-0.0, 1.5] [0.0, 1.5] [] null [1.5]`
-/// and `cum_sum("S = Y")` by `D` sums `0 1 2 3 5 7 6 7 15 9 16 14`. After a `select()`
-/// Java puts `[0.0]` and `[-0.0]` in two buckets (`0 1 2 3 4 7 6 7 8 9 16 14`); that is
-/// the difference.
+/// difference A19 of `PARITY.md`). Seen on Deephaven 42.9 for vectors made by `group_by`
+/// (and cast to `float` for `F`): `D` is `[0.0] [-0.0] [NaN] [1.5] [0.0] [NaN] null
+/// [-0.0, 1.5] [0.0, 1.5] null null [1.5]` and `cum_sum("S = Y")` by `D` sums
+/// `0 1 2 3 5 7 6 7 15 15 25 14`. After a `select()` Java puts `[0.0]` and `[-0.0]` in two
+/// buckets (`0 1 2 3 4 7 6 7 8 15 25 14`); that is the difference.
 #[test]
 fn a_bucket_column_of_floating_vectors_treats_zeros_as_equal() {
     let lengths = [
@@ -305,7 +305,7 @@ fn a_bucket_column_of_floating_vectors_treats_zeros_as_equal() {
         None,
         Some(2),
         Some(2),
-        Some(0),
+        None,
         None,
         Some(1),
     ];
@@ -315,7 +315,7 @@ fn a_bucket_column_of_floating_vectors_treats_zeros_as_equal() {
         f64::NAN,
         1.5,
         0.0,
-        // Another NaN than the first.
+        // Another NaN than the first, equal to it by `DoubleComparisons#eq`.
         f64::from_bits(f64::NAN.to_bits() | 1),
         -0.0,
         1.5,
@@ -323,7 +323,7 @@ fn a_bucket_column_of_floating_vectors_treats_zeros_as_equal() {
         1.5,
         1.5,
     ];
-    let sums = expected(&[0, 1, 2, 3, 5, 7, 6, 7, 15, 9, 16, 14]);
+    let sums = expected(&[0, 1, 2, 3, 5, 7, 6, 7, 15, 15, 25, 14]);
     let (doubles, cells) = vector_column(
         ColumnType::Double,
         &lengths,
@@ -685,7 +685,7 @@ fn a_minimum_of_boolean_vectors_is_unported() {
 /// `[-0.0]`, `rolling_min_tick` and `rolling_max_tick` with `rev_ticks=3` and
 /// `rolling_min_time` and `rolling_max_time` with `rev_time="PT2s"` over one row a second
 /// keep the earliest vector of the window except at rows 128, 256 and 384, where Java
-/// shows `[0.0]`.
+/// shows `[0.0]`. `F` holds the same values as floats (not run on Deephaven).
 #[test]
 fn a_rolling_minimum_of_floating_vectors_keeps_the_earliest_of_equal_ones() {
     let rows = 400;

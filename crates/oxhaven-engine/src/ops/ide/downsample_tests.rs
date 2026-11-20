@@ -429,8 +429,11 @@ fn redirected() -> Arc<dyn Table> {
 
 /// Every `long` X column is taken, wherever its values are (owner item 7.15, allowed
 /// difference A21 of `PARITY.md`). Java takes one only if its source can be read as `long`
-/// (`ColumnSource#allowsReinterpret`), and refuses a formula column of a view with
-/// `Cannot use non-Instant, non-long x column`.
+/// (`ColumnSource#allowsReinterpret`). Seen on Deephaven 42.9: a column held in memory,
+/// a sorted table's column (read through a redirection) and `update_view("W = X")` (a
+/// renamed column) are taken; `update_view("W = X * 2")` is refused with `Cannot use
+/// non-Instant, non-long x column W in downsample`, where `update("W = X * 2")` of the same
+/// rows gives the rows this test expects.
 #[test]
 fn a_long_x_column_need_not_be_held_in_memory() {
     // Through a redirection, as a sorted table reads its columns: the rows of the zoom
@@ -443,15 +446,16 @@ fn a_long_x_column_need_not_be_held_in_memory() {
     assert_eq!(keys_of(&*by_x), keys_of(&*by_t));
     assert!(keys_of(&*by_x).len() > 2);
 
-    // A formula column of a view, which Java refuses.
+    // A formula column of a view, which Java refuses: the rows are those by `X`, whose
+    // values it doubles.
     let table = static_table(&columns(&rows(0..60)));
     let viewed =
-        crate::ops::select::update_view(&table, &["W = X"], &oxhaven_expr::Compiler).unwrap();
-    for zoom in [None, Some(x_zoom)] {
-        let by_w = run_chart_downsample(&viewed, &request("W", &["Y", "Z"], zoom)).unwrap();
-        let by_x = run_chart_downsample(&table, &request("X", &["Y", "Z"], zoom)).unwrap();
-        assert_eq!(keys_of(&*by_w), keys_of(&*by_x), "{zoom:?}");
-        assert!(keys_of(&*by_w).len() > 2, "{zoom:?}");
+        crate::ops::select::update_view(&table, &["W = X * 2"], &oxhaven_expr::Compiler).unwrap();
+    for (w_zoom, x_zoom) in [(None, None), (Some((1_000_000, 3_000_000)), Some(x_zoom))] {
+        let by_w = run_chart_downsample(&viewed, &request("W", &["Y", "Z"], w_zoom)).unwrap();
+        let by_x = run_chart_downsample(&table, &request("X", &["Y", "Z"], x_zoom)).unwrap();
+        assert_eq!(keys_of(&*by_w), keys_of(&*by_x), "{w_zoom:?}");
+        assert!(keys_of(&*by_w).len() > 2, "{w_zoom:?}");
     }
 }
 
