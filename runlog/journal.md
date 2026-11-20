@@ -1543,3 +1543,7 @@ PARITY.md: A13 now names its chain case as a Deephaven failure and covers raj; A
 ## 2026-11-20 11:19 UTC: pull request 187 merged
 
 Seven green checks on head 9c55f38f in the run the label started. Main is at 5f87a4c8. All of Josh's answers to 7.1 to 7.22 are carried out. Open owner questions: 7.23 to 7.28.
+
+## 2026-11-20 12:13 UTC: task 13.3 reported, pull request 188
+
+A corpus of five console scripts with an Oxhaven server as the remote, recorded from Java 42.9's console and replayed in the oracle-replay job under its own baseline (oracle/remote-baseline.json, 2 recorded differences: copies lack the remote's field metadata, and a blink snapshot lacks its tag, owner 7.25). Recorded once against a Deephaven remote too: 4 of 5 equal, the fifth only because an Oxhaven remote refuses blink subscriptions. Two defects found and fixed: Oxhaven sent record batches with no bytes without a body, which Java's client cannot read, so every Java subscription to an Oxhaven table failed at its first delete (now an 8-byte empty body, owner question 7.29); snapshots always claimed to be flat. Soak gains a remote chain; the 45-minute run passed. Two intermediate commits fail a test alone; the squash merge removes that. Size: two features in one task.
