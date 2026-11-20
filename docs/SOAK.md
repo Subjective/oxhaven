@@ -373,6 +373,11 @@ the same way (`BarrageMessageProducer#aggregateUpdatesInRange`). With seed 1 it 
 ninth write; `bench/results/2026-11-18-task-12.4-soak-replica-union.txt` has the forced
 run. The copy now takes the cells per column and does not use the union.
 
+**The remote chain found nothing over 45 minutes** (task 13.3). The release build, long
+profile: 1,333 rounds, every remote check clean; the second server's resident size rose
+from 62.1 to 63.3 MB after the warm-up (1.98 MB per hour), with 17 files and 12 threads
+throughout, while the first server's slope was -0.97.
+
 ## In CI
 
 - **Pull requests**: the `oracle-replay` job of `.github/workflows/ci.yml` has already built
