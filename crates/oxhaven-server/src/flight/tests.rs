@@ -311,8 +311,18 @@ pub(crate) mod support {
             "{case}: schema"
         );
         let ours: Vec<Batch> = ours[1..].iter().map(batch_of).collect();
-        let java: Vec<Batch> = java[1..].iter().map(batch_of).collect();
+        let java: Vec<Batch> = java[1..].iter().map(batch_of).map(as_sent_here).collect();
         assert_eq!(ours, java, "{case}: record batches");
+    }
+
+    /// Java's batch as this server sends it: where Java's body is empty, eight zero bytes
+    /// (see `BatchWriter::finish`). Java writes the body field with length zero, which
+    /// prost cannot write; everything else is compared as Java sent it.
+    fn as_sent_here(mut batch: Batch) -> Batch {
+        if batch.body.is_empty() && batch.buffers.iter().all(|&(_, length)| length == 0) {
+            batch.body = vec![0; 8];
+        }
+        batch
     }
 }
 
