@@ -100,15 +100,15 @@ RESTRICTIONS: dict[str, str] = {
            "select_distinct column, and no distinct, of a vector made by rolling_group or "
            "by a minimum or maximum of such a vector (F11: the reference fails or keeps "
            "stale values as for a group_by's vectors, which PARITY.md A22 does not name; "
-           "owner item 7.26)",
+           "owner item 7.27)",
     "V15": "add, usable: a column that PARITY.md A23 types differently (an element of a "
            "condition between windows of strings, an ungroup of a minimum or maximum of "
            "vectors of strings) is not read by a later operation (F12: the reference refuses "
            "a filter on its java.lang.Object column that it takes on a string column)",
-    "V16": "build_agg: no initial groups from a refreshing table for an aggregation grouped "
-           "by a vector (F13: the groups are taken when the aggregation is made, so the "
-           "reference's answer made again, which PARITY.md A22 is checked against, cannot "
-           "have them)",
+    "V16": "build_agg: on a refreshing table no initial groups and no preserve_empty for an "
+           "aggregation grouped by a vector (F13: Oxhaven keeps the group of a vector that "
+           "changed as an empty group, which the reference's answer made again, the one "
+           "PARITY.md A22 is checked against, cannot have)",
 }
 _INTEGERS = tuple(INT_BITS)
 # Element types of the vectors each request takes; see RESTRICTIONS for what is left out.
@@ -475,11 +475,9 @@ class _Third(_Second):
         if not super().build_agg(base, source):
             return False
         op = self.operations[-1]
-        initial = self.tables.get(op.get("initial_groups", ""))
-        if initial is not None and initial.live and any(
-                source.type_of(column).startswith(LIST) for column in op["by"]):
-            op.pop("initial_groups")  # V16
-            self.tables[op["name"]].live = source.live
+        if source.live and any(source.type_of(column).startswith(LIST) for column in op["by"]):
+            op.pop("initial_groups", None)  # V16
+            op.pop("preserve_empty", None)
         if "initial_groups" in op or op.get("preserve_empty"):
             # A group without rows has an empty vector.
             self.solid[op["name"]] &= set(op["by"])

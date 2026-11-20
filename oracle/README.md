@@ -601,7 +601,11 @@ holds what the reference answers from scratch (`PARITY.md`, A13, A18 and A22 say
 answer Oxhaven gives): a result that is neither of the reference's two answers is reported
 as a difference. `reference_inconsistent_rows` is the same check with every table compared
 as a multiset of rows, for results whose row order depends on their history (the groups of
-an aggregation whose key vector changed), which a table made again cannot reproduce. The
+an aggregation whose key vector changed), which a table made again cannot reproduce; in
+that form a result made from one the reference disagrees with itself about in that step
+counts as one too, since what the reference kept for it was read from a failed or stale
+table. Column metadata is not part of the check from scratch: it is fixed when a table is
+made and compared at the first step. The
 operations are applied again to a view of each input made for that step, so that the
 reference's memoized results (`QueryTable#memoizeResult`: aggregations, filters, sorts and
 others on the same source with the same arguments) are not handed back in place of new ones.

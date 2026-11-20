@@ -39,7 +39,9 @@ every field given there fits:
   compared as a multiset of rows, both the reference's two answers and the actual side's
   against the one from scratch: for a result whose row order depends on its history, as
   the order of an aggregation's groups does (a group made by a key that changed comes at
-  the end), so that a table made again cannot give it.
+  the end), so that a table made again cannot give it. In this form a result made from one
+  the reference disagrees with itself about in the same step counts as one too
+  (`_Triage.split`): what the reference kept for it was read from a failed or stale table.
 - `differs_in`: `zero_sign`. Both sides are vectors of the same shape whose elements are
   equal bit for bit except that a zero on one side is the other zero on the other side
   (every NaN equals every NaN), and at least one such pair is there.

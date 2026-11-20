@@ -530,13 +530,17 @@ vectors:
 
 Rule: Oxhaven's vectors are values, and each of these results is the one the same
 operations give when they are made again from the tables' rows after each cycle, as A13 does
-for as-of joins. Where Java's incremental result agrees with Java's result made again,
+for as-of joins, and so is each result made from them. Row order is not part of this: a
+group whose key vector changed is a new group to Oxhaven and comes after the others, as
+for any key that changes, while a result made again lists its groups in the order of its
+rows. Where Java's incremental result agrees with Java's result made again,
 Oxhaven must match it. Nothing else of vectors on refreshing tables is covered. Recorded in
 `tasks/12.1-fuzzer-coverage.md` (F2, F8) with the scenario files
 `F2_vector_of_a_refreshing_group_as_key.json` and
 `F8_minimum_of_vectors_of_a_refreshing_group_read_on.json`; the fuzzer counts a seed as this
-difference only when Java's two answers differ for it and Oxhaven's result is the one made
-again (`oracle/fuzz-known-findings.json`, the entries `group-vector-*`).
+difference only when Java's two answers differ for it, or for a table it is made from, and
+Oxhaven's result holds the rows of the one made again (`oracle/fuzz-known-findings.json`,
+the entries `group-vector-*`).
 
 ### A23. Element types that Java loses
 

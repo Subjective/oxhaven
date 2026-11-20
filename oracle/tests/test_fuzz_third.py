@@ -101,15 +101,16 @@ def test_generation_is_the_same_in_another_process():
 
 
 @pytest.mark.parametrize("family, digest", [
-    ("asof_chains", "5b92d8fa3d07643e"),
-    ("vectors", "416a52da972b769a"),
-    ("windows", "4786f10992febd1f"),
-    ("all3", "dd02c4cbe6b4521d"),
+    ("asof_chains", "5ddf633816b5306b"),
+    ("vectors", "ae5f2f227553da7d"),
+    ("windows", "bb1d2442ca9d0836"),
+    ("all3", "14d1cedfa23e8bb0"),
 ])
 def test_a_seed_of_the_third_generator_is_the_scenario_it_was(family, digest):
     """Digests over the scenarios of seeds 0 to 99 as the generator was when the runs of
-    `tasks/12.1-fuzzer-coverage.md` were made: a seed named there must keep naming its
-    scenario."""
+    task 14.2 in `tasks/12.1-fuzzer-coverage.md` were made: a seed named for those runs
+    must keep naming its scenario. (The seeds named for 12.1's own runs name other
+    scenarios since 14.2 changed the generator; the F files keep those scenarios.)"""
     digest_now = hashlib.sha256()
     for seed in range(100):
         digest_now.update(json.dumps(fuzz.generate(seed, fuzz.THIRD_FAMILIES[family], "third"),
@@ -369,7 +370,7 @@ def test_what_an_owner_item_or_a_finding_restricts_is_not_drawn():
                 if kind == "agg_by" and first in live and any(
                         types[c].startswith(LIST) for c in op["by"]):
                     seen["V16"] += 1
-                    assert op.get("initial_groups") not in live, where
+                    assert "initial_groups" not in op and not op.get("preserve_empty"), where
                 if kind == "agg_by":
                     for agg in op["aggs"]:
                         if agg["agg"] != "distinct":
