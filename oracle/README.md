@@ -394,6 +394,71 @@ lz4 and zstd, transactions and a broker that restarts, which the broker tests of
 that commits; `kafka.topics`, which returns a list and not a table; records that arrive
 while a table is open (every topic is filled before the server starts).
 
+## The remote-table corpus
+
+What a Deephaven console reads from a remote server (`deephaven.uri.resolve` of
+`dh+plain://` and `dh://`, and `deephaven.barrage.barrage_session`), recorded once, and
+compared with what an Oxhaven console reads from the same remote. It is the script
+scenarios again, with a second server around them:
+
+```bash
+oracle/bin/remote-replay.sh                           # the remote-table gate
+oracle/bin/remote-replay.sh remote_ticking,remote_errors # only some scenarios
+```
+
+`remote-replay.sh` builds Oxhaven with its Python console, starts a second instance of it on
+a free port of `127.0.0.1` as the remote (anonymous authentication, the applications of the
+seed), seeds it, starts the server under test (`ORACLE_GATE_PORT`, default free), replays
+every scenario under `scenarios/remote/` against the recordings under `corpus/remote/`, and
+judges the outcome against `remote-baseline.json`. It needs no Java and no Docker, and the
+environment of the replay gate. CI runs it in the `oracle-replay` job, after the Kafka
+corpus. `ORACLE_REMOTE_OUT` moves the output directory (default `oracle/.run/remote`:
+`report.json` and both servers' logs), `ORACLE_GATE_TIMEOUT` the limit (default 600 s).
+
+| Piece | Where | What it is |
+| --- | --- | --- |
+| The seed | `corpus/remote/seed/` | The remote's fixed content: two applications (`remote_app`, and one whose id is `127.0.0.1`, which `dh://127.0.0.1/field/<name>` names) and `scope.py`, run in its console before the first scenario: a table of every column type the wire carries, a table of vectors, an empty one |
+| A scenario | `scenarios/remote/<name>.py` | A script scenario with two more kinds of line. `# remote: <python>` lines run on the remote before the step's own script (one space after the colon is dropped, the rest of the indentation kept). `# remote-sync: t = r, …` waits, after the step's script, until the local table `t` holds the rows of the remote's `r`: a copy's rows arrive on the client's schedule, and every step that changes the remote waits so (`tests/test_remote.py` checks it). The remote's address comes from `ORACLE_REMOTE_TARGET` (`127.0.0.1:<port>`) in the environment of the server under test |
+| A recording | `corpus/remote/<name>/` | As for every script scenario. `corpus/remote/recorded-from.json` holds the hash of the seed and the kind of remote the recordings were made against; the gate refuses another seed |
+| The baseline | `remote-baseline.json`, section `replay-remote` | One line per scenario, as `kafka-baseline.json` |
+| The harness | `harness/remote.py`, `bin/remote-services.sh` | The parsing of the two lines, the seeding, the wait for a copy, the run of a step on both servers (each with its own barrier), the gate, and `remote-compare` |
+
+**The scenarios.** `remote_scope_static`: a static scope table of every type through
+`resolve`, through a subscription and through a snapshot, the vectors, an empty table.
+`remote_ticking`: a keyed input table on the remote with a sort of it, an append-only table
+and a table of every type computed from it, read through `resolve` and through a session (by
+name and by ticket), followed through adds, modifies, deletes and the shifts of the sorted
+table, with `where`, `update`, `agg_by`, `sort` and a `natural_join` with a local table on
+the copy; then the session is closed, its tables fail, and those of `resolve` keep ticking.
+`remote_app_fields`: application fields by `/app/<id>/field/<name>` and by
+`/field/<name>`, and what a missing field or application answers. `remote_blink`: a blink
+table on the remote, its snapshot, its subscription, and an append-only table made of it.
+`remote_errors`: the refusals of `resolve` and `barrage_session` listed by task 13.2b, one a
+step, each with Java's exception and message.
+
+**Recording.** Against the Java reference only:
+
+```bash
+oracle/bin/remote-record.sh                                # against an Oxhaven remote
+ORACLE_REMOTE_KIND=deephaven oracle/bin/remote-record.sh   # against a Deephaven remote
+oracle/bin/harness remote-compare --expected oracle/.run/remote-deephaven-corpus
+ORACLE_REMOTE_HOLD=1 oracle/bin/remote-record.sh           # start everything and wait
+```
+
+The Java console reads from an Oxhaven remote, seeded alike, so that the replay compares
+the two consoles and nothing else: the recordings are what Java's client makes of the same
+messages. To show that the remote does not decide the result, the same scripts are
+recorded once against a Deephaven remote (`remote_deephaven.py`, anonymous authentication,
+into `oracle/.run/remote-deephaven-corpus`), and `remote-compare` compares the two sets
+exactly. Task 13.3 records the outcome (`tasks/13.3-remote-tables-tests.md`). To change the
+seed, record every scenario again.
+
+**Not in the corpus.** A snapshot or subscription with a viewport or a subset of columns:
+`BarrageSession.snapshot` and `subscribe` of Java's Python API take a ticket and nothing
+else, so no console script reaches them (the Barrage client's unit tests do). `BigDecimal`
+and `BigInteger` columns, which an Oxhaven remote does not make. TLS (refused). A remote that
+stops while a table is open, and reconnection.
+
 ## Fuzz
 
 ```bash
