@@ -63,6 +63,9 @@ mod plugin_tests;
 mod proxy;
 #[cfg(test)]
 mod proxy_tests;
+mod remote;
+#[cfg(test)]
+mod remote_tests;
 mod stream;
 #[cfg(test)]
 mod tests;
@@ -537,6 +540,7 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         appmode::register(&native)?;
         calendar::register(&native)?;
         stream::register(&native)?;
+        remote::register(&native)?;
         modules.set_item("_oxhaven", &native)?;
 
         let code = CString::new(BOOTSTRAP).expect("the bootstrap source has no NUL");
@@ -1013,6 +1017,7 @@ pub fn start(state: &mut ServerState) -> Result<(), String> {
         ..state.op_context()
     };
     listener::install(state.graph.clone());
+    remote::install(state);
     let session = PythonSession::new(context, state.logs.clone())?;
     plugin::register_plugins()?;
     let console = Console::new(Arc::new(session), state.applications.clone());
