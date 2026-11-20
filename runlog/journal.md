@@ -1527,3 +1527,7 @@ The five owner-approved items are served, each compared with Deephaven 42.9, wit
 ## 2026-11-20 09:09 UTC: pull request 185 merged; task 14.2 started
 
 Seven green checks on head 3b7ffcae in the run the label started (the first run's rules job failed only for want of the label). Main is at 2d1571b1. Task 14.2 records 7.19 to 7.22 in PARITY.md and lifts the fuzzer restrictions those and 14.1's items made necessary.
+
+## 2026-11-20 09:41 UTC: task 13.2b reported, pull request 186
+
+The Python console resolves URIs and opens Barrage sessions as Deephaven 42.9 does: the same tables and the same error messages in 38 calls of one script run on both consoles against a third Deephaven server. A subscription's wait gives up the graph lock, as Java's future does. Refused: TLS (7.24 open), csv+http(s), subscribing inside a cycle or under a script-held shared lock (new owner question 7.26; Java would wait for a cycle that cannot run). 7.23 is kept as Java does behind one constant. Task 13.3 (recorded scenarios and soak coverage) is next.
