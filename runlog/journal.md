@@ -1539,3 +1539,7 @@ Seven green checks on head ab25739c. Main is at 299ac4c1. Remote tables now work
 ## 2026-11-20 11:09 UTC: task 14.2 reported, pull request 187
 
 PARITY.md: A13 now names its chain case as a Deephaven failure and covers raj; A22 to A25 record 7.19 (b), 7.20, 7.21 and 7.22 (including (f), the descriptions, which 7.22 lists). Checked: the only removed PARITY.md lines are A13's old text. The fuzzer draws these cases and the 14.1 items. The check from scratch was weaker than intended because Java memoizes results; it now starts from new views of the inputs. One relaxation reviewed and accepted: differs_from_fresh no longer compares column metadata, which is fixed when a table is made and compared in full at step 0. New findings F10 to F15; owner questions 7.27 (rolling_group and distinct vectors, like A22) and 7.28 (Java ignores null fill in one ungroup). Size: too large; the check-from-scratch machinery should have been its own task.
+
+## 2026-11-20 11:19 UTC: pull request 187 merged
+
+Seven green checks on head 9c55f38f in the run the label started. Main is at 5f87a4c8. All of Josh's answers to 7.1 to 7.22 are carried out. Open owner questions: 7.23 to 7.28.
