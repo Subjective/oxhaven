@@ -23,17 +23,19 @@
 //! An offset that `Long#parseLong` cannot read (`Col_[i - 0x1]`, `Col_[i - 1_0]`) fails the
 //! formula, as Java's parser does.
 //!
-//! Not ported, and refused by name until the owner decides (questions 6 and 8 of
-//! `tasks/10.2-unported-updateby-select-rollup.md` and `tasks/10.5-unported-select-arrays.md`):
+//! Shifts of two different distances, neither of them zero, on a refreshing table
+//! (`Col_[i - 1] + Col_[i + 1]`, `Col_[i - 1] - Col_[i - 2]`) are served with the values the
+//! same formula has when it is made again: a change marks the rows within the farthest
+//! distance on each side of it. Java computes the rows such a pair makes dirty by feeding
+//! row positions to `RowSet#invert` as if they were row keys
+//! (`ShiftedColumnOperation#computeDirtyModifiedRowSetInPositionSpace`), so a change does
+//! not reach the rows that read it: seen on Java 42.9, `update("M = X_[i-1] + X_[i+1]")` of
+//! a keyed input table keeps the old `M` in the rows next to a modified, added or removed
+//! row. That is allowed difference A18 of `PARITY.md` (owner item 7.4).
 //!
-//! - shifts of two different distances, neither of them zero, on a refreshing table
-//!   (`Col_[i - 1] + Col_[i + 1]`, `Col_[i - 1] - Col_[i - 2]`). Java computes the rows such a
-//!   pair makes dirty by feeding row positions to `RowSet#invert` as if they were row keys
-//!   (`ShiftedColumnOperation#computeDirtyModifiedRowSetInPositionSpace`), so a change does
-//!   not reach the rows that read it. Seen on Java 42.9: `update("M = X_[i-1] + X_[i+1]")`
-//!   of a keyed input table keeps the old `M` in the rows next to a modified, added or
-//!   removed row. [`shifted_table`] can serve them with the values the same formula has
-//!   when it is made again, which `update_view` also shows.
+//! Refused by name, as the owner decided for item 7.2 (Java computes these from the wrong
+//! rows; question 6 of `tasks/10.2-unported-updateby-select-rollup.md`):
+//!
 //! - `select` with a shifted column on a static table whose result gets new row keys. Java
 //!   then reads the parent's columns by the new keys
 //!   (`SelectAndViewAnalyzer.AnalyzerContext#getPublishedColumnSources`). Seen on Java 42.9:
@@ -546,8 +548,9 @@ fn reach(shifts: &[Shift]) -> (i64, i64) {
 /// The positions in `source` of the rows whose shifted columns change because the rows
 /// `updated` changed, for shifts that read at most `behind` rows before the current row
 /// and `ahead` rows after it: the rows on either side of a changed row within that reach.
-/// For one distance, or one distance and zero, this is Java's answer; see
-/// [`refuse_two_distances`] for the others.
+/// For one distance, or one distance and zero, this is Java's answer; for two distances
+/// on one side or on both, Java's answer misses rows and this is allowed difference A18 of
+/// `PARITY.md`.
 ///
 /// Behavior: io.deephaven.engine.table.impl.ShiftedColumnOperation#computeDirtyModifiedRowSetInPositionSpace(RowSet, RowSet, long, long)
 fn dirty_positions_within(
@@ -564,58 +567,21 @@ fn dirty_positions_within(
     Ok(dirty)
 }
 
-/// Refuses shifts at two different distances that are both not zero on a refreshing
-/// table: owner question 8 of `tasks/10.5-unported-select-arrays.md`.
-///
-/// Java runs the one-distance computation twice, the second time over the positions the
-/// first returned as if they were row keys, so a change does not reach the rows that read
-/// it. Seen on Java 42.9 for `update` of `X_[i - 1] + X_[i + 1]`, `X_[i - 1] + X_[i - 2]`
-/// and `X_[i - 1] * 1000 + X_[i + 2]` over a keyed input table: a modified, added or
-/// removed row leaves the old values in its neighbours, which `update_view` and the same
-/// `update` made again both show changed.
-///
-/// Behavior: io.deephaven.engine.table.impl.ShiftedColumnOperation#computeDirtyModifiedRowSetInPositionSpace(RowSet, RowSet, long, long)
-fn refuse_two_distances(shifts: &[Shift]) {
-    let amounts = || shifts.iter().map(|shift| shift.amount);
-    let lowest = amounts().min().unwrap_or(0);
-    let highest = amounts().max().unwrap_or(0);
-    if lowest != highest && lowest != 0 && highest != 0 {
-        unported!(
-            "io.deephaven.engine.table.impl.ShiftedColumnOperation#computeDirtyModifiedRowSetInPositionSpace",
-            "column arrays at two different distances from the current row, {lowest} and \
-             {highest}, on a refreshing table: Java leaves the old values in the rows next \
-             to a change"
-        );
-    }
-}
-
 /// `parent` with one more column for each shift: the values of the shift's column at its
 /// distance. The result has the parent's rows and none of its attributes, and is not
 /// marked flat.
 ///
 /// When a row is added, removed, or modified in a shifted column's source, the rows within
-/// the distance of it, on the side that reads it, are reported as modified in the shifted
-/// columns.
+/// the farthest distance of it on each side that reads it are reported as modified in the
+/// shifted columns. With two distances on a refreshing parent Java reports fewer rows and
+/// keeps stale values; this is allowed difference A18 of `PARITY.md`.
 ///
 /// # Panics
-/// With `unported!` for a refreshing parent and shifts at two different distances that are
-/// both not zero, and for a parent that has a column with the name of a shifted column.
+/// With `unported!` for a parent that has a column with the name of a shifted column.
 ///
 /// Behavior: io.deephaven.engine.table.impl.ShiftedColumnOperation#addShiftedColumns and
 /// the listener its `getShiftedColumns` makes
 pub(crate) fn add_shifted_columns(
-    parent: &Arc<dyn Table>,
-    shifts: &[Shift],
-) -> Result<Arc<dyn Table>, TableFailure> {
-    if parent.is_refreshing() {
-        refuse_two_distances(shifts);
-    }
-    shifted_table(parent, shifts)
-}
-
-/// [`add_shifted_columns`] without the refusal of two distances: a change marks the rows
-/// on both sides of it within the farthest distance on each side.
-pub(super) fn shifted_table(
     parent: &Arc<dyn Table>,
     shifts: &[Shift],
 ) -> Result<Arc<dyn Table>, TableFailure> {

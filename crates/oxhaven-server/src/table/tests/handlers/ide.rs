@@ -150,7 +150,7 @@ async fn an_end_of_a_zoom_range_that_is_not_set_is_zero() {
 }
 
 #[tokio::test]
-async fn a_downsample_the_engine_refuses_is_an_internal_error_or_not_ported() {
+async fn a_downsample_the_engine_refuses_is_an_internal_error() {
     let mut c = Connected::start().await;
     export(&c, 1);
     for (result, request) in [
@@ -172,21 +172,16 @@ async fn a_downsample_the_engine_refuses_is_an_internal_error_or_not_ported() {
         assert_internal(&chart(&mut c, request).await.unwrap_err());
     }
 
-    // a sorted table reads its columns through a redirection, and of such a `long` column
-    // it is not known whether Java takes it
+    // a sorted table reads its columns through a redirection, which Java takes as a `long`
+    // x column as Oxhaven takes every one (A21 of PARITY.md): here its values fall, which
+    // Java refuses (seen on Deephaven 42.9)
     let sorted = sorted(2, vec![sort_by(SortDirection::Descending, "X")]);
     let Op::Sort(mut sort) = sorted else {
         unreachable!()
     };
     sort.source_id = by_ticket(1);
     assert!(call(&mut c, Op::Sort(sort)).await.unwrap().success);
-    let refused = chart(&mut c, downsample(2, 3, "X", 10)).await.unwrap_err();
-    assert_eq!(refused.code(), Code::Unimplemented);
-    assert_eq!(
-        refused.message(),
-        "not ported: io.deephaven.engine.table.ColumnSource#allowsReinterpret: downsampling by \
-         the long column X, which is not held in memory"
-    );
+    assert_internal(&chart(&mut c, downsample(2, 3, "X", 10)).await.unwrap_err());
     // an Instant column is taken wherever it is: here its values fall, which Java refuses
     assert_internal(&chart(&mut c, downsample(2, 4, "T", 10)).await.unwrap_err());
     let zoomed = RunChartDownsampleRequest {

@@ -33,7 +33,7 @@
 //! modified row changes its bucket: what Java does with it depends on how the column is
 //! stored ([`State::handle_modified`]).
 
-use crate::table::{holds_values, QueryTable, TableSpec};
+use crate::table::{QueryTable, TableSpec};
 use arrow::array::{ArrayRef, AsArray};
 use arrow::datatypes::{
     Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, TimestampNanosecondType,
@@ -43,7 +43,6 @@ use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::shift::RowSetShiftData;
 use oxhaven_contracts::table::{Table, TableFailure};
-use oxhaven_contracts::unported;
 use oxhaven_contracts::update::TableUpdate;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -96,11 +95,11 @@ fn not_ported(method: &str, what: &str) -> TableFailure {
 /// column that is neither `Instant` nor `long`, a Y column that is a vector, an array or a
 /// table, and a bucket width that is not positive when there are rows.
 ///
-/// # Panics
-/// By `unported!`, for a `long` X column that does not hold its values in memory. Java
-/// takes a `long` column only if its source can be read as `long`
-/// (`ColumnSource#allowsReinterpret`), which the array sources and some of the others can
-/// and the formula columns of a view cannot.
+/// Every `long` X column is taken. Java takes a `long` column only if its source can be
+/// read as `long` (`ColumnSource#allowsReinterpret`), which the array sources and some of
+/// the others can and the formula columns of a view cannot, and refuses the others with
+/// `Cannot use non-Instant, non-long x column`. Taking them all is allowed difference A21
+/// of `PARITY.md` (owner item 7.15).
 ///
 /// Behavior: `RunChartDownsample#apply`, `RunChartDownsample#makeDownsampledQueryTable`,
 /// `RunChartDownsample.DownsamplerListener`. The result of Java is memoized on the parent;
@@ -151,16 +150,7 @@ pub fn run_chart_downsample(
     };
     let x = column(&request.x_column)?;
     match definition.columns()[x].column_type {
-        ColumnType::Instant => {}
-        ColumnType::Long => {
-            if !holds_values(&parent.column(x)) {
-                unported!(
-                    "io.deephaven.engine.table.ColumnSource#allowsReinterpret",
-                    "downsampling by the long column {}, which is not held in memory",
-                    request.x_column
-                );
-            }
-        }
+        ColumnType::Instant | ColumnType::Long => {}
         _ => {
             return Err(failure(format!(
                 "Cannot use non-Instant, non-long x column {} in downsample",

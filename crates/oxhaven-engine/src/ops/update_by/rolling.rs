@@ -1057,7 +1057,13 @@ fn avg_floats(values: &[Option<f64>], window: Window) -> Vec<Option<f64>> {
 }
 
 /// The index of the smallest or largest value in each window, for the types whose every
-/// value compares with every other: the integer types, `Instant` and `String`.
+/// value compares with every other: the integer types, `Instant`, `String` and vectors.
+/// Of equal values the earliest in the window is kept.
+///
+/// For vectors of `float` or `double`, two vectors that differ only in the sign of a zero
+/// are equal, and Java keeps the earlier one until it evaluates its window again, then the
+/// one the layout of its ring buffer favours. Keeping the earliest in the window is
+/// allowed difference A20 of `PARITY.md` (owner item 7.10).
 ///
 /// Behavior: io.deephaven.engine.table.impl.updateby.rollingminmax.LongRollingMinMaxOperator.Context
 /// and io.deephaven.engine.table.impl.updateby.rollingminmax.ComparableRollingMinMaxOperator.Context:

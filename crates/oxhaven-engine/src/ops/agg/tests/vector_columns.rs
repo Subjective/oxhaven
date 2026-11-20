@@ -3,8 +3,9 @@
 //! the vectors made by `group_by`, the arrays by `new int[]{...}`.
 
 use super::*;
-use arrow::array::{Float64Array, Int32Array, StringArray, UInt16Array};
-use oxhaven_testkit::list_of;
+use crate::ops::sort::testing::Ticking;
+use arrow::array::{Float32Array, Float64Array, Int32Array, StringArray, UInt16Array};
+use oxhaven_testkit::{list_of, TableChange};
 
 fn ints(values: &[i32]) -> ArrayRef {
     Arc::new(Int32Array::from(values.to_vec()))
@@ -229,25 +230,133 @@ fn the_distinct_vectors_of_a_group_are_ordered_as_vectors() {
     );
 }
 
-/// Java keeps the distinct vectors of floating point elements, of Booleans and of Instants
-/// in ways that are not ported: two vectors that differ only in the sign of a zero are one
-/// value; the result of the others loses its inner element type.
-#[test]
-#[should_panic(expected = "unported: io.deephaven.engine.table.impl.by.AggregationProcessor")]
-fn the_distinct_vectors_of_doubles_are_unported() {
-    let table = static_table(&[(
-        "D",
-        ColumnType::vector(ColumnType::Double),
-        lists(
+/// `N` and the vectors of doubles `D` (and the same as floats in `F`) of the distinct
+/// tests: `[0.0] [-0.0] [1.5, NaN] [-0.0] [0.0] null [NaN] [NaN] null [2.5]` with `N`
+/// `0 0 0 1 1 0 1 1 0 1`.
+fn floating_vectors() -> Vec<(&'static str, ColumnType, ArrayRef)> {
+    let cells = [
+        Some(1),
+        Some(1),
+        Some(2),
+        Some(1),
+        Some(1),
+        None,
+        Some(1),
+        Some(1),
+        None,
+        Some(1),
+    ];
+    let elements = [0.0, -0.0, 1.5, f64::NAN, -0.0, 0.0, f64::NAN, f64::NAN, 2.5];
+    let floats: Vec<f32> = elements.iter().map(|&e| e as f32).collect();
+    vec![
+        ("N", ColumnType::Int, ints(&[0, 0, 0, 1, 1, 0, 1, 1, 0, 1])),
+        (
+            "D",
             ColumnType::vector(ColumnType::Double),
-            &[Some(1), Some(1)],
-            Arc::new(Float64Array::from(vec![-0.0, 0.0])),
+            lists(
+                ColumnType::vector(ColumnType::Double),
+                &cells,
+                Arc::new(Float64Array::from(elements.to_vec())),
+            ),
         ),
-    )]);
+        (
+            "F",
+            ColumnType::vector(ColumnType::Float),
+            lists(
+                ColumnType::vector(ColumnType::Float),
+                &cells,
+                Arc::new(Float32Array::from(floats)),
+            ),
+        ),
+    ]
+}
+
+/// The distinct vectors of `double`s and `float`s are ordered as vectors, with `-0.0`
+/// equal to `0.0` and NaN after every number; of two vectors that differ only in the sign
+/// of a zero the one shown is the first the group was given (owner item 7.13, allowed
+/// difference A20 of `PARITY.md`). Seen on Deephaven 42.9 for the same vectors made by
+/// `group_by` (the floats by a cast before it): the same rows. On a static table Java
+/// showed the same zeros; see the next test for a ticking one.
+///
+/// Behavior: io.deephaven.engine.table.impl.by.ssmcountdistinct.distinct.ObjectChunkedDistinctOperator,
+/// io.deephaven.vector.DoubleVector#compareTo
+#[test]
+fn the_distinct_vectors_of_doubles_show_the_first_of_equal_ones() {
+    let table = static_table(&floating_vectors());
+    let distinct = |include_nulls: bool, by: &[&str]| {
+        let spec = || AggSpec::Distinct { include_nulls };
+        rows(&*agg_by(
+            &table,
+            &[agg(spec(), &["DD = D"]), agg(spec(), &["DF = F"])],
+            by,
+        ))
+    };
+    assert_eq!(
+        distinct(false, &["N"]),
+        [
+            "0|[[0.0], [1.5, NaN]]|[[0.0], [1.5, NaN]]",
+            "1|[[-0.0], [2.5], [NaN]]|[[-0.0], [2.5], [NaN]]"
+        ]
+    );
+    assert_eq!(
+        distinct(true, &["N"]),
+        [
+            "0|[null, [0.0], [1.5, NaN]]|[null, [0.0], [1.5, NaN]]",
+            "1|[[-0.0], [2.5], [NaN]]|[[-0.0], [2.5], [NaN]]"
+        ]
+    );
+    assert_eq!(
+        distinct(true, &[]),
+        ["[null, [0.0], [1.5, NaN], [2.5], [NaN]]|[null, [0.0], [1.5, NaN], [2.5], [NaN]]"]
+    );
     let spec = AggSpec::Distinct {
         include_nulls: false,
     };
-    let _ = aggregate(&table, &[agg(spec, &["DD = D"])], false, &[]);
+    let result = agg_by(&table, &[agg(spec, &["DD = D"])], &["N"]);
+    assert_eq!(
+        schema(&*result)[1].1,
+        ColumnType::vector(ColumnType::vector(ColumnType::Double))
+    );
+}
+
+/// On a ticking table the vector shown stays the one that first entered the group's set
+/// for as long as an equal vector is in the group, as for distinct plain doubles; Java's
+/// depends on the order its sorted set saw rows come and go (A20 of `PARITY.md`).
+#[test]
+fn a_ticking_distinct_of_double_vectors_keeps_the_vector_that_came_first() {
+    let doubles = ColumnType::vector(ColumnType::Double);
+    let cell = |value: f64| {
+        lists(
+            doubles.clone(),
+            &[Some(1)],
+            Arc::new(Float64Array::from(vec![value])),
+        )
+    };
+    let t = Ticking::new(
+        [0, 1],
+        &[
+            ("N", ColumnType::Int, ints(&[0, 0])),
+            (
+                "D",
+                doubles.clone(),
+                lists(
+                    doubles.clone(),
+                    &[Some(1), Some(1)],
+                    Arc::new(Float64Array::from(vec![-0.0, 2.0])),
+                ),
+            ),
+        ],
+        |source| {
+            let spec = AggSpec::Distinct {
+                include_nulls: false,
+            };
+            agg_by(source, &[agg(spec, &["DD = D"])], &["N"])
+        },
+    );
+    assert_eq!(rows(&*t.result), ["0|[[-0.0], [2.0]]"]);
+    // `[0.0]` joins `[-0.0]`, which stays shown.
+    t.step(TableChange::new().add([2], vec![ints(&[0]), cell(0.0)]));
+    assert_eq!(rows(&*t.result), ["0|[[-0.0], [2.0]]"]);
 }
 
 /// Java's groups of vectors of doubles depend on the class of the vectors.

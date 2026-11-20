@@ -387,27 +387,27 @@ fn panic_of(f: impl FnOnce() + std::panic::UnwindSafe) -> String {
     }
 }
 
-/// The distinct values of a vector of doubles are kept by an order that cannot tell
-/// `[-0.0]` from `[0.0]`, and an array is not a `Comparable` in Java, which fails when it
-/// first compares two of them.
+/// The distinct values of a vector of Booleans lose their inner element type in Java (a
+/// client receives strings, owner item 3.3), and an array is not a `Comparable` in Java,
+/// which fails when it first compares two of them.
 #[test]
 fn aggregations_of_a_list_column_that_are_not_ported() {
     let distinct = AggSpec::Distinct {
         include_nulls: false,
     };
-    let doubles = ColumnType::vector(ColumnType::Double);
+    let booleans = ColumnType::vector(ColumnType::Boolean);
     let table: Arc<dyn Table> = in_memory_table(
-        definition(&[("D", doubles.clone())]),
+        definition(&[("D", booleans.clone())]),
         &[RecordBatch::try_new(
             Arc::new(Schema::new(vec![Field::new(
                 "D",
-                doubles.arrow_type(),
+                booleans.arrow_type(),
                 true,
             )])),
             vec![list_of(
-                &doubles,
+                &booleans,
                 [Some(1)],
-                Arc::new(arrow::array::Float64Array::from(vec![0.5])),
+                Arc::new(arrow::array::BooleanArray::from(vec![true])),
             )],
         )
         .unwrap()],
@@ -422,7 +422,7 @@ fn aggregations_of_a_list_column_that_are_not_ported() {
     assert_eq!(
         message,
         "unported: io.deephaven.engine.table.impl.by.AggregationProcessor: \
-         makeDistinctOperator for a column of type Vector(Double)"
+         makeDistinctOperator for a column of type Vector(Boolean)"
     );
 
     let array = ColumnType::array(ColumnType::Int);

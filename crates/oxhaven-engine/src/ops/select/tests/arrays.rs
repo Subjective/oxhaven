@@ -10,7 +10,7 @@ use super::ticking::{
 use super::*;
 use crate::ops::agg::group_by;
 use crate::ops::filter::{unstructured_filter, FilterError};
-use crate::ops::select::arrays::{constant_array_accesses, shifted_table, Shift};
+use crate::ops::select::arrays::{constant_array_accesses, Shift};
 use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::update::ModifiedColumnSet;
 use oxhaven_testkit::{
@@ -688,39 +688,38 @@ fn a_change_to_a_row_reaches_the_rows_that_read_it() {
     assert_eq!(values(&*result, "P"), ["null", "21"]);
 }
 
-/// Java's `update` keeps old values here: seen on Java 42.9 for
-/// `update("M = X_[i-1] + X_[i+1]")` and `update("P = X_[i-1] + X_[i-2]")` of a keyed
-/// input table, where `update_view` of the same shows the new ones.
+/// Shifts at two different distances, neither of them zero, on a refreshing table are
+/// served (owner item 7.4, allowed difference A18 of `PARITY.md`). Java's `update` keeps
+/// old values here (seen on Java 42.9 for `update("M = X_[i-1] + X_[i+1]")` and
+/// `update("P = X_[i-1] + X_[i-2]")` of a keyed input table, where `update_view` of the
+/// same shows the new ones); Oxhaven gives the values of the formula made again.
 #[test]
-fn two_different_distances_on_a_refreshing_table_are_unported() {
-    let refused = |columns: &'static [&'static str]| {
-        let (_stepper, graph) = graph();
-        let parent: Arc<dyn Table> = scripted(&graph).table();
-        let run = std::panic::AssertUnwindSafe(|| update(&parent, columns, &Compiler).map(drop));
-        let message = match std::panic::catch_unwind(run) {
-            Err(panic) => *panic.downcast::<String>().expect("a message"),
-            Ok(result) => panic!("{columns:?} gave {result:?}"),
-        };
-        assert!(
-            message.starts_with(
-                "unported: io.deephaven.engine.table.impl.ShiftedColumnOperation#computeDirtyModifiedRowSetInPositionSpace"
-            ),
-            "{message}"
-        );
-    };
-    refused(&["P = A_[i - 1] + A_[i + 1]"]);
-    refused(&["P = A_[i - 1] + B_[i - 2]"]);
-    refused(&["P = A_[i - 1] + A_[i] + A_[i + 1]"]);
-    refused(&["Q = B", "P = A_[i + 1] * 1000 + A_[i + 3]"]);
-    // With zero, or one distance in two columns, there is one reach, and Java's answer.
+fn two_different_distances_on_a_refreshing_table_are_served() {
     for columns in [
-        &["P = A_[i] + A_[i + 2]"][..],
+        &["P = A_[i - 1] + A_[i + 1]"][..],
+        &["P = A_[i - 1] + B_[i - 2]"],
+        &["P = A_[i - 1] + A_[i] + A_[i + 1]"],
+        &["Q = B", "P = A_[i + 1] * 1000 + A_[i + 3]"],
+        // With zero, or one distance in two columns, there is one reach, and Java's answer.
+        &["P = A_[i] + A_[i + 2]"],
         &["P = A_[i - 2] + B_[i - 2] + A_[i]"],
     ] {
         let (_stepper, graph) = graph();
         let parent: Arc<dyn Table> = scripted(&graph).table();
-        assert!(update(&parent, columns, &Compiler).is_ok(), "{columns:?}");
+        let result = update(&parent, columns, &Compiler).unwrap_or_else(|e| panic!("{e:?}"));
+        assert!(result.is_refreshing(), "{columns:?}");
+        let made_again = update(&frozen(&*parent), columns, &Compiler).unwrap();
+        assert_eq!(
+            values(&*result, "P"),
+            values(&*made_again, "P"),
+            "{columns:?}"
+        );
     }
+    // The rows 0, 1, 5 and 6 hold A 10 to 40.
+    let (_stepper, graph) = graph();
+    let parent: Arc<dyn Table> = scripted(&graph).table();
+    let result = update(&parent, &["P = A_[i - 1] + A_[i + 1]"], &Compiler).unwrap();
+    assert_eq!(values(&*result, "P"), ["null", "40", "60", "null"]);
     // A static table has nothing to follow.
     let result = update(
         &keyed(&[3, 7, 9]),
@@ -731,84 +730,59 @@ fn two_different_distances_on_a_refreshing_table_are_unported() {
     assert_eq!(values(&*result, "P"), ["null", "40", "null"]);
 }
 
-/// What `with_shifted_column` does with a formula over `shifts`, without the refusal of two
-/// distances: the shifted columns, the formula over them, and the shifted columns dropped.
-/// Columns and their distances.
-type Distances = &'static [(&'static str, i64)];
-
-fn over_two_distances(shifts: Distances, formula: &'static str) -> Operation {
-    operation(move |parent| {
-        let shifts: Vec<Shift> = shifts.iter().map(|(c, a)| shift(c, *a)).collect();
-        let names: Vec<String> = shifts.iter().map(Shift::result_name).collect();
-        let shifted = shifted_table(parent, &shifts).unwrap();
-        let computed = update(&shifted, &[formula], &Compiler).unwrap();
-        drop_columns(&computed, &names).unwrap()
-    })
+/// `update` of `formula`, a formula with column arrays at two distances.
+fn over_two_distances(formula: &'static str) -> Operation {
+    operation(move |parent| update(parent, &[formula], &Compiler).unwrap())
 }
 
-/// Shifts at two distances served as the same formula made again would be (owner question
-/// 8 of `tasks/10.5-unported-select-arrays.md`): a change reaches the rows within the
-/// farthest distance on each side of it.
+/// Shifts at two distances (owner item 7.4, allowed difference A18 of `PARITY.md`): a
+/// change reaches the rows within the farthest distance on each side of it, so the result
+/// is the same formula made again after every cycle.
 #[test]
-fn two_distances_follow_random_changes_when_served() {
-    let cases: [(&str, Distances, &'static str); 6] = [
-        (
-            "the rows before and after",
-            &[("A", -1), ("A", 1)],
-            "M = __A_Shifted_Minus_1__ + __A_Shifted_Plus_1__",
-        ),
-        (
-            "two rows before",
-            &[("A", -1), ("A", -2)],
-            "M = __A_Shifted_Minus_1__ - __A_Shifted_Minus_2__",
-        ),
-        (
-            "two rows after",
-            &[("B", 1), ("B", 3)],
-            "M = __B_Shifted_Plus_1__ * 1000 + __B_Shifted_Plus_3__",
-        ),
+fn two_distances_follow_random_changes() {
+    let cases: [(&str, &'static str); 6] = [
+        ("the rows before and after", "M = A_[i - 1] + A_[i + 1]"),
+        ("two rows before", "M = A_[i - 1] - A_[i - 2]"),
+        ("two rows after", "M = B_[i + 1] * 1000 + B_[i + 3]"),
         (
             "two columns on both sides and the row itself",
-            &[("A", -1), ("B", 0), ("B", 2)],
-            "M = __A_Shifted_Minus_1__ * 100 + __B_Shifted_Plus_0__ * 10 + __B_Shifted_Plus_2__",
+            "M = A_[i - 1] * 100 + B_[i] * 10 + B_[i + 2]",
         ),
-        (
-            "far apart",
-            &[("A", -3), ("A", 2)],
-            "M = isNull(__A_Shifted_Minus_3__) ? -1 : __A_Shifted_Minus_3__ + __A_Shifted_Plus_2__",
-        ),
+        ("far apart", "M = A_[i - 3] + A_[i + 2]"),
         (
             "of a column the formula leaves unchanged",
-            &[("Sym", -1), ("Sym", 1)],
-            "M = __Sym_Shifted_Minus_1__ + `-` + __Sym_Shifted_Plus_1__",
+            "M = Sym_[i - 1] + `-` + Sym_[i + 1]",
         ),
     ];
-    for (what, shifts, formula) in cases {
-        fuzz(what, over_two_distances(shifts, formula));
+    for (what, formula) in cases {
+        fuzz(what, over_two_distances(formula));
     }
-    // A filter over such columns, as `where` makes it.
+    // Filters over such columns, as `where` makes them.
     fuzz(
         "where",
         operation(|parent| {
-            let shifts = [shift("A", -1), shift("A", 1)];
-            let shifted = shifted_table(parent, &shifts).unwrap();
-            let kept = unstructured_filter(
-                &shifted,
-                &["isNull(__A_Shifted_Minus_1__) || __A_Shifted_Minus_1__ + __A_Shifted_Plus_1__ > 40"],
+            unstructured_filter(parent, &["A_[i - 1] + A_[i + 1] != 50"], &Compiler).unwrap()
+        }),
+    );
+    fuzz(
+        "where with two filters",
+        operation(|parent| {
+            unstructured_filter(
+                parent,
+                &["A_[i - 1] != A_[i + 1]", "B_[i - 2] != 3"],
                 &Compiler,
             )
-            .unwrap();
-            let names: Vec<String> = shifts.iter().map(Shift::result_name).collect();
-            drop_columns(&kept, &names).unwrap()
+            .unwrap()
         }),
     );
 }
 
 /// The keyed input table of the Java probe: `K` 1 to 8 at rows 0 to 7, `X` 10 to 80.
 /// Java 42.9 answered `update("M = X_[i - 1] + X_[i + 1]")` made again after each step with
-/// the values below; its incremental `update` kept the first values throughout.
+/// the values below; its incremental `update` kept the first values throughout (allowed
+/// difference A18 of `PARITY.md`).
 #[test]
-fn two_distances_reach_both_neighbours_of_a_change_when_served() {
+fn two_distances_reach_both_neighbours_of_a_change() {
     let (stepper, graph) = graph();
     let source = ScriptedTable::new(
         graph.clone(),
@@ -817,10 +791,7 @@ fn two_distances_reach_both_neighbours_of_a_change_when_served() {
         vec![longs(1..=8), longs((1..=8).map(|k| k * 10))],
     );
     let parent: Arc<dyn Table> = source.table();
-    let make = over_two_distances(
-        &[("X", -1), ("X", 1)],
-        "M = __X_Shifted_Minus_1__ + __X_Shifted_Plus_1__",
-    );
+    let make = over_two_distances("M = X_[i - 1] + X_[i + 1]");
     let result = make(&parent);
     let checker = checked(&result, &parent, &make);
     let recorder = Recorder::attach(result.clone());

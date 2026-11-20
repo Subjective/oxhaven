@@ -147,29 +147,50 @@ impl Values {
     }
 }
 
-/// Whether the buckets of a vector column of type `column_type` are well defined: whether
-/// two vectors are one bucket in Java whatever classes of vector hold them. They are when
-/// the elements, at every depth, are integers, `char`s, `Boolean`s, `String`s, `Instant`s
-/// or vectors of these: every class compares those elements by value, and hashes them
-/// consistently.
+/// Whether `update_by` buckets by a vector column of type `column_type`.
 ///
-/// They are not for elements of `float` or `double`: `DoubleVectorDirect#equals` compares
-/// two direct vectors with `Arrays#equals`, for which `-0.0` and `0.0` differ, but any other
-/// pair (a vector of a group-by result is a `DoubleVectorColumnWrapper`) with
-/// `DoubleComparisons#eq`, for which they are equal. Nor for an array inside a vector:
-/// `ObjectVector#equals` compares arrays by value but `ObjectVector#hashCode` hashes them by
-/// identity, so equal vectors of arrays fall in one bucket or apart as their hashes happen
-/// to agree (seen on Deephaven 42.9: each in its own bucket).
+/// It does when the elements, at every depth, are integers, `char`s, `Boolean`s,
+/// `String`s, `Instant`s or vectors of these: every class of vector in Java compares those
+/// elements by value, and hashes them consistently.
+///
+/// It also does for a vector of `float` or `double`, with `-0.0` equal to `0.0` and every
+/// NaN equal to every other, as Java's buckets of a plain `double` column are (owner item
+/// 7.6, allowed difference A19 of `PARITY.md`). Java's own buckets depend on the class of
+/// the vectors: `DoubleVectorDirect#equals` compares two direct vectors (a vector made by
+/// `select()`) with `Arrays#equals`, for which `-0.0` and `0.0` differ, but any other pair
+/// (a vector of a group-by result is a `DoubleVectorColumnWrapper`) with
+/// `DoubleComparisons#eq`, for which they are equal.
+///
+/// It does not for a vector of vectors of `float` or `double`, which the owner's answer
+/// does not name, nor for an array inside a vector: `ObjectVector#equals` compares arrays
+/// by value but `ObjectVector#hashCode` hashes them by identity, so equal vectors of arrays
+/// fall in one bucket or apart as their hashes happen to agree (seen on Deephaven 42.9:
+/// each in its own bucket; owner item 7.7, kept refused).
 ///
 /// Behavior: io.deephaven.vector.IntVector#equals and #hashCode, and those of the other
 /// vector interfaces and of their `Direct` classes, which
-/// io.deephaven.util.compare.ObjectComparisons#eq and #hashCode call for a key of objects
+/// io.deephaven.util.compare.ObjectComparisons#eq and #hashCode call for a key of objects;
+/// io.deephaven.util.compare.DoubleComparisons#eq and #hashCode for the elements of a
+/// vector of `double` (and `FloatComparisons` for `float`)
 pub(super) fn bucketable_vector(column_type: &ColumnType) -> bool {
+    match column_type {
+        ColumnType::Vector(element)
+            if matches!(**element, ColumnType::Float | ColumnType::Double) =>
+        {
+            true
+        }
+        _ => exact_vector(column_type),
+    }
+}
+
+/// Whether every class of vector in Java compares two vectors of `column_type` by their
+/// elements' values: see [`bucketable_vector`].
+fn exact_vector(column_type: &ColumnType) -> bool {
     use ColumnType::*;
     match column_type {
         Vector(element) => match &**element {
             Boolean | Byte | Char | Short | Int | Long | String | Instant => true,
-            inner @ Vector(_) => bucketable_vector(inner),
+            inner @ Vector(_) => exact_vector(inner),
             _ => false,
         },
         _ => false,
@@ -185,6 +206,8 @@ enum Elements<'a> {
     Int(&'a Int32Array),
     Long(&'a Int64Array),
     Instant(&'a TimestampNanosecondArray),
+    Float(&'a Float32Array),
+    Double(&'a Float64Array),
     String(&'a StringArray),
     Lists(&'a ListArray, Box<Elements<'a>>),
 }
@@ -200,6 +223,8 @@ impl<'a> Elements<'a> {
             ColumnType::Int => Elements::Int(cast(array)?),
             ColumnType::Long => Elements::Long(cast(array)?),
             ColumnType::Instant => Elements::Instant(cast(array)?),
+            ColumnType::Float => Elements::Float(cast(array)?),
+            ColumnType::Double => Elements::Double(cast(array)?),
             ColumnType::String => Elements::String(cast(array)?),
             ColumnType::Vector(inner) => {
                 let lists: &ListArray = cast(array)?;
@@ -237,6 +262,20 @@ impl<'a> Elements<'a> {
             Elements::Int(a) => fixed!(a),
             Elements::Long(a) => fixed!(a),
             Elements::Instant(a) => fixed!(a),
+            Elements::Float(a) => {
+                let valid = a.is_valid(index);
+                key.push(u8::from(valid));
+                if valid {
+                    key.extend(float_key(f64::from(a.value(index))).to_le_bytes());
+                }
+            }
+            Elements::Double(a) => {
+                let valid = a.is_valid(index);
+                key.push(u8::from(valid));
+                if valid {
+                    key.extend(float_key(a.value(index)).to_le_bytes());
+                }
+            }
             Elements::String(a) => {
                 let valid = a.is_valid(index);
                 key.push(u8::from(valid));
@@ -262,10 +301,25 @@ impl<'a> Elements<'a> {
     }
 }
 
+/// The bits that stand for a `float` or `double` element in a bucket key: equal for
+/// `-0.0` and `0.0`, and for every NaN.
+///
+/// Behavior: io.deephaven.util.compare.DoubleComparisons#eq and #hashCode
+fn float_key(value: f64) -> u64 {
+    if value.is_nan() {
+        f64::NAN.to_bits()
+    } else if value == 0.0 {
+        0
+    } else {
+        value.to_bits()
+    }
+}
+
 /// Appends to each of `keys` the bucket key of the cell of the same position in `array`, a
 /// vector column of type `column_type`, which [`bucketable_vector`] takes. Two cells
 /// append the same bytes exactly when Java's `equals` holds between their vectors: both
-/// null, or of one size with equal elements, a null element equal only to a null element.
+/// null, or of one size with equal elements, a null element equal only to a null element;
+/// `float` and `double` elements are equal as [`float_key`] says.
 ///
 /// Behavior: io.deephaven.vector.IntVector#equals, ObjectVector#equals (whose
 /// `Objects#deepEquals` is `equals` for these elements), with

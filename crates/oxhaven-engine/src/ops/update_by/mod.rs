@@ -739,16 +739,10 @@ impl Plan {
                              (a client receives strings), or fails when it compares two arrays"
                         );
                     }
-                    if matches!(kernel, Kernel::Rolling(_))
-                        && matches!(**element, ColumnType::Float | ColumnType::Double)
-                    {
-                        oxhaven_contracts::unported!(
-                            "io.deephaven.engine.table.impl.updateby.rollingminmax.ComparableRollingMinMaxOperator",
-                            "rolling minimum or maximum of vector column {input_name} of type \
-                             {input_type:?}: of two vectors that differ only in the sign of a \
-                             zero, Java keeps the one its ring buffer's layout favours"
-                        );
-                    }
+                    // A rolling minimum or maximum of vectors of floats or doubles keeps the
+                    // earliest of equal vectors in the window (`rolling::extremes`), where
+                    // Java keeps the one its ring buffer's layout favours: allowed
+                    // difference A20 of PARITY.md (owner item 7.10).
                 }
                 // Behavior: UpdateByOperatorFactory.OperationVisitor#makeRollingWAvgOperator,
                 // which looks at the weight column before the input column
@@ -898,9 +892,9 @@ impl Plan {
             {
                 oxhaven_contracts::unported!(
                     "io.deephaven.engine.table.impl.updateby.UpdateBy#updateBy",
-                    "bucket column {} of type {:?}: Java's buckets of vectors of float or \
-                     double elements depend on the class of the vector objects (-0.0 and 0.0), \
-                     and those of vectors of arrays on the identity of the arrays",
+                    "bucket column {} of type {:?}: Java's buckets of vectors of arrays \
+                     depend on the identity of the arrays, and those of vectors of vectors of \
+                     float or double elements on the class of the vector objects (-0.0 and 0.0)",
                     column.name,
                     column.column_type
                 );

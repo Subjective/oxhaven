@@ -622,8 +622,14 @@ fn is_floating(column_type: &ColumnType) -> bool {
 type SharedShownRows = [Option<Arc<Mutex<ShownRows>>>; 2];
 
 /// Whether the distinct values of a column of `column_type`, a vector, are served: a
-/// vector of integers, `char`s or strings, whose distinct vectors Java keeps in an
-/// `ObjectVector` that names the input's vector class as its component type.
+/// vector of integers, `char`s, strings, floats or doubles, whose distinct vectors Java
+/// keeps in an `ObjectVector` that names the input's vector class as its component type.
+///
+/// Of floats and doubles, two vectors that differ only in the sign of a zero are one
+/// value. Oxhaven shows the first of them the group was given, as it does for distinct
+/// plain doubles; Java shows the one its sorted set kept, which on a ticking table depends
+/// on the order rows came and went. That is allowed difference A20 of `PARITY.md` (owner
+/// item 7.13).
 ///
 /// Behavior: io.deephaven.engine.table.impl.by.AggregationProcessor#makeDistinctOperator,
 /// io.deephaven.engine.table.impl.by.ssmcountdistinct.distinct.ObjectChunkedDistinctOperator,
@@ -638,6 +644,8 @@ fn distinct_vector(column_type: &ColumnType) -> bool {
                 | ColumnType::Short
                 | ColumnType::Int
                 | ColumnType::Long
+                | ColumnType::Float
+                | ColumnType::Double
                 | ColumnType::String
         )
     )
@@ -749,11 +757,9 @@ fn make_operator(
         AggSpec::Min | AggSpec::Max => vectors_only("makeMinOrMaxOperator", input_type),
         // Observed: the distinct vectors of a group, ordered as vectors are (`Scalar::compare`),
         // as a vector of vectors whose component type is the input's vector class. That
-        // holds for vectors of integers, `char`s and strings. Of a vector of Booleans or
-        // Instants Java's result loses the inner element type (a client receives strings);
-        // of a vector of floats or doubles, two vectors that differ only in the sign of a
-        // zero are one value, and which of them Java keeps depends on the order of its
-        // sorted set's history; deeper vectors and arrays are refused as for min and max.
+        // holds for vectors of integers, `char`s, strings, floats and doubles. Of a vector of
+        // Booleans or Instants Java's result loses the inner element type (a client receives
+        // strings); deeper vectors and arrays are refused as for min and max.
         AggSpec::Distinct { .. }
             if input_type.list_element().is_some() && !distinct_vector(input_type) =>
         {
