@@ -410,6 +410,93 @@ Rule: Oxhaven refuses every `NewSession` call with `UNAUTHENTICATED`. Nothing el
 session service is covered. The recorded case is `new_session_without_credentials_is_refused`
 in `crates/oxhaven-server/src/session/tests.rs`; `tasks/2.1-session-service.md`, Notes.
 
+### A18. Column arrays at two distances on a refreshing table
+
+Approved by the owner on 2026-11-20 (item 7.4 of the second batch of review items: "Do
+what's recommended").
+
+A formula or filter that reads column arrays at two different distances from the current
+row, neither of them zero (`update("M = X_[i - 1] + X_[i + 1]")`, `X_[i - 1] - X_[i - 2]`,
+`where("X_[i - 1] < X_[i + 1]")`), on a refreshing table: Java finds the rows a change
+makes dirty by running its one-distance computation twice, the second time over row
+positions as if they were row keys (`ET/ShiftedColumnOperation.java:
+ShiftedColumnOperation#computeDirtyModifiedRowSetInPositionSpace`). Its `update` then keeps
+old values in the rows next to a modified, added or removed row (60 where the same `update`
+made again shows 61), and its `where` can keep a row that was removed.
+
+Rule: Oxhaven's result is the one the same operation gives when it is made again from the
+table's rows after each cycle, as A13 does for `aj`; a change marks as modified the rows
+within the farthest distance on each side of it. Where Java's incremental result agrees
+with Java's result made again, Oxhaven must match it; a static table, one distance, or one
+distance and zero, are not covered. Recorded in `tasks/10.5-unported-select-arrays.md`
+(owner question 8) and `two_distances_reach_both_neighbours_of_a_change` in
+`crates/oxhaven-engine/src/ops/select/tests/arrays.rs`.
+
+### A19. `update_by` buckets of vectors of `float` or `double`
+
+Approved by the owner on 2026-11-20 (item 7.6 of the second batch of review items: "Do
+what's recommended").
+
+Java buckets `update_by` by a vector column with the vectors' `equals`, which depends on
+their class: `DoubleVectorDirect#equals` compares two vectors made by `select()` with
+`Arrays#equals`, for which `-0.0` and `0.0` differ, and any other pair (a vector of a
+`group_by` result) element by element with `UC/DoubleComparisons.java:
+DoubleComparisons#eq`, for which they are equal. `[0.0]` and `[-0.0]` share a bucket after
+a `group_by` and are two after a `select()`.
+
+Rule: a bucket column that is a vector of `float` or `double` buckets as Java's buckets
+of a plain `double` column do: elements equal by `DoubleComparisons#eq`, so `-0.0` equals
+`0.0` and every NaN equals every other, whatever made the vectors. Where Java's vectors
+are of a `group_by` result, Oxhaven must match Java. Vectors of vectors of `float` or
+`double` are not covered and stay refused. Recorded in `tasks/11.4-updateby-refusals.md`
+(R4) and `a_bucket_column_of_floating_vectors_treats_zeros_as_equal` in
+`crates/oxhaven-engine/src/ops/update_by/vector_tests.rs`.
+
+### A20. Which of equal vectors of `float` or `double` a rolling minimum or maximum or a `distinct` shows
+
+Approved by the owner on 2026-11-20 (items 7.10 and 7.13 of the second batch of review
+items: "Do what's recommended").
+
+Java orders vectors of `float` or `double` element by element with `-0.0` equal to `0.0`
+(`DoubleVector#compareTo`), so two vectors that differ only in the sign of a zero are
+equal, and which of them it shows depends on its internals:
+
+- `rolling_min_tick`, `rolling_max_tick`, `rolling_min_time` and `rolling_max_time` keep
+  the earlier until they evaluate the window again, and then the one the layout of their
+  ring buffer favours (`ET/updateby/rollingminmax/ComparableRollingMinMaxOperator.java`).
+  Seen: over 400 rows alternating `[-0.0]` and `[0.0]` with a window of three rows, the
+  earliest vector of the window except at rows 128, 256 and 384.
+- `agg.distinct` shows the one its sorted set kept, which on a ticking table depends on
+  the order rows came and went (`ET/by/ssmcountdistinct/distinct/ObjectChunkedDistinctOperator.java`).
+
+Rule: the rolling minimum and maximum of such a column keep the earliest of equal vectors
+in the window. `agg.distinct` shows, of equal vectors, the one that first entered the
+group's set of distinct values, for as long as an equal vector stays in the group, as it
+does for plain doubles. A cell of these results may therefore differ from Java's only in
+the sign of a zero inside a vector; everything else must match. Cumulative minimum and
+maximum are not covered: they keep the first of equal vectors, as Java does. Recorded in
+`tasks/11.4-updateby-refusals.md` (R3), `tasks/11.5-agg-refusals.md` (A9c),
+`a_rolling_minimum_of_floating_vectors_keeps_the_earliest_of_equal_ones` in
+`crates/oxhaven-engine/src/ops/update_by/vector_tests.rs` and
+`the_distinct_vectors_of_doubles_show_the_first_of_equal_ones` in
+`crates/oxhaven-engine/src/ops/agg/tests/vector_columns.rs`.
+
+### A21. Chart downsampling by any `long` column
+
+Approved by the owner on 2026-11-20 (item 7.15 of the second batch of review items: "Do
+what's recommended").
+
+Java's `RunChartDownsample` takes a `long` x column only when its source can be read as
+`long` (`ColumnSource#allowsReinterpret`): a column held in memory, a sorted table's column
+or a renamed one is taken, and a formula column of a view (`update_view("W = X * 2")`) is
+refused with `Cannot use non-Instant, non-long x column`.
+
+Rule: Oxhaven takes every `long` x column, and downsamples it as Java downsamples the same
+values held in memory. Where Java takes the column, Oxhaven must match it. Recorded in
+`tasks/11.7-hierarchical-server-refusals.md` (E12) and
+`a_long_x_column_need_not_be_held_in_memory` in
+`crates/oxhaven-engine/src/ops/ide/downsample_tests.rs`.
+
 ## Determinism
 
 Oxhaven must give the same answer as itself on every run, for the same inputs and the same
