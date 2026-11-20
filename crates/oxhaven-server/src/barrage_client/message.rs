@@ -412,3 +412,6 @@ impl MessageReader {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

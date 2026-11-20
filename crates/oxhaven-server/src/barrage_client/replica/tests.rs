@@ -324,6 +324,12 @@ fn an_empty_message_is_no_update() {
     local.run_cycle();
     assert!(recorder.events().is_empty());
     assert_eq!(cells(copy.as_ref(), 0), [(10, 10), (20, 20), (30, 30)]);
+
+    // the copy itself says that nothing changed, so the table is told nothing
+    let mut replica = Replica::new(&schema_of(&definition, &[]));
+    let quiet = [nothing(&definition), nothing(&definition)];
+    assert!(replica.apply(&quiet).unwrap().is_none());
+    assert!(replica.apply(&[]).unwrap().is_none());
 }
 
 /// A table that grows by many more rows than a column source keeps in one block, in
