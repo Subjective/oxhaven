@@ -282,7 +282,7 @@ class Known:
             for index, mismatch in enumerate(mismatches):
                 if out[index] is not None or mismatch.table not in by_name:
                     continue
-                above = _ancestors(mismatch.table, by_name)
+                above = ancestors(mismatch.table, by_name)
                 for other, finding in zip(mismatches, out):
                     if finding is not None and other.table in above and _same_symptom(
                             mismatch, other):
@@ -292,7 +292,7 @@ class Known:
         return out
 
 
-def _ancestors(table: str, by_name: Mapping[str, Mapping[str, Any]]) -> set[str]:
+def ancestors(table: str, by_name: Mapping[str, Mapping[str, Any]]) -> set[str]:
     seen: set[str] = set()
     todo = [table]
     while todo:
@@ -472,7 +472,7 @@ class Scene:
 
 def _ancestry(scene: Scene, table: str) -> list[Mapping[str, Any]]:
     """The operation of `table` and of every table it is made from."""
-    names = [table] + sorted(_ancestors(table, scene.by_name))
+    names = [table] + sorted(ancestors(table, scene.by_name))
     return [scene.by_name[name] for name in names if name in scene.by_name]
 
 

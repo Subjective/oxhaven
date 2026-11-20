@@ -342,6 +342,67 @@ def test_differs_from_fresh_names_what_the_actual_side_holds_differently(tmp_pat
     assert rules.differs_from_fresh(scenario, fresh, actual, [(1, "w")]) == {(1, "w")}
     # A result that one side does not hold is not known to agree.
     assert rules.differs_from_fresh(scenario, fresh, actual, [(0, "w")]) == {(0, "w")}
+    # Column metadata is held to the rules at the first step, not here.
+    tagged = tables[2].cast(pa.schema([pa.field("X", pa.int32(),
+                                                metadata={b"deephaven:type": b"int"})]))
+    actual.put(1, "w", tagged)
+    one, other = ResultSet("s"), ResultSet("s")
+    one.put(1, "w", tables[2])
+    other.put(1, "w", tagged)
+    assert [m.kind for m in rules.compare(one, other, frozenset(), {})] == ["column_metadata"]
+    assert rules.differs_from_fresh(scenario, fresh, actual, [(1, "w")]) == set()
+
+
+def test_a_result_made_from_an_inconsistent_one_is_judged_by_its_rows_from_scratch(tmp_path):
+    """In the rows form a result that reads one the reference disagrees with itself about
+    is the finding's when the actual side holds the rows of its answer from scratch, though
+    what the reference kept for it agrees with that answer (PARITY.md A22)."""
+    import argparse
+
+    doc = {
+        "format": 1, "name": "s",
+        "inputs": [{"name": "t", "ticking": {"key_columns": []},
+                    "columns": [{"name": "X", "type": "int32"}], "rows": [[1]]}],
+        "operations": [{"name": "w", "op": "where", "source": "t", "filters": ["X > 0"]},
+                       {"name": "v", "op": "where", "source": "w", "filters": ["X > 0"]}],
+        "results": [{"table": "w"}, {"table": "v"}],
+        "steps": [{"actions": [{"action": "add", "table": "t", "rows": [[2]]}]}],
+    }
+    scenario = sc.parse(doc)
+    columns = scenario.inputs[0].columns
+    one, two, swapped = (sc.arrow_table(columns, rows) for rows in (
+        [[1]], [[1], [2]], [[2], [1]]))
+    path = tmp_path / "known.json"
+    path.write_text(json.dumps({"format": 1, "findings": [
+        {"id": "rows", "class": "allowed-difference",
+         "reason": "the reference keeps a result it does not answer from scratch",
+         "match": {"kind": "value", "operation": "where", "steps": "later",
+                   "requires": "reference_inconsistent_rows"}}]}))
+
+    def split(kept_w, actual_v):
+        kept, fresh, actual = ResultSet("s"), ResultSet("s"), ResultSet("s")
+        for table, data in (("w", kept_w), ("v", two)):
+            kept.put(1, table, data)
+        for table in ("w", "v"):
+            fresh.put(1, table, two)
+        actual.put(1, "w", two)
+        actual.put(1, "v", actual_v)
+
+        class Reference:
+            def run_fresh(self, asked):
+                return kept, fresh
+
+        triage = cli._Triage(argparse.Namespace(known=str(path), no_known=False),
+                             Reference())
+        found = [m for m in rules.compare_scenario(scenario, kept, actual) if m.table == "v"]
+        assert found and {m.kind for m in found} == {"value"}
+        left, fitted = triage.split(scenario, found, actual=actual)
+        return len(left), sorted({f.id for f in fitted})
+
+    # `w` was kept stale: `v`'s rows in another order are the answer from scratch.
+    assert split(one, swapped) == (0, ["rows"])
+    # `w` was not: what the reference kept for `v` is its answer, and the order differs.
+    assert split(two, swapped)[0] > 0
 
 
 def test_an_inconsistent_reference_in_any_order_excuses_only_the_rows_from_scratch(tmp_path):

@@ -33,8 +33,9 @@
   {
    "id": "group-vector-failure",
    "class": "allowed-difference",
-   "reason": "PARITY.md A22 (owner item 7.19): Java's vector of a refreshing group_by result is a view of its group, so an aggregation grouped by it, an update_by bucketed by it, a select_distinct of it or a distinct of it fails in the cycle in which a group changes (IllegalStateException: Missing value in probe in IncrementalAggOpenHasherObject; Failed to modify data). Counted only for a table that is, or is made from, an operation that holds such vectors (shape refreshing_group_vectors), and only when Java's result made again from the same rows succeeds and Oxhaven's result holds the rows of that answer: compared as multisets of rows, since an aggregation whose key changed shows the new group at the end, which a table made again cannot (tasks/12.1-fuzzer-coverage.md, F2).",
-   "match": {"kind": "failure_expected", "operation": ["agg_by", "update_by", "select_distinct"],
+   "reason": "PARITY.md A22 (owner item 7.19): Java's vector of a refreshing group_by result is a view of its group, so an aggregation grouped by it, an update_by bucketed by it, a select_distinct of it or a distinct of it fails in the cycle in which a group changes (IllegalStateException: Missing value in probe in IncrementalAggOpenHasherObject; Failed to modify data), and so does an ungroup of such a distinct. Counted only for a table that is, or is made from, an operation that holds such vectors (shape refreshing_group_vectors), and only when Java's result made again from the same rows succeeds and Oxhaven's result holds the rows of that answer: compared as multisets of rows, since an aggregation whose key changed shows the new group at the end, which a table made again cannot (tasks/12.1-fuzzer-coverage.md, F2).",
+   "match": {"kind": "failure_expected",
+             "operation": ["agg_by", "update_by", "select_distinct", "ungroup"],
              "steps": "later", "requires": "reference_inconsistent_rows",
              "shape": "refreshing_group_vectors",
              "expected": "fails with INVALID_ARGUMENT", "actual": "succeeds"}

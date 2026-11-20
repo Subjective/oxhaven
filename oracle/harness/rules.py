@@ -647,7 +647,10 @@ def differs_from_fresh(scenario: Any, fresh: ResultSet, actual: ResultSet,
     """Of the results `at` (step, table), those for which `actual`, the results another
     server kept up to date, are not what the reference answers from scratch (`fresh`; see
     `compare_with_fresh`), or that one of the two does not hold. Computed floats get the
-    A1 tolerance. `any_order` compares every table as a multiset of rows."""
+    A1 tolerance. `any_order` compares every table as a multiset of rows. Column metadata is
+    not compared: it is fixed when a table is made, and the comparison of the first step,
+    where both servers' tables stand, already holds it to the rules (so a difference there
+    that PARITY.md A23 allows does not hide a later answer that is the one from scratch)."""
     one, other = ResultSet(fresh.scenario), ResultSet(actual.scenario)
     missing = set()
     for step, table in at:
@@ -658,7 +661,7 @@ def differs_from_fresh(scenario: Any, fresh: ResultSet, actual: ResultSet,
             missing.add((step, table))
     unordered = frozenset(r.table for r in scenario.results if any_order or not r.ordered)
     found = compare(one, other, unordered, computed_columns(scenario.operations), rules)
-    return missing | {(m.step, m.table) for m in found}
+    return missing | {(m.step, m.table) for m in found if m.kind != COLUMN_METADATA}
 
 
 # What Python says when a name is not there. The module or class must be one of the

@@ -163,8 +163,16 @@ def test_every_form_is_drawn():
             while by_name.get(name, {}).get("op") in ("aj", "raj"):
                 depth, name = depth + 1, by_name[name]["left"]
             seen["chain of three"] += depth >= 3
+            # PARITY.md A13 for raj: the shape of its chain case (once restriction C1).
+            seen[f"{kind} of the shape of the chains of A13"] += (
+                len(op["on"]) > 1 and op["left"] not in live and op["right"] in live
+                and op["right"] in by_name)
         elif kind == "update_by":
             seen["bucket by a vector"] += any(types[c].startswith(LIST) for c in op["by"])
+            seen["bucket by a vector, refreshing"] += op["name"] in live and any(
+                types[c].startswith(LIST) for c in op["by"])
+            seen["bucket by a vector of floats"] += any(
+                types[c][len(LIST):] in ("float32", "float64") for c in op["by"])
             for operator in op["ops"]:
                 name = operator["op"]
                 if name.startswith(COMPARING) and any(
@@ -172,6 +180,9 @@ def test_every_form_is_drawn():
                     seen[f"{name.split('_')[0]} {name.split('_')[1]} of a vector"] += 1
                     seen[f"vector minimum or maximum, {'refreshing' if op['name'] in live else 'static'}"] += 1
                     seen["rolling over time of a vector"] += name.endswith("_time")
+                    seen["rolling minimum or maximum of vectors of floats"] += name.startswith(
+                        "rolling") and any(types[_source(pair)][len(LIST):] in (
+                            "float32", "float64") for pair in operator["columns"])
                 if "count_where" in name and any(
                         _lists(types, text) for text in operator["args"]["filters"]):
                     seen[f"{name} of a vector"] += 1
@@ -185,12 +196,23 @@ def test_every_form_is_drawn():
                     seen["condition function"] += bool(re.match(
                         r"(?:\w+ = )?(?:first|last|min|max|sum)\(", formula))
                     seen["condition refreshing"] += op["name"] in live
+                    # PARITY.md A23: an element of a condition between windows of strings.
+                    seen["element of a condition between windows of strings"] += bool(
+                        re.search(r"\)\[\d\]", formula)) and any(
+                        types.get(c) == "string" for c in [_source(p) for p in operator[
+                            "columns"]] + WORD.findall(formula))
         elif kind == "agg_by":
             seen["group by a vector"] += any(types[c].startswith(LIST) for c in op["by"])
+            seen["group by a vector, refreshing"] += op["name"] in live and any(
+                types[c].startswith(LIST) for c in op["by"])
             for agg in op["aggs"]:
                 if agg["agg"] == "distinct" and any(
                         types[_source(pair)].startswith(LIST) for pair in agg["columns"]):
                     seen["distinct of a vector"] += 1
+                    seen["distinct of a vector, refreshing"] += op["name"] in live
+                    seen["distinct of a vector of floats"] += any(
+                        types[_source(pair)][len(LIST):] in ("float32", "float64")
+                        for pair in agg["columns"])
                 if agg["agg"] == "count_where" and any(
                         _lists(types, text) for text in agg["args"]["filters"]):
                     seen["agg count_where of a vector"] += 1
@@ -200,6 +222,25 @@ def test_every_form_is_drawn():
                 types[c].startswith(LIST) for c in op["columns"])
             seen["select_distinct of a vector and another column"] += len(op["columns"]) > 1 and any(
                 types[c].startswith(LIST) for c in op["columns"])
+        elif kind == "ungroup" and op["name"] != op["source"] + "v":
+            # PARITY.md A23 and A24: what holds vectors, taken apart.
+            source = by_name.get(op["source"], {})
+            seen["ungroup of an aggregation"] += source.get("op") == "agg_by"
+            seen["ungroup with null fill of an aggregation by a vector"] += (
+                source.get("op") == "agg_by" and op.get("null_fill", True) and any(
+                    dict(predicted[source["source"]])[c].startswith(LIST) for c in source["by"]))
+            seen["ungroup of a minimum or maximum of a vector"] += source.get("op") == "update_by" and any(
+                o["op"].startswith(COMPARING) for o in source["ops"])
+    # A22: a table read from a minimum or maximum of vectors of a refreshing table.
+    for doc, predicted in [run for runs in GENERATED.values() for run in runs]:
+        live = _live(doc)
+        extremes = {op["name"] for op in doc["operations"] if op["op"] == "update_by"
+                    and op["name"] in live and any(
+                        o["op"].startswith(COMPARING) and dict(predicted[op["source"]])[
+                            _source(pair)].startswith(LIST)
+                        for o in op["ops"] for pair in o["columns"])}
+        seen["read on after a minimum or maximum of vectors, refreshing"] += sum(
+            bool(extremes.intersection(sc.references(op))) for op in doc["operations"])
     expected = [
             "aj of an as-of result on the left", "raj of an as-of result on the left",
             "aj of an as-of result on the right", "raj of an as-of result on the right",
@@ -216,7 +257,16 @@ def test_every_form_is_drawn():
             "condition function", "condition refreshing", "group by a vector",
             "distinct of a vector", "agg count_where of a vector",
             "agg count_where of a vector, refreshing", "select_distinct of a vector",
-            "select_distinct of a vector and another column"]
+            "select_distinct of a vector and another column",
+            "raj of the shape of the chains of A13", "aj of the shape of the chains of A13",
+            "bucket by a vector, refreshing", "bucket by a vector of floats",
+            "rolling minimum or maximum of vectors of floats",
+            "element of a condition between windows of strings",
+            "group by a vector, refreshing", "distinct of a vector, refreshing",
+            "distinct of a vector of floats", "ungroup of an aggregation",
+            "ungroup with null fill of an aggregation by a vector",
+            "ungroup of a minimum or maximum of a vector",
+            "read on after a minimum or maximum of vectors, refreshing"]
     assert not {name: seen[name] for name in expected if seen[name] <= 5}, seen
 
 
@@ -316,6 +366,10 @@ def test_what_an_owner_item_or_a_finding_restricts_is_not_drawn():
                                 # `len` of a window of strings fails the table when a row is
                                 # read.
                                 assert "len(" not in formula or first not in live, where
+                if kind == "agg_by" and first in live and any(
+                        types[c].startswith(LIST) for c in op["by"]):
+                    seen["V16"] += 1
+                    assert op.get("initial_groups") not in live, where
                 if kind == "agg_by":
                     for agg in op["aggs"]:
                         if agg["agg"] != "distinct":

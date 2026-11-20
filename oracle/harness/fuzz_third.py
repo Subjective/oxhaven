@@ -105,6 +105,10 @@ RESTRICTIONS: dict[str, str] = {
            "condition between windows of strings, an ungroup of a minimum or maximum of "
            "vectors of strings) is not read by a later operation (F12: the reference refuses "
            "a filter on its java.lang.Object column that it takes on a string column)",
+    "V16": "build_agg: no initial groups from a refreshing table for an aggregation grouped "
+           "by a vector (F13: the groups are taken when the aggregation is made, so the "
+           "reference's answer made again, which PARITY.md A22 is checked against, cannot "
+           "have them)",
 }
 _INTEGERS = tuple(INT_BITS)
 # Element types of the vectors each request takes; see RESTRICTIONS for what is left out.
@@ -139,6 +143,10 @@ class _Third(_Second):
         self.windowed: dict[str, set[str]] = {}
         self.string_extremes: dict[str, set[str]] = {}
         self.objects: dict[str, set[str]] = {}
+        # Aggregations grouped by a vector and minimums or maximums of vectors: what an
+        # `ungroup` takes apart more often (PARITY.md A23, A24).
+        self.holders: set[str] = set()
+        self.ungrouping: set[str] | None = None  # the tables an `ungroup` picks from
 
     # ------------------------------------------------------------ bookkeeping
 
@@ -148,6 +156,14 @@ class _Third(_Second):
         if kind in ("aj", "raj"):
             self.asof.append(name)
         types = dict(columns)
+        before = self.tables.get(op.get("source", ""))
+        if before is not None and (
+                kind == "agg_by" and any(before.type_of(c).startswith(LIST) for c in op["by"])
+                or kind == "update_by" and any(
+                    spec["op"].startswith(_EXTREMES)
+                    and before.type_of(rules.split_pair(pair)[1]).startswith(LIST)
+                    for spec in op["ops"] for pair in spec["columns"])):
+            self.holders.add(name)
         solid: set[str] = set()
         if kind == "group_by":
             solid = set(types) - set(op["by"])
@@ -208,6 +224,21 @@ class _Third(_Second):
                 out |= {column for column in carried
                         if types.get(column) == right.type_of(column)}
         return out
+
+    def has_lists(self, table: _Table, besides: tuple[str, ...] | list[str] = ()) -> bool:
+        if self.ungrouping is not None and table.name not in self.ungrouping:
+            return False
+        return _Wide.has_lists(table, besides)
+
+    def build_ungroup(self, name: str, of: set[str] | None = None) -> bool:
+        if of is None and any(_Wide.has_lists(self.tables[t]) for t in self.holders) and (
+                self.chance(0.5)):
+            of = self.holders
+        self.ungrouping = of
+        try:
+            return super().build_ungroup(name)
+        finally:
+            self.ungrouping = None
 
     def results(self) -> list[str]:
         """The tables to compare: each operation's, or for a table with a column of arrays
@@ -346,13 +377,17 @@ class _Third(_Second):
             rule = rng.choice(["<=", "<"] if kind == "aj" else [">=", ">"])  # refused
         on.append(f"{lc} {rule} {rc}")
         columns = list(left.columns) + ([(rc, right.type_of(rc))] if rc != lc else [])
-        joinable = [c for c, _ in right.columns if c not in used_right]
+        unmatched = [c for c, _ in right.columns if c not in used_right]
+        # One column of arrays of arrays per table: `results` takes one apart.
+        nested = any(kind.startswith(LIST + LIST) for _, kind in columns)
+        joinable = [c for c in unmatched
+                    if not (nested and right.type_of(c).startswith(LIST + LIST))]
         if not joinable:
             return False
         op: dict[str, Any] = {"name": name, "op": kind, "left": left.name, "right": right.name,
                               "on": on}
         taken = {c for c, _ in columns}
-        if self.chance(0.1) and not taken & set(joinable):
+        if self.chance(0.1) and not taken & set(joinable) and joinable == unmatched:
             # No `joins`: every right column that is not matched on.
             columns += [(c, right.type_of(c)) for c in joinable]
         else:
@@ -440,9 +475,16 @@ class _Third(_Second):
         if not super().build_agg(base, source):
             return False
         op = self.operations[-1]
+        initial = self.tables.get(op.get("initial_groups", ""))
+        if initial is not None and initial.live and any(
+                source.type_of(column).startswith(LIST) for column in op["by"]):
+            op.pop("initial_groups")  # V16
+            self.tables[op["name"]].live = source.live
         if "initial_groups" in op or op.get("preserve_empty"):
             # A group without rows has an empty vector.
             self.solid[op["name"]] &= set(op["by"])
+        if op["name"] in self.holders and "ungroup" in self.ops and self.chance(0.3):
+            self.build_ungroup(self.fresh("o"), {op["name"]})
         return True
 
     # ------------------------------------------------------------ update_by
