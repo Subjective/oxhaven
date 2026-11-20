@@ -39,9 +39,12 @@ every field given there fits:
   compared as a multiset of rows, both the reference's two answers and the actual side's
   against the one from scratch: for a result whose row order depends on its history, as
   the order of an aggregation's groups does (a group made by a key that changed comes at
-  the end), so that a table made again cannot give it. In this form a result made from one
-  the reference disagrees with itself about in the same step counts as one too
-  (`_Triage.split`): what the reference kept for it was read from a failed or stale table.
+  the end), so that a table made again cannot give it. In this form only the operations
+  that hold vectors of a refreshing group (`holds_group_vectors`), and what is made from
+  them, are made again, from their sources' rows as kept (`runner.run_scenario`,
+  `remake`), and a result made from one the reference disagrees with itself about in the
+  same step counts as one too (`_Triage.split`): what the reference kept for it was read
+  from a failed or stale table.
 - `differs_in`: `zero_sign`. Both sides are vectors of the same shape whose elements are
   equal bit for bit except that a zero on one side is the other zero on the other side
   (every NaN equals every NaN), and at least one such pair is there.
@@ -397,7 +400,9 @@ class Scene:
 
     def lists(self, table: str) -> set[str] | None:
         """The vector columns of `table` in the actual side's results, or None if they hold
-        no table of that name."""
+        no table of that name. A table with a column of arrays of arrays is compared
+        through an `ungroup` of that column named for it (`fuzz_third`, `results`): its
+        vector columns are then those of that view and the column it takes apart."""
         if self.actual is None:
             return None
         for step, name in self.actual.keys():
@@ -408,6 +413,11 @@ class Scene:
             if schema is not None:
                 return {field.name for field in schema
                         if str(field.type).startswith(("list<", "large_list<"))}
+        view = self.by_name.get(table + "v")
+        if view is not None and view["op"] == "ungroup" and view["source"] == table and (
+                view.get("columns")):
+            lists = self.lists(view["name"])
+            return None if lists is None else lists | set(view["columns"])
         return None
 
     def taken(self, op: Mapping[str, Any]) -> list[str] | None:
@@ -478,7 +488,7 @@ def _ancestry(scene: Scene, table: str) -> list[Mapping[str, Any]]:
     return [scene.by_name[name] for name in names if name in scene.by_name]
 
 
-def _holds_group_vectors(scene: Scene, op: Mapping[str, Any]) -> bool:
+def holds_group_vectors(scene: Scene, op: Mapping[str, Any]) -> bool:
     """PARITY.md A22: `op` holds vectors of a refreshing `group_by` (or `group`) as
     group-by, bucket or `select_distinct` columns, in `distinct`, or as the input of a
     cumulative or rolling minimum or maximum."""
@@ -507,7 +517,7 @@ def _holds_group_vectors(scene: Scene, op: Mapping[str, Any]) -> bool:
 
 def _refreshing_group_vectors(scene: Scene, mismatch: rules.Mismatch) -> bool:
     """A22: the table, or one it is made from, holds vectors of a refreshing group."""
-    return any(_holds_group_vectors(scene, op) for op in _ancestry(scene, mismatch.table))
+    return any(holds_group_vectors(scene, op) for op in _ancestry(scene, mismatch.table))
 
 
 def _ungrouped_extreme(scene: Scene, mismatch: rules.Mismatch) -> bool:

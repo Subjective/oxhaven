@@ -459,23 +459,31 @@ class _Triage:
         if not found or not self.known:
             return found, []
 
-        runs: list[tuple[res.ResultSet, res.ResultSet] | None] = []
+        runs: dict[bool, tuple[res.ResultSet, res.ResultSet] | None] = {}
+        scene = kn.Scene(scenario, actual)
 
         def reference_inconsistent(any_order: bool = False) -> set[tuple[int, str]] | None:
             """The results the reference disagrees with itself about and the actual side
-            holds the reference's answer from scratch for; with `any_order`, both compared
-            as multisets of rows, and a result made from one the reference disagrees with
-            itself about in that step counts too (what the reference kept for it was read
-            from a failed or stale table)."""
-            if not runs:
+            holds the reference's answer from scratch for.
+
+            With `any_order` (the rows form, for PARITY.md A22): only the operations that
+            hold vectors of a refreshing group (`known.holds_group_vectors`), and what is
+            made from them, are made again, from their sources' rows as the reference keeps
+            them (`runner.run_scenario`, `remake`); results are compared as multisets of
+            rows, and a result made from one the reference disagrees with itself about in
+            that step counts too (what the reference kept for it was read from a failed or
+            stale table)."""
+            if any_order not in runs:
+                remake = frozenset(op["name"] for op in scenario.operations
+                                   if kn.holds_group_vectors(scene, op)) if any_order else None
                 try:
-                    runs.append(self.target_a.run_fresh(scenario)
-                                if hasattr(self.target_a, "run_fresh") else None)
+                    runs[any_order] = (self.target_a.run_fresh(scenario, remake=remake)
+                                       if hasattr(self.target_a, "run_fresh") else None)
                 except RunError:
-                    runs.append(None)
-            if runs[0] is None:
+                    runs[any_order] = None
+            if runs[any_order] is None:
                 return None
-            kept, fresh = runs[0]
+            kept, fresh = runs[any_order]
             both = {(m.step, m.table) for m in rules.compare_with_fresh(
                 scenario, kept, fresh, any_order=any_order)}
             if any_order:
@@ -488,8 +496,7 @@ class _Triage:
                                                  any_order=any_order)
             return both
 
-        fits = self.known.classify(found, scenario.operations, reference_inconsistent,
-                                   kn.Scene(scenario, actual))
+        fits = self.known.classify(found, scenario.operations, reference_inconsistent, scene)
         if seed is not None:
             for finding in fits:
                 if finding is not None:

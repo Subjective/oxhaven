@@ -586,7 +586,8 @@ def _define(session: Session, tables: dict[str, Table | Failure], op: dict[str, 
         tables[op["name"]] = Failure(code)
 
 
-def run_scenario(scenario: sc.Scenario, url: str, fresh: ResultSet | None = None) -> ResultSet:
+def run_scenario(scenario: sc.Scenario, url: str, fresh: ResultSet | None = None,
+                 remake: frozenset[str] | None = None) -> ResultSet:
     """Runs `scenario` on the server at `url`.
 
     Step 0 is the state after the inputs are loaded and the operations applied. Step k (from 1)
@@ -595,6 +596,11 @@ def run_scenario(scenario: sc.Scenario, url: str, fresh: ResultSet | None = None
     With `fresh`, the operations are applied once more after every step, to the inputs as
     they are then, and those results are put into `fresh` under the same step and table: what
     the server answers from scratch, next to what it kept up to date.
+
+    With `remake` as well, only the tables it names and those made from them are made again,
+    each from the rows its sources have after the step: the tables kept up to date where
+    they are not made again (so their row order is the one their history gave them), the
+    ones made again where they are. The other tables are put into `fresh` as kept.
     """
     out = ResultSet(scenario.name)
     try:
@@ -657,17 +663,46 @@ def run_scenario(scenario: sc.Scenario, url: str, fresh: ResultSet | None = None
             assert barrier is not None
             barrier.wait()
             _snapshot(session, scenario, tables, number, out)
-            if fresh is not None:
+            if fresh is not None and remake is None:
                 again = {item.name: _unmemoized(tables[item.name], number)
                          for item in scenario.inputs}
                 for op in scenario.operations:
                     _define(session, again, op)
                 _snapshot(session, scenario, again, number, fresh)
+            elif fresh is not None:
+                _snapshot(session, scenario, _remade(session, scenario, tables, remake, number),
+                          number, fresh)
     except Exception as error:
         raise RunError(f"scenario {scenario.name} failed on {url}: {_describe(error)}") from error
     finally:
         session.close()
     return out
+
+
+def _remade(session: Session, scenario: sc.Scenario, tables: dict[str, Table | Failure],
+            remake: frozenset[str], step: int) -> dict[str, Table | Failure]:
+    """The tables of `run_scenario` with those `remake` names, and those made from them,
+    made again after `step` from their sources' rows."""
+    again: dict[str, Table | Failure] = dict(tables)
+    made: set[str] = set()
+    for op in scenario.operations:
+        sources = sc.references(op)
+        if op["name"] not in remake and not made.intersection(sources):
+            continue
+        view = {name: again[name] if name in made else _unmemoized(_standing(tables[name]), step)
+                for name in sources}
+        _define(session, view, op)
+        again[op["name"]] = view[op["name"]]
+        made.add(op["name"])
+    return again
+
+
+def _standing(table: Table | Failure) -> Table | Failure:
+    """`table`, or its failure if it failed in an update cycle."""
+    if isinstance(table, Failure):
+        return table
+    code = failed_in_cycle(table)
+    return table if code is None else Failure(code)
 
 
 def _unmemoized(table: Table | Failure, step: int) -> Table | Failure:
@@ -706,11 +741,12 @@ class Target:
     def run(self, scenario: sc.Scenario) -> ResultSet:
         return run_scenario(scenario, self.url)
 
-    def run_fresh(self, scenario: sc.Scenario) -> tuple[ResultSet, ResultSet]:
+    def run_fresh(self, scenario: sc.Scenario, remake: frozenset[str] | None = None,
+                  ) -> tuple[ResultSet, ResultSet]:
         """The results kept up to date through the steps, and the results of the same
-        operations applied again after each step (`run_scenario`, `fresh`)."""
+        operations applied again after each step (`run_scenario`, `fresh`, `remake`)."""
         fresh = ResultSet(scenario.name)
-        return run_scenario(scenario, self.url, fresh), fresh
+        return run_scenario(scenario, self.url, fresh, remake), fresh
 
 
 def open_target(url: str) -> Target:

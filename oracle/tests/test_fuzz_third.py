@@ -102,9 +102,9 @@ def test_generation_is_the_same_in_another_process():
 
 @pytest.mark.parametrize("family, digest", [
     ("asof_chains", "5ddf633816b5306b"),
-    ("vectors", "ae5f2f227553da7d"),
+    ("vectors", "c7b28365a6e93e93"),
     ("windows", "bb1d2442ca9d0836"),
-    ("all3", "14d1cedfa23e8bb0"),
+    ("all3", "589127cd800f5169"),
 ])
 def test_a_seed_of_the_third_generator_is_the_scenario_it_was(family, digest):
     """Digests over the scenarios of seeds 0 to 99 as the generator was when the runs of
@@ -275,9 +275,10 @@ def test_every_form_is_drawn():
 
 
 def _marks(doc: dict, predicted: dict) -> tuple[dict, dict]:
-    """Per table, the vector columns made by `rolling_group` or by a minimum or maximum of
-    one (V14), and the columns PARITY.md A23 types differently (V15), followed by name
-    through the tables that pass them on."""
+    """Per table, the vector columns made by `rolling_group` or by the `distinct` of a
+    refreshing table, or by a minimum or maximum of one (V14), and the columns PARITY.md A23
+    types differently (V15), followed by name through the tables that pass them on."""
+    live = _live(doc)
     windowed: dict[str, set[str]] = {}
     extremes: dict[str, set[str]] = {}
     objects: dict[str, set[str]] = {}
@@ -312,6 +313,9 @@ def _marks(doc: dict, predicted: dict) -> tuple[dict, dict]:
                 elif operator["op"].startswith("rolling_formula") and re.search(
                         r"\?.*:.*\)\s*\[", operator["args"]["formula"]):
                     obj |= {out for out, _ in outs if types[out] == "string"}
+        if kind == "agg_by" and first in live:
+            win |= {pair.split("=")[0].strip() for agg in op["aggs"]
+                    if agg["agg"] == "distinct" for pair in agg["columns"]}
         if kind == "ungroup":
             taken = op.get("columns") or [c for c, t in before.items() if t.startswith(LIST)]
             obj |= {c for c in taken if c in extremes.get(first, ())}
@@ -393,6 +397,35 @@ def test_what_an_owner_item_or_a_finding_restricts_is_not_drawn():
                     seen["V15"] += bool(objects.get(source))
                     view = kind == "ungroup" and op["name"] == source + "v"  # made by `results`
                     assert view or not read & objects.get(source, set()), where
+            # V17: refreshing results grouped by a vector, and their ungroups, are read by
+            # an ungroup only.
+            # V13: nor is one whose key columns hold vectors of strings, but by the view
+            # `results` makes.
+            regrouped: set[str] = set()
+            strings: dict[str, set[str]] = {}
+            for op in doc["operations"]:
+                source = op.get("source")
+                if source in regrouped:
+                    seen["V17"] += 1
+                    assert op["op"] == "ungroup", (family, doc["name"], op)
+                    if strings.get(source):
+                        seen["V13"] += 1
+                        assert op["name"] == source + "v", (family, doc["name"], op)
+                keys = op.get("by", []) if op["op"] == "agg_by" else (
+                    op["columns"] if op["op"] == "select_distinct" else [])
+                before = dict(predicted[source]) if source else {}
+                if source in live and any(before[c].startswith(LIST) for c in keys):
+                    regrouped.add(op["name"])
+                    strings[op["name"]] = {c for c in keys if before[c] == LIST + "string"}
+                    seen["V17"] += 1
+                if op["op"] == "ungroup" and source in regrouped:
+                    regrouped.add(op["name"])
+                    taken = op.get("columns") or [c for c, t in before.items()
+                                                  if t.startswith(LIST)]
+                    strings[op["name"]] = strings.get(source, set()) - set(taken)
+                for other in sc.references(op):
+                    if other != source:
+                        assert other not in regrouped, (family, doc["name"], op)
             # V12: the refreshing sort results and what is made from them.
             rekeyed: set[str] = set()
             for op in doc["operations"]:

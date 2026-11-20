@@ -296,7 +296,7 @@ def _inconsistent_reference(tmp_path):
     fresh.put(1, "w", tables[2])
 
     class Reference:
-        def run_fresh(self, asked):
+        def run_fresh(self, asked, remake=None):
             assert asked is scenario
             return kept, fresh
 
@@ -389,7 +389,7 @@ def test_a_result_made_from_an_inconsistent_one_is_judged_by_its_rows_from_scrat
         actual.put(1, "v", actual_v)
 
         class Reference:
-            def run_fresh(self, asked):
+            def run_fresh(self, asked, remake=None):
                 return kept, fresh
 
         triage = cli._Triage(argparse.Namespace(known=str(path), no_known=False),
@@ -580,3 +580,38 @@ def test_the_repository_entries_with_a_shape_fit_their_findings():
         failures, list(scene.by_name.values()), scene=scene)] == [
         "ungroup-again-of-a-distinct", "null-fill-ungroup-of-vector-keys",
         "null-fill-ungroup-of-a-distinct", None]
+
+
+def test_the_remake_pass_makes_again_only_what_it_names_and_what_reads_it():
+    """`runner._remade`: the tables `remake` names, and those made from them, are made again
+    from their sources as kept (through a new view) or as made again; the others are the
+    kept tables."""
+    from harness import runner
+
+    class Fake:
+        is_refreshing = False
+
+        def __init__(self, label):
+            self.label = label
+
+        def update_view(self, formulas):
+            return Fake(self.label)
+
+        def drop_columns(self, columns):
+            return Fake(f"fresh({self.label})")
+
+        def where(self, filters):
+            return Fake(f"{self.label}.where")
+
+    scenario = sc.parse({
+        "format": 1, "name": "s",
+        "inputs": [{"name": "t", "columns": [{"name": "X", "type": "int32"}], "rows": [[1]]}],
+        "operations": [{"name": f"w{n}", "op": "where", "source": source, "filters": ["X > 0"]}
+                       for n, source in ((1, "t"), (2, "w1"), (3, "w2"), (4, "w1"))],
+        "results": [{"table": "w3"}],
+    })
+    kept = {name: Fake(name) for name in ("t", "w1", "w2", "w3", "w4")}
+    again = runner._remade(None, scenario, kept, frozenset({"w2"}), 1)
+    assert {name: table.label for name, table in again.items()} == {
+        "t": "t", "w1": "w1", "w2": "fresh(w1).where", "w3": "fresh(w1).where.where",
+        "w4": "w4"}

@@ -82,9 +82,10 @@
   {
    "id": "element-of-a-condition-type",
    "class": "allowed-difference",
-   "reason": "PARITY.md A23 (owner item 7.20): an element of a condition between two vectors of strings, (c ? S : S2)[0], is a java.lang.Object column in Java and a java.lang.String column in Oxhaven, with the same values (tasks/12.1-fuzzer-coverage.md, F6). Counted only for a column whose formula reads an element of a condition (shape element_of_a_condition), with exactly these two sets of metadata.",
+   "reason": "PARITY.md A23 (owner item 7.20): an element of a condition between two vectors of strings, (c ? S : S2)[0], is a java.lang.Object column in Java and a java.lang.String column in Oxhaven, with the same values (tasks/12.1-fuzzer-coverage.md, F6). Counted only for a column whose formula reads an element of a condition (shape element_of_a_condition), in the table that makes it or one that passes it on unchanged, with exactly these two sets of metadata.",
    "match": {"kind": "column_metadata",
-             "operation": ["update_by", "update", "update_view", "lazy_update", "view", "select"],
+             "operation": ["update_by", "update", "update_view", "lazy_update", "view", "select",
+                           "ungroup", "where", "sort"],
              "key": "deephaven:isSortable,deephaven:type", "shape": "element_of_a_condition",
              "expected": {"deephaven:type": "java.lang.Object"},
              "actual": {"deephaven:type": "java.lang.String", "deephaven:isSortable": "true"}}

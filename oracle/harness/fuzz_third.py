@@ -90,17 +90,19 @@ RESTRICTIONS: dict[str, str] = {
           "expression crate does not compile a method of a vector of objects yet)",
     "V8": "vector_filter: no count-where filter that reads an element of a vector of "
           "booleans (F5: Oxhaven's filter compiler refuses it)",
-    "V13": "keys: on a refreshing table no group-by or select_distinct column that is a "
-           "vector of booleans or timestamps (F10: the reference's result column is then a "
-           "vector of strings; owner item 3.3)",
+    "V13": "keys, has_lists: on a refreshing table no group-by or select_distinct column "
+           "that is a vector of booleans or timestamps, and no ungroup of a table with such "
+           "a column that is a vector of strings (F10: the reference's key column is then a "
+           "vector without an element type, of strings to a client, java.lang.Object once "
+           "ungrouped; owner item 3.3)",
     "V12": "filter: no filter on the row key `k` over a refreshing sort result or a table "
            "made from one (F9: the servers give the rows of such a result different row keys, "
            "which PARITY.md A4 does not compare)",
     "V14": "keys, vector_aggregation: on a refreshing table no group-by, bucket or "
            "select_distinct column, and no distinct, of a vector made by rolling_group or "
-           "by a minimum or maximum of such a vector (F11: the reference fails or keeps "
-           "stale values as for a group_by's vectors, which PARITY.md A22 does not name; "
-           "owner item 7.27)",
+           "by the distinct aggregation of a refreshing table, or by a minimum or maximum of "
+           "such a vector (F11: the reference fails or keeps stale values as for a "
+           "group_by's vectors, which PARITY.md A22 does not name; owner item 7.27)",
     "V15": "add, usable: a column that PARITY.md A23 types differently (an element of a "
            "condition between windows of strings, an ungroup of a minimum or maximum of "
            "vectors of strings) is not read by a later operation (F12: the reference refuses "
@@ -109,6 +111,11 @@ RESTRICTIONS: dict[str, str] = {
            "aggregation grouped by a vector (F13: Oxhaven keeps the group of a vector that "
            "changed as an empty group, which the reference's answer made again, the one "
            "PARITY.md A22 is checked against, cannot have)",
+    "V17": "pick, pick_table: on a refreshing table the result of an aggregation or "
+           "select_distinct grouped by a vector is read by an ungroup only (F14: its groups "
+           "come in the order of their history, which PARITY.md A22 leaves out of its rule, "
+           "so an operation that reads rows in order cannot be checked against the "
+           "reference's answer made again)",
 }
 _INTEGERS = tuple(INT_BITS)
 # Element types of the vectors each request takes; see RESTRICTIONS for what is left out.
@@ -137,8 +144,8 @@ class _Third(_Second):
         # Per table: its vector columns that hold neither a null nor an empty vector.
         self.solid: dict[str, set[str]] = {}
         self.rekeyed: set[str] = set()  # refreshing sort results and what is made from them
-        # Per table: its vector columns made by rolling_group, or by a minimum or maximum of
-        # one (V14); its minimums and maximums of vectors of strings; its columns that the
+        # Per table: its vector columns made by rolling_group or by the distinct aggregation
+        # of a refreshing table, or by a minimum or maximum of one (V14); its minimums and maximums of vectors of strings; its columns that the
         # reference types java.lang.Object and Oxhaven does not (V15).
         self.windowed: dict[str, set[str]] = {}
         self.string_extremes: dict[str, set[str]] = {}
@@ -147,6 +154,12 @@ class _Third(_Second):
         # `ungroup` takes apart more often (PARITY.md A23, A24).
         self.holders: set[str] = set()
         self.ungrouping: set[str] | None = None  # the tables an `ungroup` picks from
+        # Refreshing results grouped by a vector, whose groups come in the order of their
+        # history, and their ungroups (V17).
+        self.regrouped: set[str] = set()
+        # Their key columns that are vectors of strings, which the reference keeps without
+        # an element type (V13).
+        self.string_keys: dict[str, set[str]] = {}
 
     # ------------------------------------------------------------ bookkeeping
 
@@ -164,6 +177,20 @@ class _Third(_Second):
                     and before.type_of(rules.split_pair(pair)[1]).startswith(LIST)
                     for spec in op["ops"] for pair in spec["columns"])):
             self.holders.add(name)
+        source = self.tables.get(op.get("source", ""))
+        keys = op.get("by", []) if kind == "agg_by" else (
+            op["columns"] if kind == "select_distinct" else [])
+        if source is not None and (
+                source.live and any(source.type_of(c).startswith(LIST) for c in keys)
+                or kind == "ungroup" and source.name in self.regrouped):
+            self.regrouped.add(name)  # V17
+            if kind == "ungroup":
+                taken = op.get("columns") or [c for c, k in source.columns if k.startswith(LIST)]
+                strings = self.string_keys.get(source.name, set()) - set(taken)
+            else:
+                strings = {c for c in keys if source.type_of(c) == LIST + "string"}
+            if strings:
+                self.string_keys[name] = strings
         solid: set[str] = set()
         if kind == "group_by":
             solid = set(types) - set(op["by"])
@@ -196,6 +223,9 @@ class _Third(_Second):
                 elif spec["op"].startswith("rolling_formula") and _ELEMENT_OF_A_CONDITION.search(
                         spec["args"]["formula"]):
                     objects |= {out for out, _ in pairs if types[out] == "string"}
+        if kind == "agg_by" and first.live:
+            windowed |= {rules.split_pair(pair)[0] for agg in op["aggs"]
+                         if agg["agg"] == "distinct" for pair in agg["columns"]}
         if kind == "ungroup":
             taken = op.get("columns") or [c for c in types if first.type_of(c).startswith(LIST)]
             objects |= {column for column in taken
@@ -225,9 +255,19 @@ class _Third(_Second):
                         if types.get(column) == right.type_of(column)}
         return out
 
+    def pick(self, wanted: Any) -> _Table | None:
+        return super().pick(lambda table: self.readable(table) and wanted(table))
+
+    def readable(self, table: _Table) -> bool:
+        """V17: a refreshing result grouped by a vector is read by an `ungroup` only."""
+        return (table.name not in self.regrouped or self.kind == "ungroup"
+                or self.ungrouping is not None)
+
     def has_lists(self, table: _Table, besides: tuple[str, ...] | list[str] = ()) -> bool:
         if self.ungrouping is not None and table.name not in self.ungrouping:
             return False
+        if table.name in self.string_keys:
+            return False  # V13
         return _Wide.has_lists(table, besides)
 
     def build_ungroup(self, name: str, of: set[str] | None = None) -> bool:
@@ -310,7 +350,8 @@ class _Third(_Second):
             with_vectors = self.pick(lambda t: bool(self.vectors(t, tuple(_KEYED) + FLOATS)))
             if with_vectors is not None:
                 return with_vectors
-        return super().pick_table()
+        table = super().pick_table()
+        return table if self.readable(table) else self.pick(lambda _: True) or table
 
     def keys(self, table: _Table, low: int, high: int,
              exclude: set[str] = frozenset()) -> list[str]:
