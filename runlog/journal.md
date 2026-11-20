@@ -1519,3 +1519,7 @@ The Barrage client is a module of the server crate, because it reads with the co
 ## 2026-11-20 08:55 UTC: pull request 184 merged
 
 Seven green checks on head a8360632, the run that included the whole workspace test. Main is at 067d4650.
+
+## 2026-11-20 08:56 UTC: task 14.1 reported, pull request 185; task 13.2b started
+
+The five owner-approved items are served, each compared with Deephaven 42.9, with PARITY.md entries A18 to A21 (additions only; the owner's answer of 2026-11-20 is the sign-off for exactly these). The answer to 7.6 names update_by buckets only, so float-vector keys elsewhere (aggregation group-by, joins, select_distinct, keyed input tables) stay refused. Task 13.2b (resolvers and Python modules, Opus) starts on the merged client; TLS stays refused until Josh answers 7.24, and 7.23 is kept as Java does behind one switch. Task 14.2 (PARITY entries for 7.19 to 7.22) waits for 185, since both edit PARITY.md.
