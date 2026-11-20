@@ -1,0 +1,604 @@
+{
+  "format": 2,
+  "scenario": "remote_ticking",
+  "scenario_sha256": "6c70d6ab1411d5bbb592a26cf89744cda337d222c179000088a2049411d5e948",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "r_src",
+      "file": "step000.r_src.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "r_sorted",
+      "file": "step000.r_sorted.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "r_log",
+      "file": "step000.r_log.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "r_types",
+      "file": "step000.r_types.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "b_src",
+      "file": "step000.b_src.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "b_sorted",
+      "file": "step000.b_sorted.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "b_log",
+      "file": "step000.b_log.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "snap",
+      "file": "step000.snap.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "w",
+      "file": "step000.w.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "u",
+      "file": "step000.u.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "a",
+      "file": "step000.a.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "srt",
+      "file": "step000.srt.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "nj",
+      "file": "step000.nj.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "b_agg",
+      "file": "step000.b_agg.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "r_src",
+      "file": "step001.r_src.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "r_sorted",
+      "file": "step001.r_sorted.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "r_log",
+      "file": "step001.r_log.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "r_types",
+      "file": "step001.r_types.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "b_src",
+      "file": "step001.b_src.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "b_sorted",
+      "file": "step001.b_sorted.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "b_log",
+      "file": "step001.b_log.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "snap",
+      "file": "step001.snap.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "w",
+      "file": "step001.w.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "u",
+      "file": "step001.u.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "a",
+      "file": "step001.a.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "srt",
+      "file": "step001.srt.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "nj",
+      "file": "step001.nj.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "b_agg",
+      "file": "step001.b_agg.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "r_src",
+      "file": "step002.r_src.arrow",
+      "rows": 8
+    },
+    {
+      "step": 2,
+      "table": "r_sorted",
+      "file": "step002.r_sorted.arrow",
+      "rows": 8
+    },
+    {
+      "step": 2,
+      "table": "r_log",
+      "file": "step002.r_log.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "r_types",
+      "file": "step002.r_types.arrow",
+      "rows": 8
+    },
+    {
+      "step": 2,
+      "table": "b_src",
+      "file": "step002.b_src.arrow",
+      "rows": 8
+    },
+    {
+      "step": 2,
+      "table": "b_sorted",
+      "file": "step002.b_sorted.arrow",
+      "rows": 8
+    },
+    {
+      "step": 2,
+      "table": "b_log",
+      "file": "step002.b_log.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "snap",
+      "file": "step002.snap.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "w",
+      "file": "step002.w.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "u",
+      "file": "step002.u.arrow",
+      "rows": 8
+    },
+    {
+      "step": 2,
+      "table": "a",
+      "file": "step002.a.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "srt",
+      "file": "step002.srt.arrow",
+      "rows": 8
+    },
+    {
+      "step": 2,
+      "table": "nj",
+      "file": "step002.nj.arrow",
+      "rows": 8
+    },
+    {
+      "step": 2,
+      "table": "b_agg",
+      "file": "step002.b_agg.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "r_src",
+      "file": "step003.r_src.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "r_sorted",
+      "file": "step003.r_sorted.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "r_log",
+      "file": "step003.r_log.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "r_types",
+      "file": "step003.r_types.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "b_src",
+      "file": "step003.b_src.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "b_sorted",
+      "file": "step003.b_sorted.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "b_log",
+      "file": "step003.b_log.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "snap",
+      "file": "step003.snap.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "w",
+      "file": "step003.w.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "u",
+      "file": "step003.u.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "a",
+      "file": "step003.a.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "srt",
+      "file": "step003.srt.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "nj",
+      "file": "step003.nj.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "b_agg",
+      "file": "step003.b_agg.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "r_src",
+      "file": "step004.r_src.arrow",
+      "rows": 7
+    },
+    {
+      "step": 4,
+      "table": "r_sorted",
+      "file": "step004.r_sorted.arrow",
+      "rows": 7
+    },
+    {
+      "step": 4,
+      "table": "r_log",
+      "file": "step004.r_log.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "r_types",
+      "file": "step004.r_types.arrow",
+      "rows": 7
+    },
+    {
+      "step": 4,
+      "table": "b_src",
+      "file": "step004.b_src.arrow",
+      "rows": 7
+    },
+    {
+      "step": 4,
+      "table": "b_sorted",
+      "file": "step004.b_sorted.arrow",
+      "rows": 7
+    },
+    {
+      "step": 4,
+      "table": "b_log",
+      "file": "step004.b_log.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "snap",
+      "file": "step004.snap.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "w",
+      "file": "step004.w.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "u",
+      "file": "step004.u.arrow",
+      "rows": 7
+    },
+    {
+      "step": 4,
+      "table": "a",
+      "file": "step004.a.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "srt",
+      "file": "step004.srt.arrow",
+      "rows": 7
+    },
+    {
+      "step": 4,
+      "table": "nj",
+      "file": "step004.nj.arrow",
+      "rows": 7
+    },
+    {
+      "step": 4,
+      "table": "b_agg",
+      "file": "step004.b_agg.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "r_src",
+      "file": "step005.r_src.arrow",
+      "rows": 7
+    },
+    {
+      "step": 5,
+      "table": "r_sorted",
+      "file": "step005.r_sorted.arrow",
+      "rows": 7
+    },
+    {
+      "step": 5,
+      "table": "r_log",
+      "file": "step005.r_log.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "r_types",
+      "file": "step005.r_types.arrow",
+      "rows": 7
+    },
+    {
+      "step": 5,
+      "table": "b_src",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 5,
+      "table": "b_sorted",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 5,
+      "table": "b_log",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 5,
+      "table": "snap",
+      "file": "step005.snap.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "w",
+      "file": "step005.w.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "u",
+      "file": "step005.u.arrow",
+      "rows": 7
+    },
+    {
+      "step": 5,
+      "table": "a",
+      "file": "step005.a.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "srt",
+      "file": "step005.srt.arrow",
+      "rows": 7
+    },
+    {
+      "step": 5,
+      "table": "nj",
+      "file": "step005.nj.arrow",
+      "rows": 7
+    },
+    {
+      "step": 5,
+      "table": "b_agg",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 6,
+      "table": "r_src",
+      "file": "step006.r_src.arrow",
+      "rows": 8
+    },
+    {
+      "step": 6,
+      "table": "r_sorted",
+      "file": "step006.r_sorted.arrow",
+      "rows": 8
+    },
+    {
+      "step": 6,
+      "table": "r_log",
+      "file": "step006.r_log.arrow",
+      "rows": 5
+    },
+    {
+      "step": 6,
+      "table": "r_types",
+      "file": "step006.r_types.arrow",
+      "rows": 8
+    },
+    {
+      "step": 6,
+      "table": "b_src",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 6,
+      "table": "b_sorted",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 6,
+      "table": "b_log",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 6,
+      "table": "snap",
+      "file": "step006.snap.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "w",
+      "file": "step006.w.arrow",
+      "rows": 5
+    },
+    {
+      "step": 6,
+      "table": "u",
+      "file": "step006.u.arrow",
+      "rows": 8
+    },
+    {
+      "step": 6,
+      "table": "a",
+      "file": "step006.a.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "srt",
+      "file": "step006.srt.arrow",
+      "rows": 8
+    },
+    {
+      "step": 6,
+      "table": "nj",
+      "file": "step006.nj.arrow",
+      "rows": 8
+    },
+    {
+      "step": 6,
+      "table": "b_agg",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}
