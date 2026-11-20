@@ -16,6 +16,8 @@ pub(crate) const PSK: &str = "test-key";
 pub(crate) struct TestServer {
     pub(crate) state: ServerState,
     pub(crate) channel: Channel,
+    /// Where the server listens.
+    pub(crate) address: std::net::SocketAddr,
     shutdown: Option<oneshot::Sender<()>>,
 }
 
@@ -26,13 +28,21 @@ impl TestServer {
 
     /// As [`TestServer::start`], with `configure` run on the state before it is served.
     pub(crate) async fn start_with(configure: impl FnOnce(&mut ServerState)) -> Self {
+        Self::start_expiring(DEFAULT_TOKEN_EXPIRE_MS, configure).await
+    }
+
+    /// As [`TestServer::start_with`], with session tokens that last `token_expire_ms`.
+    pub(crate) async fn start_expiring(
+        token_expire_ms: i64,
+        configure: impl FnOnce(&mut ServerState),
+    ) -> Self {
         let mut state = ServerState::new(ServerConfig {
             auth_handlers: AuthHandlers::new(vec![
                 AuthHandler::psk(PSK).unwrap(),
                 AuthHandler::Anonymous,
             ])
             .unwrap(),
-            token_expire_ms: DEFAULT_TOKEN_EXPIRE_MS,
+            token_expire_ms,
             target_cycle_duration: None,
         })
         .unwrap();
@@ -58,6 +68,7 @@ impl TestServer {
         Self {
             state,
             channel,
+            address,
             shutdown: Some(shutdown),
         }
     }
