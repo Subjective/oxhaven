@@ -459,19 +459,30 @@ class _Triage:
         if not found or not self.known:
             return found, []
 
-        def reference_inconsistent() -> set[tuple[int, str]] | None:
-            if not hasattr(self.target_a, "run_fresh"):
+        runs: list[tuple[res.ResultSet, res.ResultSet] | None] = []
+
+        def reference_inconsistent(any_order: bool = False) -> set[tuple[int, str]] | None:
+            """The results the reference disagrees with itself about and the actual side
+            holds the reference's answer from scratch for; with `any_order`, both compared
+            as multisets of rows."""
+            if not runs:
+                try:
+                    runs.append(self.target_a.run_fresh(scenario)
+                                if hasattr(self.target_a, "run_fresh") else None)
+                except RunError:
+                    runs.append(None)
+            if runs[0] is None:
                 return None
-            try:
-                kept, fresh = self.target_a.run_fresh(scenario)
-            except RunError:
-                return None
-            both = {(m.step, m.table) for m in rules.compare_with_fresh(scenario, kept, fresh)}
+            kept, fresh = runs[0]
+            both = {(m.step, m.table) for m in rules.compare_with_fresh(
+                scenario, kept, fresh, any_order=any_order)}
             if actual is not None:
-                both -= rules.differs_from_fresh(scenario, fresh, actual, both)
+                both -= rules.differs_from_fresh(scenario, fresh, actual, both,
+                                                 any_order=any_order)
             return both
 
-        fits = self.known.classify(found, scenario.operations, reference_inconsistent)
+        fits = self.known.classify(found, scenario.operations, reference_inconsistent,
+                                   kn.Scene(scenario, actual))
         if seed is not None:
             for finding in fits:
                 if finding is not None:

@@ -613,13 +613,14 @@ HISTORY_DEPENDENT = frozenset({"snapshot", "snapshot_when", "time_table", "ring_
 
 
 def compare_with_fresh(scenario: Any, kept: ResultSet, fresh: ResultSet,
-                       rules: Rules = DEFAULT_RULES) -> list[Mismatch]:
+                       rules: Rules = DEFAULT_RULES, any_order: bool = False) -> list[Mismatch]:
     """Compares the results one server kept up to date through the steps (`kept`, the
     expected side) with what it answers for the same operations applied again after each
     step (`fresh`; see `runner.run_scenario`). Empty when the server agrees with itself.
 
     Computed floats get the A1 tolerance: an incremental sum and a sum from scratch add in
     different orders. Tables that depend on a `HISTORY_DEPENDENT` operation are left out.
+    `any_order` compares every table as a multiset of rows.
     """
     depends: set[str] = set()
     for op in scenario.operations:
@@ -635,17 +636,18 @@ def compare_with_fresh(scenario: Any, kept: ResultSet, fresh: ResultSet,
         if table not in depends:
             both.put(step, table, kept.get(step, table))
             again.put(step, table, fresh.get(step, table))
-    unordered = frozenset(r.table for r in scenario.results if not r.ordered)
+    unordered = frozenset(r.table for r in scenario.results if any_order or not r.ordered)
     return compare(both, again, unordered, computed_columns(scenario.operations), rules)
 
 
 def differs_from_fresh(scenario: Any, fresh: ResultSet, actual: ResultSet,
                        at: Iterable[tuple[int, str]],
-                       rules: Rules = DEFAULT_RULES) -> set[tuple[int, str]]:
+                       rules: Rules = DEFAULT_RULES, any_order: bool = False,
+                       ) -> set[tuple[int, str]]:
     """Of the results `at` (step, table), those for which `actual`, the results another
     server kept up to date, are not what the reference answers from scratch (`fresh`; see
     `compare_with_fresh`), or that one of the two does not hold. Computed floats get the
-    A1 tolerance."""
+    A1 tolerance. `any_order` compares every table as a multiset of rows."""
     one, other = ResultSet(fresh.scenario), ResultSet(actual.scenario)
     missing = set()
     for step, table in at:
@@ -654,7 +656,7 @@ def differs_from_fresh(scenario: Any, fresh: ResultSet, actual: ResultSet,
             other.put(step, table, actual.get(step, table))
         else:
             missing.add((step, table))
-    unordered = frozenset(r.table for r in scenario.results if not r.ordered)
+    unordered = frozenset(r.table for r in scenario.results if any_order or not r.ordered)
     found = compare(one, other, unordered, computed_columns(scenario.operations), rules)
     return missing | {(m.step, m.table) for m in found}
 

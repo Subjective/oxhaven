@@ -658,7 +658,8 @@ def run_scenario(scenario: sc.Scenario, url: str, fresh: ResultSet | None = None
             barrier.wait()
             _snapshot(session, scenario, tables, number, out)
             if fresh is not None:
-                again = {item.name: tables[item.name] for item in scenario.inputs}
+                again = {item.name: _unmemoized(tables[item.name], number)
+                         for item in scenario.inputs}
                 for op in scenario.operations:
                     _define(session, again, op)
                 _snapshot(session, scenario, again, number, fresh)
@@ -667,6 +668,20 @@ def run_scenario(scenario: sc.Scenario, url: str, fresh: ResultSet | None = None
     finally:
         session.close()
     return out
+
+
+def _unmemoized(table: Table | Failure, step: int) -> Table | Failure:
+    """`table`'s rows through a table that no earlier operation was made from, for the
+    operations made again after a step. The reference memoizes the results of many
+    operations by their source table and arguments (`aggBy`, `groupBy`, `selectDistinct`,
+    `where`, `sort` and others; `ET/QueryTable.java: QueryTable#memoizeResult`), so the same
+    operation applied again to the input itself would hand back the result it kept up to
+    date, not one made again. A view with a column named for the step, dropped again, is a
+    new source each time."""
+    if isinstance(table, Failure):
+        return table
+    column = f"OxFresh{step}"
+    return table.update_view([f"{column} = 0"]).drop_columns([column])
 
 
 def _describe(error: BaseException) -> str:
