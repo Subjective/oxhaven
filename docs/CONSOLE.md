@@ -655,8 +655,8 @@ fails the day it falls on (`Start is after end`); `includeClose` is true only fo
 `diffBusinessYears` does not put a later start after the end and fails;
 `isLastBusinessDayOfMonth` compares the month only.
 
-The sources of each of the calendar rows are in `tasks/12.5-shipped-calendars.md`; whether
-to keep them is owner question 7.22.
+The sources of each of the calendar rows are in `tasks/12.5-shipped-calendars.md`; the
+owner chose to keep them (item 7.22), and `PARITY.md` A25 records them.
 
 Not ported, each refused by its name: the business calendar of a `deephaven.plot` figure (`Figure#businessTime`, "Business time and transforms
 of an axis" in `docs/FIGURES.md`); the calendar functions of the formula language

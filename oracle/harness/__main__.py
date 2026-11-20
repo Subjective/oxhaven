@@ -459,19 +459,44 @@ class _Triage:
         if not found or not self.known:
             return found, []
 
-        def reference_inconsistent() -> set[tuple[int, str]] | None:
-            if not hasattr(self.target_a, "run_fresh"):
+        runs: dict[bool, tuple[res.ResultSet, res.ResultSet] | None] = {}
+        scene = kn.Scene(scenario, actual)
+
+        def reference_inconsistent(any_order: bool = False) -> set[tuple[int, str]] | None:
+            """The results the reference disagrees with itself about and the actual side
+            holds the reference's answer from scratch for.
+
+            With `any_order` (the rows form, for PARITY.md A22): only the operations that
+            hold vectors of a refreshing group (`known.holds_group_vectors`), and what is
+            made from them, are made again, from their sources' rows as the reference keeps
+            them (`runner.run_scenario`, `remake`); results are compared as multisets of
+            rows, and a result made from one the reference disagrees with itself about in
+            that step counts too (what the reference kept for it was read from a failed or
+            stale table)."""
+            if any_order not in runs:
+                remake = frozenset(op["name"] for op in scenario.operations
+                                   if kn.holds_group_vectors(scene, op)) if any_order else None
+                try:
+                    runs[any_order] = (self.target_a.run_fresh(scenario, remake=remake)
+                                       if hasattr(self.target_a, "run_fresh") else None)
+                except RunError:
+                    runs[any_order] = None
+            if runs[any_order] is None:
                 return None
-            try:
-                kept, fresh = self.target_a.run_fresh(scenario)
-            except RunError:
-                return None
-            both = {(m.step, m.table) for m in rules.compare_with_fresh(scenario, kept, fresh)}
+            kept, fresh = runs[any_order]
+            both = {(m.step, m.table) for m in rules.compare_with_fresh(
+                scenario, kept, fresh, any_order=any_order)}
+            if any_order:
+                by_name = {op["name"]: op for op in scenario.operations}
+                both |= {(step, table) for step, table in fresh.keys()
+                         if any((step, above) in both
+                                for above in kn.ancestors(table, by_name))}
             if actual is not None:
-                both -= rules.differs_from_fresh(scenario, fresh, actual, both)
+                both -= rules.differs_from_fresh(scenario, fresh, actual, both,
+                                                 any_order=any_order)
             return both
 
-        fits = self.known.classify(found, scenario.operations, reference_inconsistent)
+        fits = self.known.classify(found, scenario.operations, reference_inconsistent, scene)
         if seed is not None:
             for finding in fits:
                 if finding is not None:

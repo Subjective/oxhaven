@@ -524,8 +524,14 @@ a generator of its own again, so the families above keep their scenarios. Its fa
 - `all3`: all of these with `where` and `sort`.
 
 A table with a column of arrays of arrays (`distinct` of a vector column) is compared
-through an `ungroup` of that column. `fuzz_third.RESTRICTIONS` lists what it steps around,
-each entry for an open owner item or for a finding of `tasks/12.1-fuzzer-coverage.md`.
+through an `ungroup` of that column. Since task 14.2 it also draws what `PARITY.md` allows
+after the owner's answers of 2026-11-20 (A13 for `raj`, A19, A20, A22 to A24): vectors of
+refreshing groups as keys and buckets and read on after a minimum or maximum, `ungroup` of
+whatever holds vectors, elements of conditions between windows of strings, vectors of
+floats in rolling minimums and maximums, buckets and `distinct`; the known findings that
+name those allowed differences set them apart ("Known findings"). `fuzz_third.RESTRICTIONS`
+lists what it still steps around, each entry for an open owner item or for a finding of
+`tasks/12.1-fuzzer-coverage.md`.
 Task 4.25 lifted the filters on a `LocalDateTime`, the range comparisons with null and the
 ordering aggregations of a `Period`; task 4.26 the as-of joins on the other six types. To
 shrink a seed of this family by
@@ -591,8 +597,28 @@ An entry with `"requires": "reference_inconsistent"` is for a result where the r
 disagrees with itself: what it kept up to date through the steps is not what it answers when
 the same operations are applied again to the inputs as they are then. `fuzz` checks that for
 the scenario at hand before it counts the mismatch as known, and also that the actual side
-holds what the reference answers from scratch (`PARITY.md`, A13, says which answer Oxhaven
-gives): a result that is neither of the reference's two answers is reported as a difference.
+holds what the reference answers from scratch (`PARITY.md`, A13, A18 and A22 say which
+answer Oxhaven gives): a result that is neither of the reference's two answers is reported
+as a difference. `reference_inconsistent_rows` is the same check with every table compared
+as a multiset of rows, for results whose row order depends on their history (the groups of
+an aggregation whose key vector changed), which a table made again cannot reproduce. In
+that form, the one of `PARITY.md` A22, only the operations that hold vectors of a
+refreshing group, and what is made from them, are made again, each from its sources' rows
+as the reference keeps them (so a `group_by` keeps the order of its history); and a result
+made from one the reference disagrees with itself about in that step counts as one too,
+since what the reference kept for it was read from a failed or stale table. Column metadata is not part of the check from scratch: it is fixed when a table is
+made and compared at the first step. The
+operations are applied again to a view of each input made for that step, so that the
+reference's memoized results (`QueryTable#memoizeResult`: aggregations, filters, sorts and
+others on the same source with the same arguments) are not handed back in place of new ones.
+
+An entry for an allowed difference can also name a `shape` (`harness/known.py`, `SHAPES`): a
+test of what made the mismatching table or column, read from the scenario's operations and
+the actual side's schemas, such as "an `ungroup` with null fill of two or more columns, one
+of them a vector key of an aggregation" for A24. `differs_in: zero_sign` takes only two
+vectors equal but for the sign of a zero (A20), and `operation` and `producer` may list
+several names. The module comment of `harness/known.py` defines every field.
+
 The first check is a command:
 
 ```bash
@@ -751,7 +777,9 @@ They need the recordings but no server.
   type and aggregation it claims, and keeps its restrictions, each of which names a finding
   with a scenario file.
 - `tests/test_known.py`: what a known finding fits and what it must not, that a scenario with
-  any other mismatch is still reported and shrunk, and the comparison behind `selfcheck`.
+  any other mismatch is still reported and shrunk, the comparison behind `selfcheck`, and
+  that each shape fits the scenario of its finding in `tasks/12.1-fuzzer-coverage/` and not
+  the tables next to it.
 - `tests/test_scenario.py`: the scenario format, the `--ops` filter, the corpus, recordings.
 - `tests/test_gate.py`: the baseline's ratchet (what fails the gate, what counts as weakening),
   its file format, the difference kinds, and that the checked-in baseline lists every scenario

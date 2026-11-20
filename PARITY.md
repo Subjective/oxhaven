@@ -322,19 +322,30 @@ A new case of the same kind is covered too, and is added to this table when it i
 
 ### A13. As-of joins whose incremental answer contradicts Java's own
 
-Approved by the owner on 2026-11-17.
+Approved by the owner on 2026-11-17; extended to `raj`, with its chain case restated, on
+2026-11-20 (item 7.19 of the second batch of review items: "Do what's recommended").
 
-On some ticking `aj` results, what Java has kept up to date after a step differs from what
-Java answers when the same join is made again from the same rows. The cases seen: a NaN left
-stamp joins a newly added NaN right row under `>`, and chains of three or four `aj` keep a
-match that is gone.
+On some ticking `aj` and `raj` results, what Java has kept up to date after a step differs
+from what Java answers when the same join is made again from the same rows. The cases seen:
 
-Rule: where Java's incremental `aj` result differs from Java's result for the same join made
-from scratch on the same rows, Oxhaven matches the result made from scratch. Where Java's two
-answers agree, Oxhaven must match them. The fuzzer counts a seed as this difference only when
-Java's two answers differ for it (`oracle/fuzz-known-findings.json`, `aj-reference-history`
-and `aj-reference-history-rest`; `tasks/4.4-asof-join.md`, Notes;
-`tasks/4.17-fuzz-findings.md`, J5).
+- a NaN left stamp joins a newly added NaN right row under `>`;
+- the chain case: Java fails the join in an update cycle (`ArrayIndexOutOfBoundsException` in
+  `ET/asofjoin/RightIncrementalHashedAsOfJoinStateManager.java:
+  RightIncrementalHashedAsOfJoinStateManager#addToSequentialBuilder`) when the join has exact
+  match columns, its left table is static, and its right table reports a change that touches
+  neither a match column nor the stamp, as an as-of result does when only its joined columns
+  change. This is a failure of Deephaven's: the same join made again from the same rows
+  succeeds. It is what chains of three or four `aj` showed, first read as a kept match that
+  is gone: that match was the last rows of the failed table (`tasks/12.1-fuzzer-coverage.md`,
+  F1).
+
+Rule: where Java's incremental `aj` or `raj` result, a failure included, differs from Java's
+result for the same join made from scratch on the same rows, Oxhaven matches the result made
+from scratch. Where Java's two answers agree, Oxhaven must match them. The fuzzer counts a
+seed as this difference only when Java's two answers differ for it and Oxhaven's result is
+the one made from scratch (`oracle/fuzz-known-findings.json`, `aj-reference-history`,
+`aj-reference-history-rest`, `aj-reference-failure` and `raj-reference-failure`;
+`tasks/4.4-asof-join.md`, Notes; `tasks/4.17-fuzz-findings.md`, J5).
 
 ### A14. Column types of `head_by` and `tail_by`
 
@@ -496,6 +507,102 @@ values held in memory. Where Java takes the column, Oxhaven must match it. Recor
 `tasks/11.7-hierarchical-server-refusals.md` (E12) and
 `a_long_x_column_need_not_be_held_in_memory` in
 `crates/oxhaven-engine/src/ops/ide/downsample_tests.rs`.
+
+### A22. Vectors of a refreshing `group_by` result read as values
+
+Approved by the owner on 2026-11-20 (item 7.19 of the second batch of review items: "Do
+what's recommended").
+
+In Java a vector cell of a refreshing `group_by` result (or of the `group` aggregation) is a
+view of its group's rows, not a value: when the group changes, the vector an operator holds
+changes under it. So Java fails, or keeps a stale value, where an operation holds such
+vectors:
+
+- as group-by columns of an aggregation, as `update_by` buckets or as `select_distinct`
+  columns: the result fails in the cycle in which a group changes (`IllegalStateException:
+  Missing value in probe`, `ET/by/typed/incopenagg/gen/IncrementalAggOpenHasherObject.java`);
+- in `agg.distinct`: the result fails (`Failed to modify data`, `Failed to remove data`) or
+  keeps the vector it had;
+- as the input of `cum_min`, `cum_max`, `rolling_min_*` or `rolling_max_*`: the `update_by`
+  result shows the group's new vector, but an operation that reads that result is not told
+  of the change. Seen: a group going from `[-4, 8]` to `[8]`, the minimum shows `[8]` and a
+  `count_where` of `len(U9) > 1` over it stays 1.
+
+Rule: Oxhaven's vectors are values, and each of these results is the one the same
+operations give when they are made again from the tables' rows after each cycle, as A13 does
+for as-of joins, and so is each result made from them. Row order is not part of this: a
+group whose key vector changed is a new group to Oxhaven and comes after the others, as
+for any key that changes, while a result made again lists its groups in the order of its
+rows. Where Java's incremental result agrees with Java's result made again,
+Oxhaven must match it. Nothing else of vectors on refreshing tables is covered. Recorded in
+`tasks/12.1-fuzzer-coverage.md` (F2, F8) with the scenario files
+`F2_vector_of_a_refreshing_group_as_key.json` and
+`F8_minimum_of_vectors_of_a_refreshing_group_read_on.json`; the fuzzer counts a seed as this
+difference only when Java's two answers differ for it, or for a table it is made from, and
+Oxhaven's result holds the rows of the one made again (`oracle/fuzz-known-findings.json`,
+the entries `group-vector-*`).
+
+### A23. Element types that Java loses
+
+Approved by the owner on 2026-11-20 (item 7.20 of the second batch of review items: "Do
+what's recommended").
+
+- `cum_min`, `cum_max`, `rolling_min_*` and `rolling_max_*` of a column of vectors of
+  strings: Java's result column is a vector without an element type. A client receives it as
+  a list of strings either way; after `ungroup` Java's column is `java.lang.Object`, not
+  sortable.
+- An element of a condition between two vectors of objects, `(c ? S : S2)[0]`, in `update`
+  and in rolling formulas (`(each.size() > 1 ? each : each)[0]`): Java types the column
+  `java.lang.Object`, where `S[0]` alone is a `java.lang.String`. For vectors of `Instant` a
+  client receives Java's column as text.
+
+Rule: Oxhaven keeps the element type, as A14 does for `head_by` and `tail_by`: after
+`ungroup` the column is `java.lang.String` (sortable), and the element of a condition is
+`java.lang.String`, or `java.time.Instant` sent as a timestamp. The values must be the same;
+only the column's type differs. Recorded in `tasks/12.1-fuzzer-coverage.md` (F3, F6) with
+the scenario files `F3_ungroup_of_a_minimum_of_string_vectors.json` and
+`F4_F6_conditions_between_windows_of_strings.json`.
+
+### A24. Three `ungroup` requests that Java fails with internal errors
+
+Approved by the owner on 2026-11-20 (item 7.21 of the second batch of review items: "Do
+what's recommended").
+
+| Request | Java | Oxhaven |
+| --- | --- | --- |
+| A second `ungroup` of a column that a first `ungroup` took out of the `distinct` aggregation of a vector column | refuses the request (`NullPointerException`) | the elements |
+| `ungroup` with null fill of an aggregation grouped by a vector column, where a key vector has more elements than the row's other ungrouped column | makes the table and fails to read it (`Assertion failed: asserted first <= last`) | nulls for the missing elements |
+| `ungroup` with null fill where the shorter column of a row is the vector of a `distinct` aggregation | makes the table and fails to read it (`ArrayIndexOutOfBoundsException` in `ET/ssms/IntSegmentedSortedMultiset.java: IntSegmentedSortedMultiset#get`) | nulls for the missing elements |
+
+Rule: Oxhaven serves these three as the request asks: the elements, or nulls for the
+missing elements as null fill gives for other columns. Without null fill both servers refuse
+the last two alike (`Array sizes differ`). Nothing else of `ungroup` is covered. Recorded in
+`tasks/12.1-fuzzer-coverage.md` (F7) with the scenario file
+`F7_ungroup_after_aggregations_over_vectors.json`.
+
+### A25. Twelve dates of the example business calendars
+
+Approved by the owner on 2026-11-20 (item 7.22 of the second batch of review items: "Do
+what's recommended").
+
+Oxhaven's `USNYSE_EXAMPLE` and `USBANK_EXAMPLE` are its own files, written from public
+sources (`tasks/12.5-shipped-calendars.md`; Deephaven's are under the Deephaven Community
+License). On these dates Deephaven's files differ from the public record, and Oxhaven's
+follow the record:
+
+| Calendar | Date | Deephaven 42.9 | Oxhaven |
+| --- | --- | --- | --- |
+| `USNYSE_EXAMPLE` | 1999-11-26, 2000-07-03, 2000-11-24, 2001-07-03, 2001-11-23, 2001-12-24 | full days | early closes at 13:00 |
+| `USNYSE_EXAMPLE` | 2022-06-20 (Juneteenth observed), 2025-01-09 (national day of mourning) | business days | closed |
+| `USNYSE_EXAMPLE` | 2024-12-24, 2025-12-24 | 10:30 to 14:00 | 09:30 to 13:00 |
+| `USBANK_EXAMPLE` | Thanksgiving 2019 | closed on 26 November, 28 November a business day | closed on 28 November, 26 November a business day |
+| `USBANK_EXAMPLE` | 2009-01-19 (Martin Luther King, Jr. Day, before the valid range) | not listed | listed in the holidays |
+
+Rule: every answer of these two calendars that depends on one of these dates follows the
+public record (business days, hours, holidays, and the functions and figures built on them);
+the calendars' descriptions are Oxhaven's own text. Every other date of the three calendars,
+and all of `UTC`, must match. The sources for each date and the recorded comparison are in
+`tasks/12.5-shipped-calendars.md` and `crates/oxhaven-expr/src/calendar/shipped_tests.rs`.
 
 ## Determinism
 

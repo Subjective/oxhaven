@@ -23,6 +23,114 @@
              "requires": "reference_inconsistent"}
   },
   {
+   "id": "raj-reference-failure",
+   "class": "reference-defect",
+   "reason": "aj-reference-failure for raj, which PARITY.md A13 covers since the owner's answer to item 7.19 (tasks/12.1-fuzzer-coverage.md, F1, scenario F1_asof_static_left_right_change_off_its_columns.json): a raj with exact match columns, a static left table and a refreshing right table that is not an input table fails in Java (ArrayIndexOutOfBoundsException in RightIncrementalHashedAsOfJoinStateManager#addToSequentialBuilder) when the right table reports a change that touches neither a match column nor the stamp. Counted only for that shape, and only when Java's join made again from the same rows succeeds and Oxhaven's result is that answer.",
+   "match": {"kind": "failure_expected", "operation": "raj", "steps": "later",
+             "requires": "reference_inconsistent", "shape": "as_of_chain",
+             "expected": "fails with INVALID_ARGUMENT", "actual": "succeeds"}
+  },
+  {
+   "id": "group-vector-failure",
+   "class": "allowed-difference",
+   "reason": "PARITY.md A22 (owner item 7.19): Java's vector of a refreshing group_by result is a view of its group, so an aggregation grouped by it, an update_by bucketed by it, a select_distinct of it or a distinct of it fails in the cycle in which a group changes (IllegalStateException: Missing value in probe in IncrementalAggOpenHasherObject; Failed to modify data), and so does an ungroup of such a distinct. Counted only for a table that is, or is made from, an operation that holds such vectors (shape refreshing_group_vectors), and only when Java's result made again from the same rows succeeds and Oxhaven's result holds the rows of that answer: compared as multisets of rows, since an aggregation whose key changed shows the new group at the end, which a table made again cannot (tasks/12.1-fuzzer-coverage.md, F2).",
+   "match": {"kind": "failure_expected",
+             "operation": ["agg_by", "update_by", "select_distinct", "ungroup"],
+             "steps": "later", "requires": "reference_inconsistent_rows",
+             "shape": "refreshing_group_vectors",
+             "expected": "fails with INVALID_ARGUMENT", "actual": "succeeds"}
+  },
+  {
+   "id": "group-vector-stale",
+   "class": "allowed-difference",
+   "reason": "PARITY.md A22 (owner item 7.19): where Java's operation holds vectors of a refreshing group_by result (a distinct of them, or a cumulative or rolling minimum or maximum read by a later operation), it keeps a stale value when the group changes: a distinct keeps the vector it had, and what reads a minimum is not told of the change (tasks/12.1-fuzzer-coverage.md, F2 and F8). Counted only for a table that is, or is made from, an operation that holds such vectors, and only when Java's answer made again from the same rows differs from what it kept and Oxhaven's result holds the rows of the answer made again, both compared as multisets of rows (see group-vector-failure).",
+   "match": {"kind": "value",
+             "operation": ["agg_by", "update_by", "select_distinct", "ungroup", "group_by",
+                           "where", "sort"],
+             "steps": "later", "requires": "reference_inconsistent_rows",
+             "shape": "refreshing_group_vectors"}
+  },
+  {
+   "id": "group-vector-stale-rows",
+   "class": "allowed-difference",
+   "reason": "group-vector-stale where the stale result has another number of rows (a distinct, or a filter of what reads a minimum): PARITY.md A22, with the same conditions.",
+   "match": {"kind": "row_count",
+             "operation": ["agg_by", "update_by", "select_distinct", "ungroup", "group_by",
+                           "where", "sort"],
+             "steps": "later", "requires": "reference_inconsistent_rows",
+             "shape": "refreshing_group_vectors"}
+  },
+  {
+   "id": "group-vector-stale-rest",
+   "class": "allowed-difference",
+   "reason": "group-vector-stale for a table with more differing cells than the comparison lists one by one (the 'truncated' note that ends such a list): PARITY.md A22, with the same conditions.",
+   "match": {"kind": "truncated",
+             "operation": ["agg_by", "update_by", "select_distinct", "ungroup", "group_by",
+                           "where", "sort"],
+             "steps": "later", "requires": "reference_inconsistent_rows",
+             "shape": "refreshing_group_vectors"}
+  },
+  {
+   "id": "string-vector-extreme-type",
+   "class": "allowed-difference",
+   "reason": "PARITY.md A23 (owner item 7.20): the cumulative or rolling minimum or maximum of a column of vectors of strings has no element type in Java, so after ungroup Java's column is java.lang.Object where Oxhaven's is java.lang.String, sortable (tasks/12.1-fuzzer-coverage.md, F3). Counted only for a column made by such an operator and taken apart by an ungroup (shape ungrouped_extreme), with exactly these two sets of metadata.",
+   "match": {"kind": "column_metadata", "operation": "ungroup",
+             "key": "deephaven:isSortable,deephaven:type", "shape": "ungrouped_extreme",
+             "expected": {"deephaven:type": "java.lang.Object"},
+             "actual": {"deephaven:type": "java.lang.String", "deephaven:isSortable": "true"}}
+  },
+  {
+   "id": "element-of-a-condition-type",
+   "class": "allowed-difference",
+   "reason": "PARITY.md A23 (owner item 7.20): an element of a condition between two vectors of strings, (c ? S : S2)[0], is a java.lang.Object column in Java and a java.lang.String column in Oxhaven, with the same values (tasks/12.1-fuzzer-coverage.md, F6). Counted only for a column whose formula reads an element of a condition (shape element_of_a_condition), in the table that makes it or one that passes it on unchanged, with exactly these two sets of metadata.",
+   "match": {"kind": "column_metadata",
+             "operation": ["update_by", "update", "update_view", "lazy_update", "view", "select",
+                           "ungroup", "where", "sort"],
+             "key": "deephaven:isSortable,deephaven:type", "shape": "element_of_a_condition",
+             "expected": {"deephaven:type": "java.lang.Object"},
+             "actual": {"deephaven:type": "java.lang.String", "deephaven:isSortable": "true"}}
+  },
+  {
+   "id": "ungroup-again-of-a-distinct",
+   "class": "allowed-difference",
+   "reason": "PARITY.md A24, first row (owner item 7.21): Java refuses a second ungroup of a column that a first ungroup took out of the distinct aggregation of a vector column (NullPointerException); Oxhaven gives the elements (tasks/12.1-fuzzer-coverage.md, F7, table f5). Counted only for an ungroup of such a column (shape ungroup_again_of_a_distinct).",
+   "match": {"kind": "failure_expected", "operation": "ungroup",
+             "shape": "ungroup_again_of_a_distinct",
+             "expected": "fails with INVALID_ARGUMENT", "actual": "succeeds"}
+  },
+  {
+   "id": "null-fill-ungroup-of-vector-keys",
+   "class": "allowed-difference",
+   "reason": "PARITY.md A24, second row (owner item 7.21): ungroup with null fill of an aggregation grouped by a vector column, where a key vector has more elements than the other column taken: Java makes the table and fails to read it (Assertion failed: asserted first <= last); Oxhaven fills nulls (tasks/12.1-fuzzer-coverage.md, F7, table u). Counted only for an ungroup with null fill of two or more columns, one of them such a key (shape null_fill_ungroup_of_vector_keys).",
+   "match": {"kind": "failure_expected", "operation": "ungroup",
+             "shape": "null_fill_ungroup_of_vector_keys",
+             "expected": "fails with INVALID_ARGUMENT", "actual": "succeeds"}
+  },
+  {
+   "id": "null-fill-ungroup-of-a-distinct",
+   "class": "allowed-difference",
+   "reason": "PARITY.md A24, third row (owner item 7.21): ungroup with null fill where the shorter column of a row is the vector of a distinct aggregation: Java makes the table and fails to read it (ArrayIndexOutOfBoundsException in IntSegmentedSortedMultiset#get); Oxhaven fills nulls (tasks/12.1-fuzzer-coverage.md, F7, table p). Counted only for an ungroup with null fill of two or more columns, one of them such a vector (shape null_fill_ungroup_of_a_distinct).",
+   "match": {"kind": "failure_expected", "operation": "ungroup",
+             "shape": "null_fill_ungroup_of_a_distinct",
+             "expected": "fails with INVALID_ARGUMENT", "actual": "succeeds"}
+  },
+  {
+   "id": "floating-vector-rolling-extreme-zero",
+   "class": "allowed-difference",
+   "reason": "PARITY.md A20 (owner item 7.10): of vectors of float or double that differ only in the sign of a zero, Java's rolling minimum or maximum shows the one the layout of its ring buffer favours, Oxhaven the earliest in the window. Counted only for a rolling minimum or maximum whose two vectors are equal but for the sign of at least one zero (differs_in zero_sign).",
+   "match": {"kind": "value", "operation": "update_by",
+             "producer": ["rolling_min_tick", "rolling_max_tick", "rolling_min_time",
+                          "rolling_max_time"],
+             "differs_in": "zero_sign"}
+  },
+  {
+   "id": "floating-vector-distinct-zero",
+   "class": "allowed-difference",
+   "reason": "PARITY.md A20 (owner item 7.13): of vectors of float or double that differ only in the sign of a zero, Java's distinct shows the one its sorted set kept, Oxhaven the first that entered the group. Counted only for the vectors of a distinct taken apart by an ungroup (shape distinct_taken_apart, how a table of arrays of arrays is compared) whose two sides are equal but for the sign of at least one zero (differs_in zero_sign).",
+   "match": {"kind": "value", "operation": "ungroup", "shape": "distinct_taken_apart",
+             "differs_in": "zero_sign"}
+  },
+  {
    "id": "emstd-time-reference-history",
    "class": "reference-defect",
    "reason": "emstd_time over values that include an infinity, on a refreshing table: what Java keeps up to date differs from what Java answers when the same update_by is applied again to the same rows (Infinity against NaN), so there is no single reference answer. Oxhaven agrees with itself (selfcheck) and with Java's answer from scratch. Counted only when Java's two answers do differ for the scenario at hand.",

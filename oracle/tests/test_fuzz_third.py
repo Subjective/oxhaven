@@ -101,15 +101,16 @@ def test_generation_is_the_same_in_another_process():
 
 
 @pytest.mark.parametrize("family, digest", [
-    ("asof_chains", "5b92d8fa3d07643e"),
-    ("vectors", "416a52da972b769a"),
-    ("windows", "4786f10992febd1f"),
-    ("all3", "dd02c4cbe6b4521d"),
+    ("asof_chains", "5ddf633816b5306b"),
+    ("vectors", "c7b28365a6e93e93"),
+    ("windows", "bb1d2442ca9d0836"),
+    ("all3", "589127cd800f5169"),
 ])
 def test_a_seed_of_the_third_generator_is_the_scenario_it_was(family, digest):
     """Digests over the scenarios of seeds 0 to 99 as the generator was when the runs of
-    `tasks/12.1-fuzzer-coverage.md` were made: a seed named there must keep naming its
-    scenario."""
+    task 14.2 in `tasks/12.1-fuzzer-coverage.md` were made: a seed named for those runs
+    must keep naming its scenario. (The seeds named for 12.1's own runs name other
+    scenarios since 14.2 changed the generator; the F files keep those scenarios.)"""
     digest_now = hashlib.sha256()
     for seed in range(100):
         digest_now.update(json.dumps(fuzz.generate(seed, fuzz.THIRD_FAMILIES[family], "third"),
@@ -163,8 +164,16 @@ def test_every_form_is_drawn():
             while by_name.get(name, {}).get("op") in ("aj", "raj"):
                 depth, name = depth + 1, by_name[name]["left"]
             seen["chain of three"] += depth >= 3
+            # PARITY.md A13 for raj: the shape of its chain case (once restriction C1).
+            seen[f"{kind} of the shape of the chains of A13"] += (
+                len(op["on"]) > 1 and op["left"] not in live and op["right"] in live
+                and op["right"] in by_name)
         elif kind == "update_by":
             seen["bucket by a vector"] += any(types[c].startswith(LIST) for c in op["by"])
+            seen["bucket by a vector, refreshing"] += op["name"] in live and any(
+                types[c].startswith(LIST) for c in op["by"])
+            seen["bucket by a vector of floats"] += any(
+                types[c][len(LIST):] in ("float32", "float64") for c in op["by"])
             for operator in op["ops"]:
                 name = operator["op"]
                 if name.startswith(COMPARING) and any(
@@ -172,6 +181,9 @@ def test_every_form_is_drawn():
                     seen[f"{name.split('_')[0]} {name.split('_')[1]} of a vector"] += 1
                     seen[f"vector minimum or maximum, {'refreshing' if op['name'] in live else 'static'}"] += 1
                     seen["rolling over time of a vector"] += name.endswith("_time")
+                    seen["rolling minimum or maximum of vectors of floats"] += name.startswith(
+                        "rolling") and any(types[_source(pair)][len(LIST):] in (
+                            "float32", "float64") for pair in operator["columns"])
                 if "count_where" in name and any(
                         _lists(types, text) for text in operator["args"]["filters"]):
                     seen[f"{name} of a vector"] += 1
@@ -185,12 +197,23 @@ def test_every_form_is_drawn():
                     seen["condition function"] += bool(re.match(
                         r"(?:\w+ = )?(?:first|last|min|max|sum)\(", formula))
                     seen["condition refreshing"] += op["name"] in live
+                    # PARITY.md A23: an element of a condition between windows of strings.
+                    seen["element of a condition between windows of strings"] += bool(
+                        re.search(r"\)\[\d\]", formula)) and any(
+                        types.get(c) == "string" for c in [_source(p) for p in operator[
+                            "columns"]] + WORD.findall(formula))
         elif kind == "agg_by":
             seen["group by a vector"] += any(types[c].startswith(LIST) for c in op["by"])
+            seen["group by a vector, refreshing"] += op["name"] in live and any(
+                types[c].startswith(LIST) for c in op["by"])
             for agg in op["aggs"]:
                 if agg["agg"] == "distinct" and any(
                         types[_source(pair)].startswith(LIST) for pair in agg["columns"]):
                     seen["distinct of a vector"] += 1
+                    seen["distinct of a vector, refreshing"] += op["name"] in live
+                    seen["distinct of a vector of floats"] += any(
+                        types[_source(pair)][len(LIST):] in ("float32", "float64")
+                        for pair in agg["columns"])
                 if agg["agg"] == "count_where" and any(
                         _lists(types, text) for text in agg["args"]["filters"]):
                     seen["agg count_where of a vector"] += 1
@@ -200,6 +223,25 @@ def test_every_form_is_drawn():
                 types[c].startswith(LIST) for c in op["columns"])
             seen["select_distinct of a vector and another column"] += len(op["columns"]) > 1 and any(
                 types[c].startswith(LIST) for c in op["columns"])
+        elif kind == "ungroup" and op["name"] != op["source"] + "v":
+            # PARITY.md A23 and A24: what holds vectors, taken apart.
+            source = by_name.get(op["source"], {})
+            seen["ungroup of an aggregation"] += source.get("op") == "agg_by"
+            seen["ungroup with null fill of an aggregation by a vector"] += (
+                source.get("op") == "agg_by" and op.get("null_fill", True) and any(
+                    dict(predicted[source["source"]])[c].startswith(LIST) for c in source["by"]))
+            seen["ungroup of a minimum or maximum of a vector"] += source.get("op") == "update_by" and any(
+                o["op"].startswith(COMPARING) for o in source["ops"])
+    # A22: a table read from a minimum or maximum of vectors of a refreshing table.
+    for doc, predicted in [run for runs in GENERATED.values() for run in runs]:
+        live = _live(doc)
+        extremes = {op["name"] for op in doc["operations"] if op["op"] == "update_by"
+                    and op["name"] in live and any(
+                        o["op"].startswith(COMPARING) and dict(predicted[op["source"]])[
+                            _source(pair)].startswith(LIST)
+                        for o in op["ops"] for pair in o["columns"])}
+        seen["read on after a minimum or maximum of vectors, refreshing"] += sum(
+            bool(extremes.intersection(sc.references(op))) for op in doc["operations"])
     expected = [
             "aj of an as-of result on the left", "raj of an as-of result on the left",
             "aj of an as-of result on the right", "raj of an as-of result on the right",
@@ -216,136 +258,196 @@ def test_every_form_is_drawn():
             "condition function", "condition refreshing", "group by a vector",
             "distinct of a vector", "agg count_where of a vector",
             "agg count_where of a vector, refreshing", "select_distinct of a vector",
-            "select_distinct of a vector and another column"]
+            "select_distinct of a vector and another column",
+            "raj of the shape of the chains of A13", "aj of the shape of the chains of A13",
+            "bucket by a vector, refreshing", "bucket by a vector of floats",
+            "rolling minimum or maximum of vectors of floats",
+            "element of a condition between windows of strings",
+            "group by a vector, refreshing", "distinct of a vector, refreshing",
+            "distinct of a vector of floats", "ungroup of an aggregation",
+            "ungroup with null fill of an aggregation by a vector",
+            "ungroup of a minimum or maximum of a vector",
+            "read on after a minimum or maximum of vectors, refreshing"]
     assert not {name: seen[name] for name in expected if seen[name] <= 5}, seen
 
 
 # ---------------------------------------------------------------- restrictions
 
 
-def _made_by(doc: dict, predicted: dict, table: str, column: str) -> str | None:
-    """The `update_by` operator that made `column` of `table`, followed by name through
-    the tables it was passed on by."""
-    by_name = {o["name"]: o for o in doc["operations"]}
-    while table in by_name:
-        op = by_name[table]
-        if op["op"] == "update_by":
+def _marks(doc: dict, predicted: dict) -> tuple[dict, dict]:
+    """Per table, the vector columns made by `rolling_group` or by the `distinct` of a
+    refreshing table, or by a minimum or maximum of one (V14), and the columns PARITY.md A23
+    types differently (V15), followed by name through the tables that pass them on."""
+    live = _live(doc)
+    windowed: dict[str, set[str]] = {}
+    extremes: dict[str, set[str]] = {}
+    objects: dict[str, set[str]] = {}
+    for op in doc["operations"]:
+        name, kind = op["name"], op["op"]
+        types = dict(predicted[name])
+        first = op.get("source") or op.get("left")
+        before = dict(predicted[first]) if first else {}
+
+        def kept(marks: dict) -> set[str]:
+            out = {c for c in marks.get(first, ()) if types.get(c) == before.get(c)}
+            if "right" in op:
+                right = dict(predicted[op["right"]])
+                carried = marks.get(op["right"], set())
+                for pair in op.get("joins", []):
+                    made, column = (part.strip() for part in pair.split("="))
+                    if column in carried:
+                        out.add(made)
+                if "joins" not in op:
+                    out |= {c for c in carried if types.get(c) == right.get(c)}
+            return out
+
+        win, ext, obj = kept(windowed), kept(extremes), kept(objects)
+        if kind == "update_by":
             for operator in op["ops"]:
-                if column in [pair.split("=")[0].strip() for pair in operator["columns"]]:
-                    return operator["op"]
-        table = op.get("source") or op.get("left")
-        if table is None or column not in dict(predicted[table]):
-            return None
-    return None
+                outs = [(pair.split("=")[0].strip(), _source(pair)) for pair in operator["columns"]]
+                if operator["op"].startswith("rolling_group"):
+                    win |= {out for out, _ in outs}
+                elif operator["op"].startswith(COMPARING):
+                    win |= {out for out, made in outs if made in windowed.get(first, ())}
+                    ext |= {out for out, _ in outs if types[out] == LIST + "string"}
+                elif operator["op"].startswith("rolling_formula") and re.search(
+                        r"\?.*:.*\)\s*\[", operator["args"]["formula"]):
+                    obj |= {out for out, _ in outs if types[out] == "string"}
+        if kind == "agg_by" and first in live:
+            win |= {pair.split("=")[0].strip() for agg in op["aggs"]
+                    if agg["agg"] == "distinct" for pair in agg["columns"]}
+        if kind == "ungroup":
+            taken = op.get("columns") or [c for c, t in before.items() if t.startswith(LIST)]
+            obj |= {c for c in taken if c in extremes.get(first, ())}
+        windowed[name], extremes[name], objects[name] = win, ext, obj
+    return windowed, objects
 
 
 def test_what_an_owner_item_or_a_finding_restricts_is_not_drawn():
     """`fuzz_third.RESTRICTIONS`, one check per entry."""
     seen: Counter = Counter()
     floats = ("float32", "float64")
-    for doc, predicted, op in OPERATIONS:
-        live = _live(doc)
-        inputs = {table["name"] for table in doc["inputs"]}
-        kind = op["op"]
-        where = (doc["name"], op)
-        types = dict(predicted[op.get("source") or op.get("left") or op["name"]])
-        keys = op.get("by", []) if kind in ("agg_by", "update_by") else (
-            op["columns"] if kind == "select_distinct" else [])
-        for column in keys:
-            if types[column].startswith(LIST):
-                seen["V3"] += 1
-                assert types[column][len(LIST):] not in floats, where
-                seen["V5"] += 1
-                assert op["source"] not in live, where
-        if kind == "update_by":
-            for operator in op["ops"]:
-                name = operator["op"]
-                if name.startswith(COMPARING):
-                    for element in (types[_source(pair)] for pair in operator["columns"]):
-                        if not element.startswith(LIST):
-                            continue
-                        seen["V1"] += 1
-                        assert element[len(LIST):] not in ("bool", "timestamp"), where
-                        seen["V2"] += name.startswith("rolling")
-                        assert not (name.startswith("rolling")
-                                    and element[len(LIST):] in floats), where
-                if name.startswith("rolling_formula"):
-                    formula = operator["args"]["formula"]
-                    read = [_source(pair) for pair in operator["columns"]] + WORD.findall(formula)
-                    if "?" in formula and any(types.get(c) == "string" for c in read):
-                        seen["V7"] += 1
-                        assert "subVector" not in formula, where
-                        seen["V9"] += 1
-                        assert not re.search(r"\)\[", formula), where
-                        # `len` of a window of strings fails the table when a row is read.
-                        assert "len(" not in formula or op["source"] not in live, where
-        if kind == "agg_by":
-            for agg in op["aggs"]:
-                if agg["agg"] != "distinct":
-                    continue
-                for element in (types[_source(pair)] for pair in agg["columns"]):
-                    if element.startswith(LIST):
-                        seen["V4"] += 1
-                        assert element[len(LIST):] not in floats + ("bool", "timestamp"), where
-                        assert op["source"] not in live, where
-        for text in _filters(op) if kind in ("agg_by", "update_by") else []:
-            for column in re.findall(r"([A-Za-z_]\w*)\[", text):
-                seen["V8"] += types.get(column, "").startswith(LIST)
-                assert types.get(column) != LIST + "bool", where
-        if kind == "ungroup":
-            taken = op.get("columns") or [c for c, t in types.items() if t.startswith(LIST)]
-            for column in taken:
-                seen["V6"] += 1
-                made = _made_by(doc, predicted, op["source"], column) or ""
-                assert not (made.startswith(COMPARING) and types[column] == LIST + "string"), where
-        if kind in ("aj", "raj") and len(op["on"]) > 1 and op["right"] in live and (
-                op["left"] not in live):
-            seen["C1"] += kind == "raj"
-            seen["aj of the shape of C1"] += kind == "aj" and op["right"] not in inputs
-            assert kind == "aj" or op["right"] in inputs, where
+    marked = {(family, seed): _marks(doc, predicted)
+              for family, runs in GENERATED.items() for seed, (doc, predicted) in enumerate(runs)}
     for family, runs in GENERATED.items():
-        if family == "all3":  # two seeds that drew a filter on `k` over a sort before V12
-            runs = runs + [fuzz.generate(seed, fuzz.THIRD_FAMILIES[family], "third")
-                           for seed in (724, 831)]
-        for doc, predicted in runs:
+        for seed, (doc, predicted) in enumerate(runs):
+            windowed, objects = marked[(family, seed)]
             live = _live(doc)
-            # V10: the columns `ungroup` is not asked to take, by table, and the tables that
-            # have one. V11: the tables that nothing reads. V12: the refreshing sort results
-            # and what is made from them.
-            marked: dict[str, set[str]] = {}
-            leaves = set()
-            rekeyed = set()
             for op in doc["operations"]:
-                kind, name = op["op"], op["name"]
-                types = dict(predicted[name])
+                kind = op["op"]
+                where = (family, doc["name"], op)
                 first = op.get("source") or op.get("left")
-                before = dict(predicted[first]) if first else {}
-                marks = {column for column in marked.get(first, ()) if column in types and (
-                    types[column] == before[column] or kind == "ungroup")}
+                types = dict(predicted[first or op["name"]])
+                keys = op.get("by", []) if kind in ("agg_by", "update_by") else (
+                    op["columns"] if kind == "select_distinct" else [])
+                for column in keys:
+                    if not types[column].startswith(LIST):
+                        continue
+                    element = types[column][len(LIST):]
+                    if kind != "update_by":
+                        seen["V3"] += 1
+                        assert element not in floats, where
+                        if first in live:
+                            seen["V13"] += 1
+                            assert element not in ("bool", "timestamp"), where
+                    if first in live:
+                        seen["V14"] += 1
+                        assert column not in windowed.get(first, ()), where
+                if kind == "update_by":
+                    for operator in op["ops"]:
+                        name = operator["op"]
+                        if name.startswith(COMPARING):
+                            for element in (types[_source(pair)] for pair in operator["columns"]):
+                                if element.startswith(LIST):
+                                    seen["V1"] += 1
+                                    assert element[len(LIST):] not in ("bool", "timestamp"), where
+                        if name.startswith("rolling_formula"):
+                            formula = operator["args"]["formula"]
+                            read = [_source(pair) for pair in operator["columns"]] + WORD.findall(
+                                formula)
+                            if "?" in formula and any(types.get(c) == "string" for c in read):
+                                seen["V7"] += 1
+                                assert "subVector" not in formula, where
+                                # `len` of a window of strings fails the table when a row is
+                                # read.
+                                assert "len(" not in formula or first not in live, where
+                if kind == "agg_by" and first in live and any(
+                        types[c].startswith(LIST) for c in op["by"]):
+                    seen["V16"] += 1
+                    assert "initial_groups" not in op and not op.get("preserve_empty"), where
                 if kind == "agg_by":
-                    marks |= {column for column in op["by"] if types[column].startswith(LIST)}
-                    marks |= {column for column, column_kind in types.items()
-                              if column_kind.startswith(LIST + LIST)}
-                view = kind == "ungroup" and name == first + "v"  # made by `results`
-                if kind == "ungroup" and not view:
-                    seen["V10"] += bool(marked)
-                    assert not marked.get(first), (family, doc["name"], op)
-                marked[name] = marks
-                if name in live and (kind == "sort" or first in rekeyed):
-                    rekeyed.add(name)
+                    for agg in op["aggs"]:
+                        if agg["agg"] != "distinct":
+                            continue
+                        for column in (_source(pair) for pair in agg["columns"]):
+                            if types[column].startswith(LIST):
+                                seen["V1"] += 1
+                                assert types[column][len(LIST):] not in ("bool", "timestamp"), where
+                                if first in live:
+                                    seen["V14"] += 1
+                                    assert column not in windowed.get(first, ()), where
+                for text in _filters(op) if kind in ("agg_by", "update_by") else []:
+                    for column in re.findall(r"([A-Za-z_]\w*)\[", text):
+                        seen["V8"] += types.get(column, "").startswith(LIST)
+                        assert types.get(column) != LIST + "bool", where
+                # V15: what the operation reads names no such column of its sources.
+                read = set(WORD.findall(json.dumps({k: v for k, v in op.items()
+                                                    if k not in ("name", "op")})))
+                for source in sc.references(op):
+                    seen["V15"] += bool(objects.get(source))
+                    view = kind == "ungroup" and op["name"] == source + "v"  # made by `results`
+                    assert view or not read & objects.get(source, set()), where
+            # V17: refreshing results grouped by a vector, and their ungroups, are read by
+            # an ungroup only.
+            # V13: nor is one whose key columns hold vectors of strings, but by the view
+            # `results` makes.
+            regrouped: set[str] = set()
+            strings: dict[str, set[str]] = {}
+            for op in doc["operations"]:
+                source = op.get("source")
+                if source in regrouped:
+                    seen["V17"] += 1
+                    assert op["op"] == "ungroup", (family, doc["name"], op)
+                    if strings.get(source):
+                        seen["V13"] += 1
+                        assert op["name"] == source + "v", (family, doc["name"], op)
+                keys = op.get("by", []) if op["op"] == "agg_by" else (
+                    op["columns"] if op["op"] == "select_distinct" else [])
+                before = dict(predicted[source]) if source else {}
+                if source in live and any(before[c].startswith(LIST) for c in keys):
+                    regrouped.add(op["name"])
+                    strings[op["name"]] = {c for c in keys if before[c] == LIST + "string"}
+                    seen["V17"] += 1
+                if op["op"] == "ungroup" and source in regrouped:
+                    regrouped.add(op["name"])
+                    taken = op.get("columns") or [c for c, t in before.items()
+                                                  if t.startswith(LIST)]
+                    strings[op["name"]] = strings.get(source, set()) - set(taken)
+                for other in sc.references(op):
+                    if other != source:
+                        assert other not in regrouped, (family, doc["name"], op)
+            # V12: the refreshing sort results and what is made from them.
+            rekeyed: set[str] = set()
+            for op in doc["operations"]:
+                first = op.get("source") or op.get("left")
+                if op["name"] in live and (op["op"] == "sort" or first in rekeyed):
+                    rekeyed.add(op["name"])
                 if first in rekeyed:
                     for text in op.get("filters", []) + _filters(op):
                         assert not re.search(r"\bk\b", text), (family, doc["name"], op)
-                assert not leaves.intersection(sc.references(op)), (family, doc["name"], op)
-                if kind == "update_by" and first in live and any(
-                        operator["op"].startswith(COMPARING) and before[_source(pair)].startswith(LIST)
-                        for operator in op["ops"] for pair in operator["columns"]):
-                    leaves.add(name)
-            seen["V11"] += len(leaves)
             seen["V12"] += len(rekeyed)
+    for seed in (724, 831):  # two seeds of all3 that drew a filter on `k` over a sort before V12
+        doc, _ = fuzz.generate(seed, fuzz.THIRD_FAMILIES["all3"], "third")
+        live = _live(doc)
+        rekeyed = set()
+        for op in doc["operations"]:
+            first = op.get("source") or op.get("left")
+            if op["name"] in live and (op["op"] == "sort" or first in rekeyed):
+                rekeyed.add(op["name"])
+            if first in rekeyed:
+                for text in op.get("filters", []) + _filters(op):
+                    assert not re.search(r"\bk\b", text), (seed, op)
     assert not {name: seen[name] for name in fuzz_third.RESTRICTIONS if seen[name] <= 5}, seen
-    # What C1 keeps from raj is drawn for aj (PARITY.md, A13).
-    assert seen["aj of the shape of C1"] > 5, seen
 
 
 def test_every_restriction_is_written_up():

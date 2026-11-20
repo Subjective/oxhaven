@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import json
 import math
+from pathlib import Path
 
+import pyarrow as pa
 import pytest
 
 from harness import __main__ as cli
@@ -294,7 +296,7 @@ def _inconsistent_reference(tmp_path):
     fresh.put(1, "w", tables[2])
 
     class Reference:
-        def run_fresh(self, asked):
+        def run_fresh(self, asked, remake=None):
             assert asked is scenario
             return kept, fresh
 
@@ -340,3 +342,276 @@ def test_differs_from_fresh_names_what_the_actual_side_holds_differently(tmp_pat
     assert rules.differs_from_fresh(scenario, fresh, actual, [(1, "w")]) == {(1, "w")}
     # A result that one side does not hold is not known to agree.
     assert rules.differs_from_fresh(scenario, fresh, actual, [(0, "w")]) == {(0, "w")}
+    # Column metadata is held to the rules at the first step, not here.
+    tagged = tables[2].cast(pa.schema([pa.field("X", pa.int32(),
+                                                metadata={b"deephaven:type": b"int"})]))
+    actual.put(1, "w", tagged)
+    one, other = ResultSet("s"), ResultSet("s")
+    one.put(1, "w", tables[2])
+    other.put(1, "w", tagged)
+    assert [m.kind for m in rules.compare(one, other, frozenset(), {})] == ["column_metadata"]
+    assert rules.differs_from_fresh(scenario, fresh, actual, [(1, "w")]) == set()
+
+
+def test_a_result_made_from_an_inconsistent_one_is_judged_by_its_rows_from_scratch(tmp_path):
+    """In the rows form a result that reads one the reference disagrees with itself about
+    is the finding's when the actual side holds the rows of its answer from scratch, though
+    what the reference kept for it agrees with that answer (PARITY.md A22)."""
+    import argparse
+
+    doc = {
+        "format": 1, "name": "s",
+        "inputs": [{"name": "t", "ticking": {"key_columns": []},
+                    "columns": [{"name": "X", "type": "int32"}], "rows": [[1]]}],
+        "operations": [{"name": "w", "op": "where", "source": "t", "filters": ["X > 0"]},
+                       {"name": "v", "op": "where", "source": "w", "filters": ["X > 0"]}],
+        "results": [{"table": "w"}, {"table": "v"}],
+        "steps": [{"actions": [{"action": "add", "table": "t", "rows": [[2]]}]}],
+    }
+    scenario = sc.parse(doc)
+    columns = scenario.inputs[0].columns
+    one, two, swapped = (sc.arrow_table(columns, rows) for rows in (
+        [[1]], [[1], [2]], [[2], [1]]))
+    path = tmp_path / "known.json"
+    path.write_text(json.dumps({"format": 1, "findings": [
+        {"id": "rows", "class": "allowed-difference",
+         "reason": "the reference keeps a result it does not answer from scratch",
+         "match": {"kind": "value", "operation": "where", "steps": "later",
+                   "requires": "reference_inconsistent_rows"}}]}))
+
+    def split(kept_w, actual_v):
+        kept, fresh, actual = ResultSet("s"), ResultSet("s"), ResultSet("s")
+        for table, data in (("w", kept_w), ("v", two)):
+            kept.put(1, table, data)
+        for table in ("w", "v"):
+            fresh.put(1, table, two)
+        actual.put(1, "w", two)
+        actual.put(1, "v", actual_v)
+
+        class Reference:
+            def run_fresh(self, asked, remake=None):
+                return kept, fresh
+
+        triage = cli._Triage(argparse.Namespace(known=str(path), no_known=False),
+                             Reference())
+        found = [m for m in rules.compare_scenario(scenario, kept, actual) if m.table == "v"]
+        assert found and {m.kind for m in found} == {"value"}
+        left, fitted = triage.split(scenario, found, actual=actual)
+        return len(left), sorted({f.id for f in fitted})
+
+    # `w` was kept stale: `v`'s rows in another order are the answer from scratch.
+    assert split(one, swapped) == (0, ["rows"])
+    # `w` was not: what the reference kept for `v` is its answer, and the order differs.
+    assert split(two, swapped)[0] > 0
+
+
+def test_an_inconsistent_reference_in_any_order_excuses_only_the_rows_from_scratch(tmp_path):
+    """`reference_inconsistent_rows`: the actual side holds the rows of the answer from
+    scratch in another order (an aggregation's groups after a key changed)."""
+    scenario, fresh, tables, _ = _inconsistent_reference(tmp_path)
+    kept = ResultSet("s")
+    kept.put(1, "w", tables[1])
+    swapped = sc.arrow_table(scenario.inputs[0].columns, [[2], [1]])
+    found = known({"id": "rows", "class": "allowed-difference",
+                   "reason": "the reference keeps a result it does not answer from scratch",
+                   "match": {"kind": "row_count", "operation": "where",
+                             "requires": "reference_inconsistent_rows"}})
+    mismatch = rules.Mismatch("s", "w", 1, "row_count", expected=1, actual=2)
+    for actual, ordered, rows in ((tables[2], True, True), (swapped, False, True),
+                                  (tables[3], False, False)):
+        result = ResultSet("s")
+        result.put(1, "w", actual)
+
+        def ask(any_order: bool = False, result=result):
+            both = {(m.step, m.table) for m in rules.compare_with_fresh(
+                scenario, kept, fresh, any_order=any_order)}
+            return both - rules.differs_from_fresh(scenario, fresh, result, both,
+                                                   any_order=any_order)
+
+        assert bool(ask()) == ordered
+        assert fits(found, mismatch, reference_inconsistent=ask) == ["rows" if rows else None]
+    # An entry that requires the ordered form is not excused by rows in another order.
+    ordered_entry = known({"id": "kept", "class": "reference-defect",
+                           "reason": "the reference keeps a result it does not answer from scratch",
+                           "match": {"kind": "row_count", "operation": "where",
+                                     "requires": "reference_inconsistent"}})
+    result = ResultSet("s")
+    result.put(1, "w", swapped)
+    assert fits(ordered_entry, mismatch, reference_inconsistent=lambda any_order=False: (
+        {(1, "w")} - rules.differs_from_fresh(scenario, fresh, result, [(1, "w")],
+                                              any_order=any_order))) == [None]
+
+
+def test_operation_and_producer_may_be_lists():
+    entry = dict(MIN_ZERO, match=dict(MIN_ZERO["match"], operation=["agg_all_by", "agg_by"],
+                                      producer=["max", "min"]))
+    found = known(entry)
+    assert fits(found, value("a", "Low", -0.0, 0.0), value("a", "High", -0.0, 0.0),
+                value("all", "X", -0.0, 0.0), value("a", "N", -0.0, 0.0),
+                value("other", "X", -0.0, 0.0)) == ["min-zero"] * 3 + [None, None]
+    for bad in ([], [""], "", ["agg_by", "no_such_operation"]):
+        with pytest.raises(kn.KnownError):
+            known(dict(MIN_ZERO, match=dict(MIN_ZERO["match"], operation=bad)))
+    with pytest.raises(kn.KnownError):
+        known(dict(MIN_ZERO, match=dict(MIN_ZERO["match"], producer=[])))
+    with pytest.raises(kn.KnownError):
+        known(dict(MIN_ZERO, match=dict(MIN_ZERO["match"], shape="no_such_shape")))
+    with pytest.raises(kn.KnownError):
+        known(dict(MIN_ZERO, match=dict(MIN_ZERO["match"], differs_in="anything")))
+    with pytest.raises(kn.KnownError):
+        known(dict(MIN_ZERO, match=dict(MIN_ZERO["match"], requires="anything")))
+
+
+def test_differs_in_zero_sign_takes_only_vectors_that_differ_in_the_sign_of_a_zero():
+    nan = math.nan
+    assert kn.differs_in_zero_sign([0.0, 1.5], [-0.0, 1.5])
+    assert kn.differs_in_zero_sign([[-0.0], [nan, 2.0]], [[0.0], [nan, 2.0]])
+    assert not kn.differs_in_zero_sign([0.0, 1.5], [0.0, 1.5])  # nothing differs
+    assert not kn.differs_in_zero_sign([0.0, 1.5], [-0.0, 2.5])  # something else does
+    assert not kn.differs_in_zero_sign([0.0], [-0.0, 0.0])  # another length
+    assert not kn.differs_in_zero_sign([0.0], [None])
+    assert not kn.differs_in_zero_sign([nan], [0.0])
+    assert not kn.differs_in_zero_sign(0.0, -0.0)  # not a vector
+    assert not kn.differs_in_zero_sign([0], [0.0])
+    entry = {"id": "zero", "class": "allowed-difference",
+             "reason": "the rolling minimum keeps another of two equal vectors",
+             "match": {"kind": "value", "operation": "update_by", "producer": "emstd_time",
+                       "differs_in": "zero_sign"}}
+    assert fits(known(entry), value("u", "E", [0.0], [-0.0]), value("u", "E", [0.0], [1.0]),
+                value("u", "E", 0.0, -0.0)) == ["zero", None, None]
+
+
+# ---------------------------------------------------------------- shapes
+
+FINDINGS = Path(__file__).resolve().parents[2] / "tasks" / "12.1-fuzzer-coverage"
+
+
+def _scene(file: str, lists: dict[str, dict[str, pa.DataType]] | None = None,
+           static: bool = False) -> kn.Scene:
+    """The scene of a scenario of task 12.1, with actual results that have the vector
+    columns `lists` gives per table; `static` makes every input static."""
+    doc = json.loads((FINDINGS / file).read_text())
+    if static:
+        for item in doc["inputs"]:
+            item.pop("ticking", None)
+        doc.pop("steps", None)
+    actual = ResultSet(doc["name"])
+    for table, columns in (lists or {}).items():
+        actual.put(0, table, pa.table({name: pa.array([], kind)
+                                       for name, kind in columns.items()}))
+    return kn.Scene(sc.parse(doc), actual)
+
+
+def _shape(scene: kn.Scene, table: str, column: str | None = None) -> list[str]:
+    mismatch = rules.Mismatch("s", table, 1, "value", column, 0, 1, 2)
+    return sorted(name for name, test in kn.SHAPES.items() if test(scene, mismatch))
+
+
+def test_each_shape_fits_the_case_of_its_allowed_difference_and_no_other():
+    ints = pa.list_(pa.int32())
+    shorts = pa.list_(pa.int16())
+    # A24 (F7): the three ungroups, and only these.
+    scene = _scene("F7_ungroup_after_aggregations_over_vectors.json",
+                   {"a": {"K": shorts, "A8": ints}, "p1": {"A": shorts, "D": ints}})
+    assert _shape(scene, "f5") == ["ungroup_again_of_a_distinct"]
+    assert _shape(scene, "f4") == []
+    assert _shape(scene, "u") == ["null_fill_ungroup_of_vector_keys"]
+    assert _shape(scene, "p") == ["null_fill_ungroup_of_a_distinct"]
+    for table in ("u", "p"):
+        scene.by_name[table] = dict(scene.by_name[table], null_fill=False)
+        assert _shape(scene, table) == []
+    # Without the actual side's schema an ungroup of every vector column is not known.
+    unknown = _scene("F7_ungroup_after_aggregations_over_vectors.json")
+    assert _shape(unknown, "u") == [] and _shape(unknown, "p") == []
+    # A22 (F2, F8): what holds a refreshing group's vectors, and what is made from it.
+    scene = _scene("F2_vector_of_a_refreshing_group_as_key.json")
+    for table in ("a", "sd", "u"):
+        assert _shape(scene, table) == ["refreshing_group_vectors"], table
+    assert "refreshing_group_vectors" in _shape(scene, "dv")
+    assert _shape(scene, "g") == []
+    assert _shape(_scene("F2_vector_of_a_refreshing_group_as_key.json", static=True), "a") == []
+    scene = _scene("F8_minimum_of_vectors_of_a_refreshing_group_read_on.json")
+    assert _shape(scene, "o11") == ["refreshing_group_vectors"]
+    assert _shape(scene, "o1") == []
+    # A23 (F3, F6): the columns, not the tables.
+    scene = _scene("F3_ungroup_of_a_minimum_of_string_vectors.json")
+    assert _shape(scene, "um", "M") == ["ungrouped_extreme"]
+    assert _shape(scene, "ur", "R") == ["ungrouped_extreme"]
+    assert _shape(scene, "um", "K") == [] and _shape(scene, "u", "M") == []
+    scene = _scene("F4_F6_conditions_between_windows_of_strings.json")
+    assert _shape(scene, "c1", "U") == ["element_of_a_condition"]
+    assert _shape(scene, "c2", "U") == ["element_of_a_condition"]
+    assert _shape(scene, "f", "Y") == ["element_of_a_condition"]
+    assert _shape(scene, "f", "X") == [] and _shape(scene, "s2", "U") == []
+    # A13 (F1): the chain, not the join of the input table.
+    scene = _scene("F1_asof_static_left_right_change_off_its_columns.json")
+    assert _shape(scene, "o4") == ["as_of_chain"]
+    assert _shape(scene, "o1") == []
+    # A20: the vectors of a distinct, taken apart.
+    scene = _scene("F2_vector_of_a_refreshing_group_as_key.json")
+    assert "distinct_taken_apart" in _shape(scene, "dv", "D")
+    assert "distinct_taken_apart" not in _shape(scene, "a", "C")
+
+
+def test_the_repository_entries_with_a_shape_fit_their_findings():
+    """The entries of the repository file for A23 and A24 fit the mismatches their
+    findings' scenarios showed against the reference, and nothing near them."""
+    found = kn.Known(kn.load(cli.KNOWN))
+    scene = _scene("F3_ungroup_of_a_minimum_of_string_vectors.json")
+    object_type = {"deephaven:type": "java.lang.Object"}
+    string_type = {"deephaven:type": "java.lang.String", "deephaven:isSortable": "true"}
+    mismatch = rules.Mismatch("s", "um", 0, "column_metadata", "M", None, object_type,
+                              string_type)
+    operations = list(scene.by_name.values())
+    assert [f.id for f in found.classify([mismatch], operations, scene=scene)] == [
+        "string-vector-extreme-type"]
+    # Without the scene, or with other metadata, it fits nothing.
+    assert found.classify([mismatch], operations) == [None]
+    other = rules.Mismatch("s", "um", 0, "column_metadata", "M", None, object_type,
+                           {"deephaven:type": "java.lang.String"})
+    assert found.classify([other], operations, scene=scene) == [None]
+    scene = _scene("F7_ungroup_after_aggregations_over_vectors.json",
+                   {"a": {"K": pa.list_(pa.int16()), "A8": pa.list_(pa.int32())},
+                    "p1": {"A": pa.list_(pa.int16()), "D": pa.list_(pa.int32())}})
+    failures = [rules.Mismatch("s", table, 0, "failure_expected", None, None,
+                               "fails with INVALID_ARGUMENT", "succeeds")
+                for table in ("f5", "u", "p", "f4")]
+    assert [f.id if f else None for f in found.classify(
+        failures, list(scene.by_name.values()), scene=scene)] == [
+        "ungroup-again-of-a-distinct", "null-fill-ungroup-of-vector-keys",
+        "null-fill-ungroup-of-a-distinct", None]
+
+
+def test_the_remake_pass_makes_again_only_what_it_names_and_what_reads_it():
+    """`runner._remade`: the tables `remake` names, and those made from them, are made again
+    from their sources as kept (through a new view) or as made again; the others are the
+    kept tables."""
+    from harness import runner
+
+    class Fake:
+        is_refreshing = False
+
+        def __init__(self, label):
+            self.label = label
+
+        def update_view(self, formulas):
+            return Fake(self.label)
+
+        def drop_columns(self, columns):
+            return Fake(f"fresh({self.label})")
+
+        def where(self, filters):
+            return Fake(f"{self.label}.where")
+
+    scenario = sc.parse({
+        "format": 1, "name": "s",
+        "inputs": [{"name": "t", "columns": [{"name": "X", "type": "int32"}], "rows": [[1]]}],
+        "operations": [{"name": f"w{n}", "op": "where", "source": source, "filters": ["X > 0"]}
+                       for n, source in ((1, "t"), (2, "w1"), (3, "w2"), (4, "w1"))],
+        "results": [{"table": "w3"}],
+    })
+    kept = {name: Fake(name) for name in ("t", "w1", "w2", "w3", "w4")}
+    again = runner._remade(None, scenario, kept, frozenset({"w2"}), 1)
+    assert {name: table.label for name, table in again.items()} == {
+        "t": "t", "w1": "w1", "w2": "fresh(w1).where", "w3": "fresh(w1).where.where",
+        "w4": "w4"}

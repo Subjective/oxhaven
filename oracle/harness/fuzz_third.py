@@ -43,8 +43,16 @@ Known limits). For what this module adds those are, on a refreshing table:
 - `len` of a window of strings, which the reference fails for every row
   (`ClassCastException`): on a static table only, where it is a refusal of the request.
 
-`RESTRICTIONS` lists what the generator steps around because an owner item or a finding of
-`tasks/12.1-fuzzer-coverage.md` covers it; each is marked where it is made.
+What `PARITY.md` allows since the owner's answers to items 7.19 to 7.21 (A13 for `raj`,
+A22 to A24) and to items 7.6, 7.10 and 7.13 (A19, A20) is drawn: vectors of refreshing
+groups as keys, buckets and in `distinct`, read on after a minimum or maximum; `ungroup` of
+whatever holds vectors; elements of conditions between windows of strings; vectors of
+floats in rolling minimums and maximums, buckets and `distinct`; `raj` of the shape of the
+chains of A13. The comparison accepts these differences through the entries of
+`oracle/fuzz-known-findings.json` that name them, each as narrow as its rule.
+
+`RESTRICTIONS` lists what the generator still steps around because an open owner item or a
+finding of `tasks/12.1-fuzzer-coverage.md` covers it; each is marked where it is made.
 
 Not generated, each for a stated reason:
 
@@ -62,69 +70,68 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from . import rules
 from .fuzz import FLOATS, INT_BITS, NUMERIC, ORDERED_STAMPS, _Table
 from .fuzz_second import _Second
 from .fuzz_wide import LIST, _Wide
 
-# What the generator steps around, and where. V1 to V4 are open owner items of the second
-# batch of review items (the tables of tasks/11.4-updateby-refusals.md and
-# tasks/11.5-agg-refusals.md give the item for each request); the others are findings of
-# tasks/12.1-fuzzer-coverage.md.
+# What the generator steps around, and where: an open owner item, or a finding of
+# tasks/12.1-fuzzer-coverage.md that is an Oxhaven gap or not a difference to decide. What
+# PARITY.md records as allowed (A13, A19 to A24) is drawn, and the comparison accepts it
+# through the entries of oracle/fuzz-known-findings.json named for it.
 RESTRICTIONS: dict[str, str] = {
     "V1": "vector_min_max, vector_aggregation: no minimum, maximum or distinct of a vector of "
           "booleans or timestamps (owner item 3.3: the reference's result has no component "
           "type, so a client receives strings)",
-    "V2": "vector_min_max: no rolling minimum or maximum of a vector of float or double "
-          "(owner item 7.10: of vectors that differ in the sign of a zero the reference "
-          "keeps one by the layout of its ring buffer)",
-    "V3": "keys: no group-by, bucket or select_distinct column that is a vector of float or "
-          "double (owner item 7.6: the reference's groups depend on the vectors' class)",
-    "V4": "vector_aggregation: no distinct of a vector of float or double (owner item 7.13: "
-          "which of [-0.0] and [0.0] the reference shows depends on its sorted set's "
-          "history)",
-    "V5": "keys, vector_aggregation: on a refreshing table no group-by, bucket or "
-          "select_distinct column that is a vector and no distinct of a vector column "
-          "(F2: the reference's vector is a view of its group, and its hash table or sorted "
-          "set fails or keeps a stale value when the group changes)",
-    "V6": "has_lists: no ungroup of a table with a minimum or maximum of a vector of "
-          "strings (F3: the reference's result column has no component type, so its "
-          "elements come out as java.lang.Object)",
+    "V3": "keys: no group-by or select_distinct column that is a vector of float or double "
+          "(Oxhaven refuses them; owner item 7.6 and PARITY.md A19 cover update_by buckets "
+          "only, which are drawn)",
     "V7": "condition_formula: no slice (subVector) of a window of strings (F4: Oxhaven's "
           "expression crate does not compile a method of a vector of objects yet)",
-    "V9": "condition_formula: no element of a condition between windows of strings (F6: "
-          "the reference types it java.lang.Object, Oxhaven's expression crate "
-          "java.lang.String)",
     "V8": "vector_filter: no count-where filter that reads an element of a vector of "
           "booleans (F5: Oxhaven's filter compiler refuses it)",
-    "V10": "has_lists: no ungroup of a table with a vector group-by column of an aggregation "
-           "or the distinct of a vector column, or with a column an ungroup took out of one "
-           "(F7: the reference fails to ungroup such a column a second time, and to read a "
-           "null-filled result over these columns)",
-    "V11": "pick_table, pick: on a refreshing table the result of a minimum or maximum of "
-           "vectors is not the source of a later operation (F8: the reference's result holds "
-           "views of the groups, and what reads it is not told when a group changes)",
+    "V13": "keys, has_lists: on a refreshing table no group-by or select_distinct column "
+           "that is a vector of booleans or timestamps, and no ungroup of a table with such "
+           "a column that is a vector of strings (F10: the reference's key column is then a "
+           "vector without an element type, of strings to a client, java.lang.Object once "
+           "ungrouped; owner item 3.3)",
     "V12": "filter: no filter on the row key `k` over a refreshing sort result or a table "
            "made from one (F9: the servers give the rows of such a result different row keys, "
            "which PARITY.md A4 does not compare)",
-    "C1": "build_asof: no raj with exact match columns of a static left table and a "
-          "refreshing right table that is not an input table (F1: the reference fails "
-          "the result when the right table reports a change that touches neither a match "
-          "column nor the stamp; for aj that is PARITY.md A13 and the known finding "
-          "aj-reference-failure)",
+    "V14": "keys, vector_aggregation: on a refreshing table no group-by, bucket or "
+           "select_distinct column, and no distinct, of a vector made by rolling_group or "
+           "by the distinct aggregation of a refreshing table, or by a minimum or maximum of "
+           "such a vector (F11: the reference fails or keeps stale values as for a "
+           "group_by's vectors, which PARITY.md A22 does not name; owner item 7.27)",
+    "V15": "add, usable: a column that PARITY.md A23 types differently (an element of a "
+           "condition between windows of strings, an ungroup of a minimum or maximum of "
+           "vectors of strings) is not read by a later operation (F12: the reference refuses "
+           "a filter on its java.lang.Object column that it takes on a string column)",
+    "V16": "build_agg: on a refreshing table no initial groups and no preserve_empty for an "
+           "aggregation grouped by a vector (F13: Oxhaven keeps the group of a vector that "
+           "changed as an empty group, which the reference's answer made again, the one "
+           "PARITY.md A22 is checked against, cannot have)",
+    "V17": "pick, pick_table: on a refreshing table the result of an aggregation or "
+           "select_distinct grouped by a vector is read by an ungroup only (F14: its groups "
+           "come in the order of their history, which PARITY.md A22 leaves out of its rule, "
+           "so an operation that reads rows in order cannot be checked against the "
+           "reference's answer made again)",
 }
-
 _INTEGERS = tuple(INT_BITS)
 # Element types of the vectors each request takes; see RESTRICTIONS for what is left out.
-_ROLLING_COMPARED = _INTEGERS + ("string",)  # V1, V2
-_CUM_COMPARED = _ROLLING_COMPARED + FLOATS  # V1
+_COMPARED = _INTEGERS + ("string",) + FLOATS  # V1
 _KEYED = _INTEGERS + ("string", "bool", "timestamp")  # V3
-_DISTINCT = _INTEGERS + ("string",)  # V1, V4
+_KEYED_LIVE = _INTEGERS + ("string",)  # V13
+_BUCKETS = _KEYED + FLOATS
+_DISTINCT = _INTEGERS + ("string",) + FLOATS  # V1
 # Operations whose result passes the cells of its source's vector columns on unchanged.
 _CELL_KEEPING = frozenset({
     "where", "filter", "head", "tail", "slice", "flatten", "reverse", "sort", "update",
     "update_view", "lazy_update", "update_by", "where_in", "snapshot",
 })
 _VECTOR_OPERATIONS = ("update_by", "agg_by", "select_distinct")
+_EXTREMES = ("cum_min", "cum_max", "rolling_min", "rolling_max")
+_ELEMENT_OF_A_CONDITION = re.compile(r"\?.*:.*\)\s*\[")
 _ROW_KEY = re.compile(r"\bk\b")
 
 
@@ -136,10 +143,23 @@ class _Third(_Second):
         self.asof: list[str] = []  # the results of as-of joins, in the order made
         # Per table: its vector columns that hold neither a null nor an empty vector.
         self.solid: dict[str, set[str]] = {}
-        # Per table: its columns that `ungroup` is not asked to take (V6, V10).
-        self.untyped: dict[str, set[str]] = {}
-        self.leaves: set[str] = set()  # tables that no later operation reads (V11)
         self.rekeyed: set[str] = set()  # refreshing sort results and what is made from them
+        # Per table: its vector columns made by rolling_group or by the distinct aggregation
+        # of a refreshing table, or by a minimum or maximum of one (V14); its minimums and maximums of vectors of strings; its columns that the
+        # reference types java.lang.Object and Oxhaven does not (V15).
+        self.windowed: dict[str, set[str]] = {}
+        self.string_extremes: dict[str, set[str]] = {}
+        self.objects: dict[str, set[str]] = {}
+        # Aggregations grouped by a vector and minimums or maximums of vectors: what an
+        # `ungroup` takes apart more often (PARITY.md A23, A24).
+        self.holders: set[str] = set()
+        self.ungrouping: set[str] | None = None  # the tables an `ungroup` picks from
+        # Refreshing results grouped by a vector, whose groups come in the order of their
+        # history, and their ungroups (V17).
+        self.regrouped: set[str] = set()
+        # Their key columns that are vectors of strings, which the reference keeps without
+        # an element type (V13).
+        self.string_keys: dict[str, set[str]] = {}
 
     # ------------------------------------------------------------ bookkeeping
 
@@ -149,6 +169,28 @@ class _Third(_Second):
         if kind in ("aj", "raj"):
             self.asof.append(name)
         types = dict(columns)
+        before = self.tables.get(op.get("source", ""))
+        if before is not None and (
+                kind == "agg_by" and any(before.type_of(c).startswith(LIST) for c in op["by"])
+                or kind == "update_by" and any(
+                    spec["op"].startswith(_EXTREMES)
+                    and before.type_of(rules.split_pair(pair)[1]).startswith(LIST)
+                    for spec in op["ops"] for pair in spec["columns"])):
+            self.holders.add(name)
+        source = self.tables.get(op.get("source", ""))
+        keys = op.get("by", []) if kind == "agg_by" else (
+            op["columns"] if kind == "select_distinct" else [])
+        if source is not None and (
+                source.live and any(source.type_of(c).startswith(LIST) for c in keys)
+                or kind == "ungroup" and source.name in self.regrouped):
+            self.regrouped.add(name)  # V17
+            if kind == "ungroup":
+                taken = op.get("columns") or [c for c, k in source.columns if k.startswith(LIST)]
+                strings = self.string_keys.get(source.name, set()) - set(taken)
+            else:
+                strings = {c for c in keys if source.type_of(c) == LIST + "string"}
+            if strings:
+                self.string_keys[name] = strings
         solid: set[str] = set()
         if kind == "group_by":
             solid = set(types) - set(op["by"])
@@ -163,36 +205,80 @@ class _Third(_Second):
                 solid |= {pair.split("=")[0].strip() for agg in op["aggs"]
                           if agg["agg"] == "group" for pair in agg["columns"]}
         self.solid[name] = {column for column in solid if types[column].startswith(LIST)}
-        untyped: set[str] = set()
         first = self.tables[op.get("source") or op.get("left") or name]
         if self.tables[name].live and (kind == "sort" or first.name in self.rekeyed):
             self.rekeyed.add(name)  # V12
-        untyped |= {column for column in self.untyped.get(first.name, ())
-                    if types.get(column) == first.type_of(column)
-                    or (kind == "ungroup" and column in types)}
-        if kind == "agg_by":  # V10
-            untyped |= {column for column in op["by"] if types[column].startswith(LIST)}
-            untyped |= {column for column, column_kind in columns
-                        if column_kind.startswith(LIST + LIST)}
-        if "right" in op:
-            carried = self.untyped.get(op["right"], set())
-            pairs = [pair.split("=") for pair in op.get("joins", [])]
-            untyped |= {out.strip() for out, column in pairs if column.strip() in carried}
-            if "joins" not in op:
-                untyped |= carried & set(types)
+        windowed = self._carried(self.windowed, op, first, types)
+        extremes = self._carried(self.string_extremes, op, first, types)
+        objects = self._carried(self.objects, op, first, types)
         if kind == "update_by":
             for spec in op["ops"]:
-                if spec["op"].startswith(("cum_min", "cum_max", "rolling_min", "rolling_max")):
-                    outs = [pair.split("=")[0].strip() for pair in spec["columns"]]
-                    untyped |= {out for out in outs if types[out] == LIST + "string"}
-                    if first.live and any(types[out].startswith(LIST) for out in outs):
-                        self.leaves.add(name)  # V11
-        self.untyped[name] = untyped
+                pairs = [rules.split_pair(pair) for pair in spec["columns"]]
+                if spec["op"].startswith("rolling_group"):
+                    windowed |= {out for out, _ in pairs}
+                elif spec["op"].startswith(_EXTREMES):
+                    windowed |= {out for out, made_from in pairs
+                                 if made_from in self.windowed.get(first.name, ())}
+                    extremes |= {out for out, _ in pairs if types[out] == LIST + "string"}
+                elif spec["op"].startswith("rolling_formula") and _ELEMENT_OF_A_CONDITION.search(
+                        spec["args"]["formula"]):
+                    objects |= {out for out, _ in pairs if types[out] == "string"}
+        if kind == "agg_by" and first.live:
+            windowed |= {rules.split_pair(pair)[0] for agg in op["aggs"]
+                         if agg["agg"] == "distinct" for pair in agg["columns"]}
+        if kind == "ungroup":
+            taken = op.get("columns") or [c for c in types if first.type_of(c).startswith(LIST)]
+            objects |= {column for column in taken
+                        if column in self.string_extremes.get(first.name, ())}
+        self.windowed[name] = windowed
+        self.string_extremes[name] = extremes
+        self.objects[name] = objects
+        if objects:  # V15
+            table = self.tables[name]
+            table.computed = frozenset(table.computed | objects)
+
+    def _carried(self, marks: dict[str, set[str]], op: dict[str, Any], first: _Table,
+                 types: dict[str, str]) -> set[str]:
+        """The columns of `marks[first]` that `op` passes on unchanged, and those of its right
+        table that a join adds."""
+        out = {column for column in marks.get(first.name, ())
+               if types.get(column) == first.type_of(column)}
+        if "right" in op:
+            right = self.tables[op["right"]]
+            carried = marks.get(right.name, set())
+            for pair in op.get("joins", []):
+                made, column = (part.strip() for part in pair.split("="))
+                if column in carried:
+                    out.add(made)
+            if "joins" not in op:
+                out |= {column for column in carried
+                        if types.get(column) == right.type_of(column)}
+        return out
+
+    def pick(self, wanted: Any) -> _Table | None:
+        return super().pick(lambda table: self.readable(table) and wanted(table))
+
+    def readable(self, table: _Table) -> bool:
+        """V17: a refreshing result grouped by a vector is read by an `ungroup` only."""
+        return (table.name not in self.regrouped or self.kind == "ungroup"
+                or self.ungrouping is not None)
 
     def has_lists(self, table: _Table, besides: tuple[str, ...] | list[str] = ()) -> bool:
-        if self.kind == "ungroup" and self.untyped.get(table.name):
-            return False  # V6, V10
+        if self.ungrouping is not None and table.name not in self.ungrouping:
+            return False
+        if table.name in self.string_keys:
+            return False  # V13
         return _Wide.has_lists(table, besides)
+
+    def build_ungroup(self, name: str, of: set[str] | None = None) -> bool:
+        if of is None and any(_Wide.has_lists(self.tables[t]) for t in self.holders) and (
+                self.chance(0.5)):
+            of = self.holders
+        self.ungrouping = of
+        try:
+            return super().build_ungroup(name)
+        finally:
+            self.ungrouping = None
 
     def results(self) -> list[str]:
         """The tables to compare: each operation's, or for a table with a column of arrays
@@ -264,23 +350,20 @@ class _Third(_Second):
             with_vectors = self.pick(lambda t: bool(self.vectors(t, tuple(_KEYED) + FLOATS)))
             if with_vectors is not None:
                 return with_vectors
-        for _ in range(20):
-            table = super().pick_table()
-            if table.name not in self.leaves:  # V11
-                return table
-        return self.tables[self.inputs[0]["name"]]
-
-    def pick(self, wanted: Any) -> _Table | None:
-        if not self.leaves:
-            return super().pick(wanted)
-        return super().pick(lambda table: table.name not in self.leaves and wanted(table))  # V11
+        table = super().pick_table()
+        return table if self.readable(table) else self.pick(lambda _: True) or table
 
     def keys(self, table: _Table, low: int, high: int,
              exclude: set[str] = frozenset()) -> list[str]:
         by = super().keys(table, low, high, exclude)
-        if (self.kind in _VECTOR_OPERATIONS and high > 0 and self.chance(0.5)
-                and not table.live):  # V5
-            pool = [c for c in self.vectors(table, _KEYED) if c not in exclude]  # V3
+        if self.kind in _VECTOR_OPERATIONS and high > 0 and self.chance(0.5):
+            # Buckets of update_by may be vectors of floats (PARITY.md A19); group-by and
+            # select_distinct columns may not (V3), nor on a refreshing table vectors of
+            # booleans or timestamps (V13).
+            elements = _BUCKETS if self.kind == "update_by" else (
+                _KEYED_LIVE if table.live else _KEYED)
+            pool = [c for c in self.vectors(table, elements) if c not in exclude
+                    and not (table.live and c in self.windowed.get(table.name, ()))]  # V14
             if pool:
                 column = self.rng.choice(pool)
                 by = [by[0], column] if by and high > 1 and self.chance(0.4) else [column]
@@ -330,21 +413,22 @@ class _Third(_Second):
             if key[0] != lc and key[1] != rc:
                 on.append(self.match(key))
                 used_right.add(key[1])
-        inputs = {table["name"] for table in self.inputs}
-        if kind == "raj" and on and not left.live and right.live and right.name not in inputs:
-            on = []  # C1
         rule = rng.choice([">=", ">"] if kind == "aj" else ["<=", "<"])
         if self.chance(0.02):
             rule = rng.choice(["<=", "<"] if kind == "aj" else [">=", ">"])  # refused
         on.append(f"{lc} {rule} {rc}")
         columns = list(left.columns) + ([(rc, right.type_of(rc))] if rc != lc else [])
-        joinable = [c for c, _ in right.columns if c not in used_right]
+        unmatched = [c for c, _ in right.columns if c not in used_right]
+        # One column of arrays of arrays per table: `results` takes one apart.
+        nested = any(kind.startswith(LIST + LIST) for _, kind in columns)
+        joinable = [c for c in unmatched
+                    if not (nested and right.type_of(c).startswith(LIST + LIST))]
         if not joinable:
             return False
         op: dict[str, Any] = {"name": name, "op": kind, "left": left.name, "right": right.name,
                               "on": on}
         taken = {c for c, _ in columns}
-        if self.chance(0.1) and not taken & set(joinable):
+        if self.chance(0.1) and not taken & set(joinable) and joinable == unmatched:
             # No `joins`: every right column that is not matched on.
             columns += [(c, right.type_of(c)) for c in joinable]
         else:
@@ -409,10 +493,10 @@ class _Third(_Second):
                            columns: list[tuple[str, str]]) -> dict[str, Any] | None:
         """A count where over vector columns, or the distinct vectors of one."""
         taken = {column for column, _ in columns}
-        pool = [c for c in self.vectors(source, _DISTINCT) if c not in taken]  # V1, V4
+        pool = [c for c in self.vectors(source, _DISTINCT) if c not in taken  # V1
+                and not (source.live and c in self.windowed.get(source.name, ()))]  # V14
         nested = any(kind.startswith(LIST + LIST) for _, kind in columns)
-        if (pool and not nested and "ungroup" in self.ops and not source.live  # V5
-                and self.chance(0.5)):
+        if pool and not nested and "ungroup" in self.ops and self.chance(0.5):
             # One per table: `results` reads it through an `ungroup` of that column.
             column = self.rng.choice(pool)
             out = self.fresh("A")
@@ -432,9 +516,14 @@ class _Third(_Second):
         if not super().build_agg(base, source):
             return False
         op = self.operations[-1]
+        if source.live and any(source.type_of(column).startswith(LIST) for column in op["by"]):
+            op.pop("initial_groups", None)  # V16
+            op.pop("preserve_empty", None)
         if "initial_groups" in op or op.get("preserve_empty"):
             # A group without rows has an empty vector.
             self.solid[op["name"]] &= set(op["by"])
+        if op["name"] in self.holders and "ungroup" in self.ops and self.chance(0.3):
+            self.build_ungroup(self.fresh("o"), {op["name"]})
         return True
 
     # ------------------------------------------------------------ update_by
@@ -466,7 +555,7 @@ class _Third(_Second):
                        used: set[str]) -> dict[str, Any] | None:
         rng = self.rng
         rolling = self.chance(0.5)
-        pool = self.vectors(source, _ROLLING_COMPARED if rolling else _CUM_COMPARED)
+        pool = self.vectors(source, _COMPARED)
         if not pool:
             return None
         which = rng.choice(["min", "max"])
@@ -528,11 +617,17 @@ class _Third(_Second):
             (f"({test} ? {window} : ({window}.size() > 2 ? {other} : "
              f"{window}.subVector(0, 1)))[0]", element),
         ]
-        if element == "string":  # V7, V9
+        if element == "string":  # V7
+            # An element of a condition between windows of strings is a java.lang.Object
+            # column to the reference (PARITY.md A23).
             forms = [(f"({test} ? {window} : {other}).size()", "int64"),
                      (f"({test} ? {other} : {window}).size()", "int64"),
                      (f"({test} ? {window} : ({window}.size() > 2 ? {other} : {window}))"
-                      f".size()", "int64")]
+                      f".size()", "int64"),
+                     (f"({test} ? {window} : {other})[0]", element),
+                     (f"({test} ? {other} : {window})[0]", element),
+                     (f"({test} ? {window} : ({window}.size() > 2 ? {other} : {window}))[0]",
+                      element)]
         if element in NUMERIC:
             forms += [
                 (f"first({test} ? {window} : {other})", element),
