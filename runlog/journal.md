@@ -1499,3 +1499,7 @@ Josh wrote "Do what's recommended" (2026-11-20 07:28 UTC, attached by the coordi
 - Serve, each as a recorded allowed difference in PARITY.md (task 14.1): 7.4 two column-array distances on a refreshing table; 7.6 update_by bucketed by float vectors; 7.10 rolling min/max of float vectors; 7.13 distinct of float vectors; 7.15 downsample by any long column.
 - Record as allowed differences and stop the fuzzer stepping around them (task 14.2): 7.19 (A13 names its chain case as a Deephaven failure, holds for raj; vectors of a refreshing group_by), 7.20 kept element types, 7.21 three ungroup requests, 7.22 the twelve calendar dates.
 Both tasks edit PARITY.md, so they run one after the other, and wait for a free builder (13.1 and 13.2a hold both). Sections 2 to 4 of the same file were not named in the approval and are left as they are.
+
+## 2026-11-20 07:31 UTC: Opus for every task from now on, except the Barrage client
+
+Josh is low on Fable usage and agreed (2026-11-20 07:31 UTC, via the coordinator) that every worker and task runs on Opus from now on. The one exception is task 13.1, the Rust Barrage client, which was started on Fable and stays there. Tasks 13.2b, 13.3, 14.1 and 14.2 will run on Opus; 13.2a already does. The orchestrating session itself is on Opus now.
