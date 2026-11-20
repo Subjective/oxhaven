@@ -427,12 +427,32 @@ fn redirected() -> Arc<dyn Table> {
     sort(&table, &[SortColumn::descending("K")]).unwrap()
 }
 
+/// Every `long` X column is taken, wherever its values are (owner item 7.15, allowed
+/// difference A21 of `PARITY.md`). Java takes one only if its source can be read as `long`
+/// (`ColumnSource#allowsReinterpret`), and refuses a formula column of a view with
+/// `Cannot use non-Instant, non-long x column`.
 #[test]
-#[should_panic(
-    expected = "unported: io.deephaven.engine.table.ColumnSource#allowsReinterpret: downsampling by the long column X"
-)]
-fn a_long_x_column_that_is_not_held_in_memory_is_not_ported() {
-    let _ = run_chart_downsample(&redirected(), &request("X", &["Y"], None));
+fn a_long_x_column_need_not_be_held_in_memory() {
+    // Through a redirection, as a sorted table reads its columns: the rows of the zoom
+    // range by `X` are those by `T`, which is `X` microseconds after `T0`.
+    let table = redirected();
+    let x_zoom = (500_000, 1_500_000);
+    let t_zoom = (T0 + x_zoom.0 * 1000, T0 + x_zoom.1 * 1000);
+    let by_x = run_chart_downsample(&table, &request("X", &["Y"], Some(x_zoom))).unwrap();
+    let by_t = run_chart_downsample(&table, &request("T", &["Y"], Some(t_zoom))).unwrap();
+    assert_eq!(keys_of(&*by_x), keys_of(&*by_t));
+    assert!(keys_of(&*by_x).len() > 2);
+
+    // A formula column of a view, which Java refuses.
+    let table = static_table(&columns(&rows(0..60)));
+    let viewed =
+        crate::ops::select::update_view(&table, &["W = X"], &oxhaven_expr::Compiler).unwrap();
+    for zoom in [None, Some(x_zoom)] {
+        let by_w = run_chart_downsample(&viewed, &request("W", &["Y", "Z"], zoom)).unwrap();
+        let by_x = run_chart_downsample(&table, &request("X", &["Y", "Z"], zoom)).unwrap();
+        assert_eq!(keys_of(&*by_w), keys_of(&*by_x), "{zoom:?}");
+        assert!(keys_of(&*by_w).len() > 2, "{zoom:?}");
+    }
 }
 
 #[test]
