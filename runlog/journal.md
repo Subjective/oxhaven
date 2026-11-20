@@ -1531,3 +1531,7 @@ Seven green checks on head 3b7ffcae in the run the label started (the first run'
 ## 2026-11-20 09:41 UTC: task 13.2b reported, pull request 186
 
 The Python console resolves URIs and opens Barrage sessions as Deephaven 42.9 does: the same tables and the same error messages in 38 calls of one script run on both consoles against a third Deephaven server. A subscription's wait gives up the graph lock, as Java's future does. Refused: TLS (7.24 open), csv+http(s), subscribing inside a cycle or under a script-held shared lock (new owner question 7.26; Java would wait for a cycle that cannot run). 7.23 is kept as Java does behind one constant. Task 13.3 (recorded scenarios and soak coverage) is next.
+
+## 2026-11-20 09:53 UTC: pull request 186 merged; task 13.3 started
+
+Seven green checks on head ab25739c. Main is at 299ac4c1. Remote tables now work from the Python console. Task 13.3 turns the manual comparisons of 13.1 and 13.2b into a recorded corpus that CI replays (an Oxhaven server as the remote, Java's console as the reference reading the same remote) and adds a remote chain to the soak test.
