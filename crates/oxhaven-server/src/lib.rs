@@ -18,6 +18,7 @@ pub mod storage;
 pub mod table;
 pub mod transport;
 pub mod update_graph;
+pub mod uri;
 pub mod web;
 pub mod wire_columns;
 

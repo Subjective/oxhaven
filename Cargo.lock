@@ -1445,6 +1445,7 @@ dependencies = [
  "oxhaven-parquet",
  "oxhaven-proto",
  "oxhaven-testkit",
+ "oxhaven-uri",
  "prost",
  "prost-reflect",
  "pyo3",

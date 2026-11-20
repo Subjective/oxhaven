@@ -35,7 +35,7 @@ impl std::fmt::Display for ClientError {
         match self {
             ClientError::Config(problem) => write!(f, "invalid client configuration: {problem}"),
             ClientError::TlsNotAvailable => f.write_str(
-                "TLS connections are not ported yet: \
+                "TLS connections to remote servers are not ported yet: \
                  io.deephaven.client.impl.ChannelHelper#channelBuilder (useTransportSecurity)",
             ),
             ClientError::Connect(problem) => write!(f, "cannot connect: {problem}"),
