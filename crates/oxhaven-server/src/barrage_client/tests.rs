@@ -349,9 +349,9 @@ async fn a_ticking_table_is_followed_row_for_row() {
             .subscribe(
                 &ticket,
                 SubscriptionOptions {
-                    use_deephaven_nulls: seed % 2 == 0,
+                    use_deephaven_nulls: seed.is_multiple_of(2),
                     // a long interval makes the server send several cycles as one message
-                    min_update_interval_ms: if seed % 3 == 0 { 30 } else { 1 },
+                    min_update_interval_ms: if seed.is_multiple_of(3) { 30 } else { 1 },
                     batch_size: if seed % 4 == 1 { 7 } else { 0 },
                     ..PROMPT
                 },

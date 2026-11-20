@@ -82,14 +82,13 @@ struct Wire {
 
 impl Wire {
     fn new(definition: &TableDefinition, seed: u64) -> Self {
-        let schema =
-            RemoteSchema::of(arrow_schema(definition, &SchemaContext::default())).unwrap();
+        let schema = RemoteSchema::of(arrow_schema(definition, &SchemaContext::default())).unwrap();
         assert_eq!(&schema.definition, definition);
         Wire {
             schema,
             options: WireOptions {
-                use_deephaven_nulls: seed % 2 == 0,
-                columns_as_list: seed % 3 == 0,
+                use_deephaven_nulls: seed.is_multiple_of(2),
+                columns_as_list: seed.is_multiple_of(3),
                 preview_list_length_limit: 0,
                 batch: BatchOptions {
                     batch_size: [0, 1, 3, 1000][(seed % 4) as usize],
@@ -146,7 +145,11 @@ fn assert_same(sent: &BarrageMessage, read: &RemoteMessage, context: &str) {
     assert_eq!(read.rows_included, sent.rows_included, "{context}");
     assert_eq!(read.add_columns.len(), sent.add_columns.len(), "{context}");
     for (index, (read, sent)) in read.add_columns.iter().zip(&sent.add_columns).enumerate() {
-        assert_eq!(read.as_ref(), sent.as_ref(), "{context} added column {index}");
+        assert_eq!(
+            read.as_ref(),
+            sent.as_ref(),
+            "{context} added column {index}"
+        );
     }
     assert_eq!(read.mod_columns.len(), sent.mod_columns.len(), "{context}");
     for (index, (read, sent)) in read.mod_columns.iter().zip(&sent.mod_columns).enumerate() {
@@ -315,7 +318,9 @@ fn messages_out_of_place_are_refused_by_name() {
     assert!(reader.is_mid_message());
     let refused = reader.accept(&halves[0]).unwrap_err();
     assert!(
-        refused.to_string().contains("Previous message was not complete"),
+        refused
+            .to_string()
+            .contains("Previous message was not complete"),
         "{refused}"
     );
 

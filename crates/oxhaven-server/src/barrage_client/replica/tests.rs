@@ -154,7 +154,7 @@ fn the_copy_follows_random_changes_whether_one_or_several_arrive_per_cycle() {
         let checker = ConsistencyChecker::attach(copy.clone());
         let mut random = RandomUpdates::new(seed);
         // some seeds grow the table past the block of a column source
-        let target = if seed % 10 == 0 { 2000 } else { 12 };
+        let target = if seed.is_multiple_of(10) { 2000 } else { 12 };
         for cycle in 0..20 {
             let messages = 1 + (seed + cycle) % 3;
             for _ in 0..messages {
