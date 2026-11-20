@@ -1,0 +1,10 @@
+{
+ "format": 1,
+ "replay-remote": {
+  "remote_app_fields": {"state": "clean"},
+  "remote_blink": {"state": "clean"},
+  "remote_errors": {"state": "clean"},
+  "remote_scope_static": {"state": "clean"},
+  "remote_ticking": {"state": "clean"}
+ }
+}
