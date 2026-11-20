@@ -1535,3 +1535,7 @@ The Python console resolves URIs and opens Barrage sessions as Deephaven 42.9 do
 ## 2026-11-20 09:53 UTC: pull request 186 merged; task 13.3 started
 
 Seven green checks on head ab25739c. Main is at 299ac4c1. Remote tables now work from the Python console. Task 13.3 turns the manual comparisons of 13.1 and 13.2b into a recorded corpus that CI replays (an Oxhaven server as the remote, Java's console as the reference reading the same remote) and adds a remote chain to the soak test.
+
+## 2026-11-20 11:09 UTC: task 14.2 reported, pull request 187
+
+PARITY.md: A13 now names its chain case as a Deephaven failure and covers raj; A22 to A25 record 7.19 (b), 7.20, 7.21 and 7.22 (including (f), the descriptions, which 7.22 lists). Checked: the only removed PARITY.md lines are A13's old text. The fuzzer draws these cases and the 14.1 items. The check from scratch was weaker than intended because Java memoizes results; it now starts from new views of the inputs. One relaxation reviewed and accepted: differs_from_fresh no longer compares column metadata, which is fixed when a table is made and compared in full at step 0. New findings F10 to F15; owner questions 7.27 (rolling_group and distinct vectors, like A22) and 7.28 (Java ignores null fill in one ungroup). Size: too large; the check-from-scratch machinery should have been its own task.
