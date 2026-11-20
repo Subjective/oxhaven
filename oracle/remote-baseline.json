@@ -5,6 +5,6 @@
   "remote_blink": {"state": "clean"},
   "remote_errors": {"state": "clean"},
   "remote_scope_static": {"state": "clean"},
-  "remote_ticking": {"state": "clean"}
+  "remote_ticking": {"state": "differs", "kinds": ["column_metadata:inputtable.isKey", "column_metadata:inputtable.isValue"], "tables": ["b_log", "b_sorted", "b_src", "r_log", "r_sorted", "r_src", "snap", "srt", "w"], "why": "a copy of a remote table does not keep the remote's schema: Java keeps it as the attribute BarrageSchema, sends its field metadata (inputtable.isKey, inputtable.isValue) for the copy, and passes it on through where and sort; values are equal (tasks/13.3-remote-tables-tests.md, Findings)"}
  }
 }
