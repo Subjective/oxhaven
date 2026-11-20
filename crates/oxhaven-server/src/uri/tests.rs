@@ -421,7 +421,9 @@ async fn a_subscription_under_the_shared_lock_lets_cycles_run() {
     let resolvers = Arc::new(UriResolvers::new(&local.state));
     let s = format!("dh+plain://127.0.0.1:{}/scope/t", remote.address.port());
     let graph = local.state.graph.clone();
-    let copy = tokio::task::spawn_blocking(move || {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    // a thread of its own, which a lost lock leaves stuck without stopping the test
+    std::thread::spawn(move || {
         let stepped = graph.stepped();
         stepped.acquire_shared();
         // a cycle that waits for the lock, so no new shared hold is given out
@@ -433,10 +435,11 @@ async fn a_subscription_under_the_shared_lock_lets_cycles_run() {
         let copy = resolvers.resolve(&s);
         stepped.release_shared();
         cycle.join().unwrap();
-        copy
-    })
-    .await
-    .unwrap();
+        let _ = sender.send(copy);
+    });
+    let copy = receiver
+        .recv_timeout(PATIENCE)
+        .expect("the subscription kept the cycle out, and the cycle the subscription");
     let copy = table_of(copy.unwrap());
     assert_eq!(diff_tables(fixed.as_ref(), copy.as_ref()), None);
 }
