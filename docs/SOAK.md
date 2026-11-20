@@ -39,7 +39,8 @@ VIRTUAL_ENV=/tmp/soak-venv /tmp/soak-venv/bin/python bench/soak.py run \
 `--warmup` (seconds, instead of the profile's), `--seed` (default 1), `--cycle-ms`,
 `--round-seconds` (default 2), `--console python|none` (default: what the server was built
 with), `--huge-pages off|keep` (default off; "Memory" below), `--server-log <file>`,
-`--step-timeout`, `--inject` and `--skip` (both below). A server
+`--step-timeout`, `--inject` and `--skip` (both below), `--remote on|off` and `--remote-log
+<file>` (the remote chain, below). A server
 built without the `python` feature can be soaked too; the checks that need the console say
 that they did not run.
 
@@ -84,6 +85,15 @@ to end, so the load is the same from the first round to the last.
 - **A console session** (if the server has a console): each round a script makes and drops
   tables in a function, checks their sizes with `assert`, and assigns a ticking table to a
   global that held last round's.
+- **A remote chain** (if the server has a console; `--remote off` leaves it out): a second
+  server, the same binary on another free port, whose console subscribes to `trades` of the
+  first through `deephaven.barrage.barrage_session` with the first's key, as a user of
+  remote tables does (`crates/oxhaven-server/src/barrage_client`). The first server is the
+  remote; the second is its Barrage client and holds the copy for the whole run. A client
+  session of the second
+  server builds four of the chains above on that copy: `where`, the aggregation by `Sym`,
+  `sort` + `update_by`, and `sort_descending` + `head`. Its log goes to `--remote-log`
+  (default `remote-server.log` beside `--server-log`).
 
 ## What is checked
 
@@ -139,6 +149,13 @@ Checked every round, so a result is compared about 1,300 times in a long run.
   `TableUpdate.modified()`: that reads the rows of the client's `all_modified_rows`, which
   leaves a row out when only some columns modify it and a later column's rows have a gap
   there ("What it has found" below).
+- **The remote copy and its chains.** After the barrier on the first server, the second
+  server's copy of `trades` must come to equal a snapshot of `trades` (within 15 seconds),
+  exactly as the Barrage copy above. Then, after a barrier on the second server (the copy
+  has arrived, so a cycle of the second server that starts after the barrier has run its
+  chains on it), each of the four chains on the copy must equal the same operations on the
+  snapshot, made on the first server: the comparison of the chains above, across two
+  servers and a Barrage connection between them.
 - **The rollup**, with a console: its root row and first level, read through a view as the
   web client reads them, against the aggregation of a snapshot of `trades`.
 
@@ -204,6 +221,11 @@ third of the run may be at most 8 above the median of the first third after the 
 connection or a thread per session that is never given back shows here before it shows in
 memory.
 
+The second server of the remote chain is sampled the same way each round, and held to the
+same limits: the slope of its resident size, and its file descriptors and threads. Its
+memory has another source of growth to show: what the copy of `trades` keeps of rows that
+the first server has deleted. A process that is gone is a violation at once.
+
 **The count of live exports and sessions is not checked**, because the server does not expose
 it: there is no call that says how many sessions exist or how many exports a session
 holds. What would be needed is a small diagnostic, for example
@@ -249,19 +271,23 @@ is why the churn's tables are large.
 ### Shutdown
 
 After the last round the long-lived sessions are closed and the server gets SIGINT. It must
-exit with code 0 within 15 seconds.
+exit with code 0 within 15 seconds. The second server of the remote chain gets SIGINT first,
+while the first still serves its subscription, under the same rule, and its log is read for
+errors as the first's is.
 
 ## Proving that the checks can fail
 
 - `soak.py selftest` runs the judging on made-up series: a steady one and one with spikes must
   pass; a leak of 60 MB per hour, processor time up by half, barriers twenty times slower,
-  climbing file descriptors, a starved subscriber, cycles that stop or come ever later must each
-  be reported under their own name; and the comparison must tell equal tables from ones that
+  climbing file descriptors, a starved subscriber, cycles that stop or come ever later, and a
+  second server that leaks or keeps its files open must each be reported under their own name; and the comparison must tell equal tables from ones that
   differ in a value, a row, a type or an order. CI runs it before each soak run.
 - `--inject leak` keeps every round's tables and session: the memory, file descriptor and
   processor time invariants fail.
 - `--inject mismatch` recomputes round 3 from inputs that lack one row: the correctness check
-  fails for every chain that the row reaches.
+  fails for every chain that the row reaches. The remote chain's snapshot of that round lacks
+  the row as well: `remote copy of trades` fails, and so does each remote chain that the row
+  reaches (in a run of task 13.3, three of the four; the last row is not in the `head`).
 - `--inject stall --step-timeout 8` stops making progress in round 3: the watchdog ends the run.
 
 ## Reading a failure
@@ -284,12 +310,15 @@ the long-lived graph and not in what comes and goes.
 | `[correctness] pipeline <name>` | a ticking result differs from the recomputation; the detail has the first differing row of both | the operation's incremental path in `crates/oxhaven-engine/src/ops`; run with the same `--seed` to get the same writes |
 | `[correctness] time table check …`, `time table tail` | a chain fed by the clock, the blink count or the ring table is wrong in one cycle | time table, blink and ring sources |
 | `[correctness] barrage replica of agg_by_sym` | the updates sent to a subscriber do not add up to the table | `crates/oxhaven-server/src/barrage` |
+| `[correctness] remote copy of trades` | the second server's copy of `trades` does not come to equal the first server's table | the Barrage client, `crates/oxhaven-server/src/barrage_client`, and `remote-server.log` |
+| `[correctness] remote pipeline <name>` | the copy is right and a chain on it is not: an operation over a table that a Barrage client fills | the operation, then how the copy announces its changes (shifts, modified columns) |
 | `[correctness] rollup view` | the rollup's first levels differ from the aggregation | `docs/HIERARCHICAL.md` |
 | `[correctness] churn …`, `blink input aggregation` | a result differs from what the driver computed itself | the operations named in the detail |
 | `[requests] <step> failed` | a request the workload expects to succeed failed; the detail has the gRPC code and message | the server log (`--server-log`) at that time |
 | `[requests] the server logged errors` | an `ERROR` line or a panic in the log | the log |
 | `[memory] resident memory grows` | the fitted slope is above the limit | plot `rss_kb` of `rounds`; a staircase points at the abandoned sessions (every eighth round), a ramp at the churn or the long-lived graph. Rerun with `--console none` to take the console out. With `--huge-pages keep`, look at `huge_kb` first: if it rose as much as `rss_kb`, the kernel gave huge pages and the server holds no more than before |
 | `[memory] fds …`, `threads …` | connections or threads are not given back | sessions and subscriptions |
+| `[memory] … of the second server …`, `[liveness] the second server process is gone`, `[shutdown] the second server did not stop cleanly`, `[requests] the second server logged errors` | the same, in the remote chain's server | `remote_*` of `rounds`, and `remote-server.log` |
 | `[liveness] a cycle took too long to come`, `cycles get slower`, `a barrier took too long`, `barriers get slower` | the update graph falls behind | `cycle_gap_s` and `barrier_s` of `rounds` against `load`: a single spike with a high load average is the machine |
 | `[liveness] processor time per round climbs` | the same work costs more as the run goes on | `cpu_round_s` of `rounds` against `control_s`: if the driver's fixed work rose at the same time, it is the machine. A server started beside the old one settles it: the same cost for both is the machine |
 | `[liveness] stalled in step: <step>` | a request never returned | the stacks printed above it, and the server log |
@@ -364,3 +393,6 @@ run. The copy now takes the cells per column and does not use the union.
   ring table, no rollup.
 - The count of live exports and sessions, as said under "Memory".
 - The rollup is compared at its root and first level only, in the default expansion.
+- The remote chain subscribes to the whole of one keyed table; no viewport, no blink or
+  append-only remote, no reconnection after the remote stops. The oracle's remote-table
+  corpus covers those outcomes once each (`oracle/README.md`, "The remote-table corpus").
