@@ -56,8 +56,14 @@ async fn remote() -> Remote {
     scope
         .put("ticking", ExportValue::Table(ticking.table()))
         .unwrap();
-    scope.put("fixed", ExportValue::Table(fixed.clone())).unwrap();
-    let app = server.state.applications.create("my_app", "My app").unwrap();
+    scope
+        .put("fixed", ExportValue::Table(fixed.clone()))
+        .unwrap();
+    let app = server
+        .state
+        .applications
+        .create("my_app", "My app")
+        .unwrap();
     app.set_field("fixed", ExportValue::Table(fixed.clone()))
         .unwrap();
     Remote {
@@ -113,7 +119,11 @@ assert resolve("dh://host_name/scope/local_value") is local_value
     }
     for name in ["field", "from_field"] {
         let copy = python.table(name);
-        assert_eq!(diff_tables(remote.fixed.as_ref(), copy.as_ref()), None, "{name}");
+        assert_eq!(
+            diff_tables(remote.fixed.as_ref(), copy.as_ref()),
+            None,
+            "{name}"
+        );
     }
 
     // both subscriptions tick; the snapshot does not
@@ -134,7 +144,10 @@ assert resolve("dh://host_name/scope/local_value") is local_value
 
     // closing the session fails its tables, not those of the resolver's own session
     python.run("session.close()\nsession.close()");
-    eventually("the closed session's table fails", || subscribed.is_failed()).await;
+    eventually("the closed session's table fails", || {
+        subscribed.is_failed()
+    })
+    .await;
     assert!(!resolved.is_failed());
     python.run("assert subscribed.is_failed and not resolved.is_failed");
 }
@@ -144,7 +157,11 @@ fn raised(python: &Python, code: &str, message: &str) -> String {
     let code = format!(
         "from deephaven.uri import resolve\nfrom deephaven.barrage import barrage_session\n{code}"
     );
-    let error = python.console.evaluate(&code).error.expect("the code fails");
+    let error = python
+        .console
+        .evaluate(&code)
+        .error
+        .expect("the code fails");
     let last = error.trim_end().lines().last().unwrap().to_string();
     let prefix = format!("deephaven.dherror.DHError: {message} : ");
     last.strip_prefix(&prefix)
@@ -189,13 +206,15 @@ async fn failures_are_dherrors_with_the_references_messages() {
     const TLS: &str = "TLS connections to remote servers are not ported yet: \
                        io.deephaven.client.impl.ChannelHelper#channelBuilder \
                        (useTransportSecurity)";
-    assert_eq!(resolving(&format!("dh://127.0.0.1:{port}/scope/fixed")), TLS);
+    assert_eq!(
+        resolving(&format!("dh://127.0.0.1:{port}/scope/fixed")),
+        TLS
+    );
     let missing = resolving(&format!("dh+plain://127.0.0.1:{port}/scope/missing"));
     assert!(missing.starts_with("NotFound: "), "{missing}");
 
-    let session = |arguments: &str| {
-        raised(&python, &format!("barrage_session({arguments})"), SESSION)
-    };
+    let session =
+        |arguments: &str| raised(&python, &format!("barrage_session({arguments})"), SESSION);
     assert_eq!(session(&format!("'127.0.0.1', {port}, use_tls=True")), TLS);
     assert_eq!(
         session(&format!("'127.0.0.1', {port}, tls_root_certs=b'pem'")),

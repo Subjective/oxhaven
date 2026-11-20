@@ -53,7 +53,15 @@ fn an_authority_query_and_fragment() {
         "http://[::1]"
     );
     assert_eq!(
-        built(Some("http"), None, Some("[::1]"), Some(1), Some("/"), None, None),
+        built(
+            Some("http"),
+            None,
+            Some("[::1]"),
+            Some(1),
+            Some("/"),
+            None,
+            None
+        ),
         "http://[::1]:1/"
     );
 }

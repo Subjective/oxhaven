@@ -4,13 +4,13 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use arrow::array::Int32Array;
+use arrow::datatypes::{DataType, Field, Schema};
+use arrow::record_batch::RecordBatch;
 use oxhaven_contracts::graph::{UpdateGraph, UpdateSource};
 use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
-use arrow::array::Int32Array;
-use arrow::datatypes::{DataType, Field, Schema};
-use arrow::record_batch::RecordBatch;
 use oxhaven_engine::table::in_memory_table;
 use oxhaven_testkit::{definition, diff_tables, ints, strings, ScriptedTable, TableChange};
 
@@ -45,7 +45,10 @@ fn a_resolver_is_chosen_by_scheme_then_by_shape() {
             "dh+plain://gateway?uri=dh%2Bplain%3A%2F%2Fother%2Fscope%2Fx",
             Ok(BarrageTable),
         ),
-        ("dh+plain://gateway?uri=https%3A%2F%2Fexample.com%2Fx", Ok(BarrageTable)),
+        (
+            "dh+plain://gateway?uri=https%3A%2F%2Fexample.com%2Fx",
+            Ok(BarrageTable),
+        ),
         // owner question 7.23: no host Java can read, so local
         ("dh://host_name/scope/t", Ok(QueryScope)),
         ("dh://host:99999999999/app/a/field/f", Ok(Application)),
@@ -85,7 +88,10 @@ fn a_resolver_is_chosen_by_scheme_then_by_shape() {
 #[test]
 fn a_string_that_is_no_uri_is_an_illegal_argument() {
     for (s, message) in [
-        ("dh:///scope/a b", "Illegal character in path at index 13: dh:///scope/a b"),
+        (
+            "dh:///scope/a b",
+            "Illegal character in path at index 13: dh:///scope/a b",
+        ),
         ("dh:", "Expected scheme-specific part at index 3: dh:"),
         ("dh://", "Expected authority at index 5: dh://"),
     ] {
@@ -120,8 +126,14 @@ async fn names_are_checked_by_the_resolver_chosen() {
 #[test]
 fn an_authority_without_a_host_is_found() {
     let authority = |s: &str| unread_authority(&Uri::parse(s).unwrap()).map(str::to_string);
-    assert_eq!(authority("dh://host_name/scope/t").as_deref(), Some("host_name"));
-    assert_eq!(authority("dh://h:99999999999/scope/t").as_deref(), Some("h:99999999999"));
+    assert_eq!(
+        authority("dh://host_name/scope/t").as_deref(),
+        Some("host_name")
+    );
+    assert_eq!(
+        authority("dh://h:99999999999/scope/t").as_deref(),
+        Some("h:99999999999")
+    );
     assert_eq!(authority("dh://host/scope/t"), None);
     assert_eq!(authority("dh:///scope/t"), None);
     assert_eq!(authority("dh:/scope/t"), None);
@@ -137,9 +149,15 @@ fn remote_tickets_and_the_forms_java_does_not_resolve() {
             .map_err(|e| e.to_string())
     };
     assert_eq!(ticket("dh+plain://h/scope/t").unwrap(), "s/t");
-    assert_eq!(ticket("dh+plain://h/app/my.app/field/f").unwrap(), "a/my.app/f/f");
+    assert_eq!(
+        ticket("dh+plain://h/app/my.app/field/f").unwrap(),
+        "a/my.app/f/f"
+    );
     // the target's host is the application id
-    assert_eq!(ticket("dh://server.example/field/f").unwrap(), "a/server.example/f/f");
+    assert_eq!(
+        ticket("dh://server.example/field/f").unwrap(),
+        "a/server.example/f/f"
+    );
     assert_eq!(
         ticket("dh+plain://g?uri=dh%2Bplain%3A%2F%2Fother%2Fscope%2Fx").unwrap_err(),
         "java.lang.UnsupportedOperationException: Proxying not supported yet, see \
@@ -159,10 +177,16 @@ fn a_csv_uri_is_rebuilt_as_a_file_or_web_url() {
     assert_eq!(rebuilt("csv:/tmp/x.csv").unwrap(), "file:/tmp/x.csv");
     assert_eq!(rebuilt("csv+file:///tmp/x.csv").unwrap(), "file:/tmp/x.csv");
     // decoded, then quoted again: Java reads the file `/tmp/a%20b.csv`
-    assert_eq!(rebuilt("csv:///tmp/a%20b.csv").unwrap(), "file:/tmp/a%20b.csv");
+    assert_eq!(
+        rebuilt("csv:///tmp/a%20b.csv").unwrap(),
+        "file:/tmp/a%20b.csv"
+    );
     assert_eq!(rebuilt("csv:///tmp/%C3%A9.csv").unwrap(), "file:/tmp/é.csv");
     // every `%` of the decoded path is quoted: Java reads the file `/tmp/a%2541.csv`
-    assert_eq!(rebuilt("csv:///tmp/a%2541.csv").unwrap(), "file:/tmp/a%2541.csv");
+    assert_eq!(
+        rebuilt("csv:///tmp/a%2541.csv").unwrap(),
+        "file:/tmp/a%2541.csv"
+    );
     assert_eq!(
         rebuilt("csv+https://user@example.com:8443/a%20b.csv?q=1#f").unwrap(),
         "https://user@example.com:8443/a%20b.csv?q=1#f"
@@ -182,7 +206,10 @@ fn a_csv_uri_is_rebuilt_as_a_file_or_web_url() {
 fn a_target_without_a_port_has_its_schemes_default() {
     let config = |s: &str| client_config(&DeephavenTarget::parse(s).unwrap());
     let plain = config("dh+plain://h").unwrap();
-    assert_eq!((plain.host.as_str(), plain.port, plain.use_tls), ("h", 10000, false));
+    assert_eq!(
+        (plain.host.as_str(), plain.port, plain.use_tls),
+        ("h", 10000, false)
+    );
     let secure = config("dh://h").unwrap();
     assert_eq!((secure.port, secure.use_tls), (443, true));
     assert_eq!(config("dh+plain://[::1]:7").unwrap().host, "[::1]");
@@ -249,7 +276,11 @@ async fn local_variables_and_fields_resolve_and_missing_ones_are_none() {
         let found = table_of(resolve(&resolvers, s).await.unwrap());
         assert!(Arc::ptr_eq(&found, &x), "{s}");
     }
-    let field = table_of(resolve(&resolvers, "dh:///app/my_app/field/f").await.unwrap());
+    let field = table_of(
+        resolve(&resolvers, "dh:///app/my_app/field/f")
+            .await
+            .unwrap(),
+    );
     assert!(Arc::ptr_eq(&field, &x));
     for s in [
         "dh:///scope/missing",
@@ -287,20 +318,37 @@ async fn remote_tables_are_subscribed_through_one_session_per_target() {
         .put("ticking", ExportValue::Table(ticking.clone()))
         .unwrap();
     let fixed = fixed(&[Some(7), None]);
-    let app = remote.state.applications.create("my_app", "My app").unwrap();
-    app.set_field("fixed", ExportValue::Table(fixed.clone())).unwrap();
+    let app = remote
+        .state
+        .applications
+        .create("my_app", "My app")
+        .unwrap();
+    app.set_field("fixed", ExportValue::Table(fixed.clone()))
+        .unwrap();
     // `dh+plain://<host>/field/<name>` names a field of the application whose id is the host
-    let by_host = remote.state.applications.create("127.0.0.1", "By host").unwrap();
+    let by_host = remote
+        .state
+        .applications
+        .create("127.0.0.1", "By host")
+        .unwrap();
     by_host
         .set_field("fixed", ExportValue::Table(fixed.clone()))
         .unwrap();
 
     let base = format!("dh+plain://127.0.0.1:{port}");
-    let copy = table_of(resolve(&resolvers, &format!("{base}/scope/ticking")).await.unwrap());
+    let copy = table_of(
+        resolve(&resolvers, &format!("{base}/scope/ticking"))
+            .await
+            .unwrap(),
+    );
     assert!(copy.is_refreshing());
     assert_eq!(diff_tables(ticking.as_ref(), copy.as_ref()), None);
     for path in ["app/my_app/field/fixed", "field/fixed"] {
-        let field = table_of(resolve(&resolvers, &format!("{base}/{path}")).await.unwrap());
+        let field = table_of(
+            resolve(&resolvers, &format!("{base}/{path}"))
+                .await
+                .unwrap(),
+        );
         assert_eq!(diff_tables(fixed.as_ref(), field.as_ref()), None, "{path}");
     }
     assert_eq!(resolvers.sessions().len(), 1);
@@ -318,9 +366,12 @@ async fn remote_tables_are_subscribed_through_one_session_per_target() {
     let missing = resolve(&resolvers, &format!("{base}/scope/missing")).await;
     assert!(missing.unwrap_err().starts_with("NotFound: "));
     // another spelling of the same server is another target, as in Java
-    resolve(&resolvers, &format!("dh+plain://localhost:{port}/scope/ticking"))
-        .await
-        .ok();
+    resolve(
+        &resolvers,
+        &format!("dh+plain://localhost:{port}/scope/ticking"),
+    )
+    .await
+    .ok();
     assert!(resolvers.sessions().len() >= 1);
 }
 
@@ -335,7 +386,10 @@ async fn remote_failures_come_before_or_without_a_session() {
             "dh%2Bplain%3A%2F%2Fother%2Fscope%2Fx",
             "Proxying not supported yet",
         ),
-        ("https%3A%2F%2Fexample.com%2Fx", "Remote custom URIs not supported yet"),
+        (
+            "https%3A%2F%2Fexample.com%2Fx",
+            "Remote custom URIs not supported yet",
+        ),
     ] {
         let s = format!("dh+plain://127.0.0.1:{port}?uri={inner}");
         let refused = resolve(&resolvers, &s).await.unwrap_err();

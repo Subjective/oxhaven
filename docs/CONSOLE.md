@@ -271,7 +271,8 @@ Stubbed or missing, each with its task:
 | The rest of the Python API | absent: `ImportError` or `AttributeError` | 6.4 to 6.12 |
 
 Done since: the log stream and `GetHeapInfo` (task 6.14, "The log stream" and "The memory
-figures"), stopping a running command (task 6.15), completion (task 6.13, "Completion").
+figures"), stopping a running command (task 6.15), completion (task 6.13, "Completion"),
+`deephaven.uri` and `deephaven.barrage` (task 13.2b, "Remote tables and URIs").
 
 ## The query scope
 
@@ -984,6 +985,67 @@ Differences from Java:
 | The default directory `app.d` in the configuration directory | used when the property is not set | no counterpart: this server has no configuration directory |
 | `ApplicationState.Factory` applications (Java's `GcApplication`, which has no fields) | started first | none |
 | Error text | Java's exception with its stack | the exception's first line, after the path of the `.app` file |
+
+## Remote tables and URIs
+
+Task 13.2b; `crates/oxhaven-server/src/uri/` (the resolvers), `console/python/remote.rs`
+and the modules `deephaven.uri` and `deephaven.barrage`. The other server is reached with
+the Barrage client of task 13.1 (`crate::barrage_client`). What Java does was read in
+`ResolveTools`, `UriResolvers`, the resolvers of `io.deephaven.server.uri` and the
+reference's `uri.py` and `barrage.py`, and observed on Deephaven 42.9 with
+`tasks/13.2b-uri-python/check.py`, which runs one script in a Deephaven console and in this
+one against a third server (a Deephaven one) and compares the tables and the errors.
+
+- **`deephaven.uri.resolve(uri)`** parses the string as `java.net.URI` does (task 13.2a's
+  `oxhaven-uri`), then picks the one resolver registered for its exact scheme that takes its
+  shape, as Java's `UriResolvers`; none is
+  `UnsupportedOperationException: Unable to find resolver for uri '<uri>'`. The five:
+
+  | URI | Resolves to |
+  | --- | --- |
+  | `dh:///scope/<name>` | the variable of the console, or `None` |
+  | `dh:///app/<id>/field/<name>` | the application field, or `None` |
+  | `dh+plain://host[:port]/scope/<name>`, `/app/<id>/field/<name>`, `/field/<name>` (the host is the application id) | a subscription to the table of that server: a refreshing table of this server's update graph |
+  | `csv:`, `csv+file:`, `file+csv:` (and `csv+http(s):`, `http(s)+csv:`) | the CSV file, read by `oxhaven-csv` as `deephaven.csv.read` reads it |
+  | `parquet:///<path>` | the Parquet file or directory, read by `oxhaven-parquet` |
+
+  Every error is a `DHError` with the reference's message and the Java exception's text
+  where Java throws one (`Invalid variable name 'a/b'`, `Illegal character in path at index
+  13: ...`, the proxied and custom URI refusals with their issue link).
+- **One Barrage session per target** (scheme, host as written, port), made with
+  `Anonymous` the first time a target is resolved and kept for the life of the server, as
+  Java keeps it (deephaven-core#1482, #3421). A connection that fails is not kept.
+- **`deephaven.barrage`**: `barrage_session(host, port=10000, auth_type="Anonymous",
+  auth_token="", use_tls=False, tls_root_certs=None, extra_headers=None)` makes a new
+  session each call; `BarrageSession.subscribe(ticket)`, `snapshot(ticket)`, `close()`, and
+  `with`. A ticket is `bytes`, or a `str` taken as its UTF-8 bytes (`TableSpec#ticket`).
+  Closing a session fails the tables it subscribed to on the next cycle.
+- **Waiting.** A subscription is complete only after a cycle of this server has applied
+  what arrived, so the command's wait for it gives the update graph's lock up and takes it
+  again, as a blocking write to an input table does ("Input tables written from a
+  command"; Java waits on a condition of its exclusive lock). What the command read of
+  refreshing tables before the call may have changed after it. A snapshot keeps the lock.
+  The client runs on two threads of its own for the life of the process; a remote change
+  asks this server's graph for a cycle at once.
+
+Refused, each with a text that says why:
+
+| Case | Java | This server |
+| --- | --- | --- |
+| `dh://` (TLS), `use_tls=True` | connects with TLS | `TLS connections to remote servers are not ported yet: ...` (owner question 7.24) |
+| A subscription inside an update cycle (a listener) or under a shared lock that Python code took itself | waits for a cycle that cannot run (not tried) | refused: the subscription waits for an update cycle (owner question 7.26) |
+| `csv+http(s):` | fetches the URL from the server | `not ported yet: io.deephaven.csv.CsvTools#readCsv(URL, CsvSpecs)`, as `deephaven.csv.read` refuses it |
+
+Kept as Java has it, and asked of the owner as question 7.23: a `dh://` URI whose host
+Java cannot read (`dh://host_name/scope/t`, `dh://h:99999999999/...`) is a local URI, its
+authority dropped, so it resolves to this console's variable; `parquet://` and the CSV
+schemes drop such an authority too. `UNREAD_HOST_IS_LOCAL` in `uri/mod.rs` is the one switch.
+
+Other differences, from the comparison: the text of a failure on the network or of the
+remote server (`NotFound: Could not resolve ...` where Java writes its exception chain
+around the same server message; tonic's connection error), of a missing CSV or Parquet
+file, and of a call on a closed session. The tables, every other outcome and every other
+message are the same.
 
 ## Differences from Java, per call
 

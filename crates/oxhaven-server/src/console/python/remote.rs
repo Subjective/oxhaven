@@ -80,7 +80,9 @@ fn resolve_uri<'py>(py: Python<'py>, uri: &str) -> PyResult<Option<Bound<'py, Py
     let value = py
         .detach(|| remote.resolvers.resolve_with(resolver, &parsed))
         .map_err(resolve_error)?;
-    value.map(|value| PythonSession::wrap(py, value)).transpose()
+    value
+        .map(|value| PythonSession::wrap(py, value))
+        .transpose()
 }
 
 /// A session with another server, as `deephaven.barrage.BarrageSession` holds it.
@@ -155,11 +157,10 @@ fn barrage_session(
 ) -> PyResult<BarrageSessionHandle> {
     let remote = remote()?;
     // `new URI(String)` throws the checked exception itself
-    let parsed = Uri::parse(target_uri).map_err(|e| {
-        PyRuntimeError::new_err(format!("java.net.URISyntaxException: {e}"))
-    })?;
-    let target = DeephavenTarget::from_uri(&parsed)
-        .map_err(|e| resolve_error(ResolveError::from(e)))?;
+    let parsed = Uri::parse(target_uri)
+        .map_err(|e| PyRuntimeError::new_err(format!("java.net.URISyntaxException: {e}")))?;
+    let target =
+        DeephavenTarget::from_uri(&parsed).map_err(|e| resolve_error(ResolveError::from(e)))?;
     let mut config = uri::client_config(&target).map_err(client_error)?;
     if let Some(authorization) = authorization {
         config.authorization = authorization.to_string();

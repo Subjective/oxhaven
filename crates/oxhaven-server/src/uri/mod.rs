@@ -325,7 +325,9 @@ pub fn waiting_for_subscription<T>(
              subscription waits for a cycle",
         ));
     }
-    Ok(yielding_to_cycles(|| graph.stepped().waiting_for_cycle(wait)))
+    Ok(yielding_to_cycles(|| {
+        graph.stepped().waiting_for_cycle(wait)
+    }))
 }
 
 /// Subscribes to `ticket` of `session` and waits, as [`waiting_for_subscription`] says, for
@@ -529,8 +531,7 @@ fn read_parquet(uri: &Uri) -> Result<Arc<dyn Table>, ResolveError> {
 fn read_csv(uri: &Uri) -> Result<Arc<dyn Table>, ResolveError> {
     csv_string(uri)?;
     Err(ResolveError::Read(
-        "this build has no CSV reader: it is part of the build with the Python console"
-            .to_string(),
+        "this build has no CSV reader: it is part of the build with the Python console".to_string(),
     ))
 }
 
