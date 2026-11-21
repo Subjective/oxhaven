@@ -680,19 +680,44 @@ fn a_minimum_of_boolean_vectors_keeps_the_element_type() {
     assert_eq!(cells(&*maximum, 0), ["[true]", "[true]", "[true]"]);
 }
 
-/// A vector of other objects than strings, Booleans and Instants: Java sends the minimum
-/// as text too, which A27 does not cover.
+/// A vector of `ZoneId`s, which Java fails to order (observed on 42.9: the cumulative
+/// minimum of such vectors fails to initialize; owner item 2.2), and which A27 does not
+/// cover.
 #[test]
 #[should_panic(
     expected = "unported: io.deephaven.engine.table.impl.updateby.minmax.ComparableCumMinMaxOperator: \
-                minimum or maximum of vector column V of type Vector(LocalDate)"
+                minimum or maximum of vector column V of type Vector(ZoneId)"
 )]
-fn a_minimum_of_vectors_of_dates_is_unported() {
-    let elements = arrow::array::new_empty_array(&ColumnType::LocalDate.arrow_type());
-    let column_type = ColumnType::vector(ColumnType::LocalDate);
+fn a_minimum_of_vectors_of_zones_is_unported() {
+    let elements = arrow::array::new_empty_array(&ColumnType::ZoneId.arrow_type());
+    let column_type = ColumnType::vector(ColumnType::ZoneId);
     let column = list_of(&column_type, [None::<usize>; 0], elements);
     let source = static_table(&[("V", column_type, column)]);
     let _ = update_by(&source, &[op(UpdateBySpec::CumMin, &[])], &[] as &[&str]);
+}
+
+/// The cumulative minimum and maximum of vectors of `LocalDate`s keep the element type
+/// (A27 of `PARITY.md`) and order the vectors element by element, a null element first.
+/// Java's answers for such vectors are in `oracle/corpus/agg_object_vectors`.
+#[test]
+fn a_minimum_of_vectors_of_dates_keeps_the_element_type() {
+    let (dates, column) = vector_column(
+        ColumnType::LocalDate,
+        &[Some(1), Some(2), Some(1)],
+        arrow::array::Date32Array::from(vec![Some(19_675), None, Some(0), Some(-1)]),
+    );
+    let source = static_table(&[("V", dates.clone(), column)]);
+    let minimum = update_by(&source, &[op(UpdateBySpec::CumMin, &[])], &[] as &[&str]).unwrap();
+    assert_eq!(minimum.definition().columns()[0].column_type, dates);
+    assert_eq!(
+        cells(&*minimum, 0),
+        ["[2023-11-14]", "[null, 1970-01-01]", "[null, 1970-01-01]"]
+    );
+    let maximum = update_by(&source, &[op(UpdateBySpec::CumMax, &[])], &[] as &[&str]).unwrap();
+    assert_eq!(
+        cells(&*maximum, 0),
+        ["[2023-11-14]", "[2023-11-14]", "[2023-11-14]"]
+    );
 }
 
 /// A rolling minimum or maximum of vectors of `double` or `float` keeps the earliest of

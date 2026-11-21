@@ -12,7 +12,7 @@ use crate::ops::select::{drop_columns, update};
 use crate::ops::sort::testing::{cells, frozen, graph};
 use crate::ops::sort::{head, reverse, sort, SortColumn};
 use crate::ops::ungroup::ungroup;
-use crate::ops::update_by::{update_by, UpdateByOperation, UpdateBySpec};
+use crate::ops::update_by::{update_by, RollingWindow, UpdateByOperation, UpdateBySpec};
 use crate::table::{in_memory_table, keyed_input_table};
 use arrow::array::{Array, ArrayRef, Int32Array, RecordBatch};
 use arrow::datatypes::{Field, Schema};
@@ -387,17 +387,17 @@ fn panic_of(f: impl FnOnce() + std::panic::UnwindSafe) -> String {
     }
 }
 
-/// The distinct values of a vector of other objects than strings, Booleans and Instants
-/// lose their inner element type in Java (a client receives strings, owner item 3.3), which
-/// `PARITY.md` A27 does not cover, and an array is not a `Comparable` in Java, which fails
-/// when it first compares two of them.
+/// The distinct values of a vector of `ZoneId`s, which Java fails to order (observed on
+/// 42.9 for the minimum and the cumulative minimum: owner item 2.2), and which `PARITY.md`
+/// A27 does not cover, and an array is not a `Comparable` in Java, which fails when it
+/// first compares two of them.
 #[test]
 fn aggregations_of_a_list_column_that_are_not_ported() {
     let distinct = AggSpec::Distinct {
         include_nulls: false,
     };
-    let dates = ColumnType::vector(ColumnType::LocalDate);
-    let table: Arc<dyn Table> = in_memory_table(definition(&[("D", dates)]), &[]).unwrap();
+    let zones = ColumnType::vector(ColumnType::ZoneId);
+    let table: Arc<dyn Table> = in_memory_table(definition(&[("D", zones)]), &[]).unwrap();
     let aggregation = Aggregation::columns(distinct, [Pair::of("D")]);
     let table = std::panic::AssertUnwindSafe(table);
     let message = panic_of(move || {
@@ -407,7 +407,7 @@ fn aggregations_of_a_list_column_that_are_not_ported() {
     assert_eq!(
         message,
         "unported: io.deephaven.engine.table.impl.by.AggregationProcessor: \
-         makeDistinctOperator for a column of type Vector(LocalDate)"
+         makeDistinctOperator for a column of type Vector(ZoneId)"
     );
 
     let array = ColumnType::array(ColumnType::Int);
@@ -625,11 +625,12 @@ fn a_range_filter_of_a_list_column_is_refused() {
 }
 
 /// Java gives the minimum, maximum, median, percentile and unique value of a vector of
-/// Booleans or Instants, and the vectors inside their distinct values, with the element
-/// type `Object`, which a client receives as lists of strings. Oxhaven keeps the element
-/// type: allowed difference A27 of `PARITY.md` (owner item 3.3; Java's answers are in
-/// `oracle/corpus/agg_typed_vectors`). Of a vector of other objects, such as `LocalDate`,
-/// they are not ported.
+/// Booleans, Instants and the other ordered objects of `java.time`, and the vectors inside
+/// their distinct values, with the element type `Object`, which a client receives as lists
+/// of strings. Oxhaven keeps the element type: allowed difference A27 of `PARITY.md` (owner
+/// item 3.3; Java's answers are in `oracle/corpus/agg_typed_vectors` and
+/// `oracle/corpus/agg_object_vectors`). Of a vector of `ZoneId`s, which Java fails to order,
+/// or of big numbers, whose order is not ported, they are not ported.
 #[test]
 fn aggregations_of_vectors_of_booleans_or_instants_keep_the_element_type() {
     let vector = ColumnType::vector(ColumnType::Boolean);
@@ -658,7 +659,16 @@ fn aggregations_of_vectors_of_booleans_or_instants_keep_the_element_type() {
         by_key(distinct.clone()),
         ["[[null, false], [true]]", "[[]]"]
     );
-    for element in [ColumnType::Boolean, ColumnType::Instant] {
+    for element in [
+        ColumnType::Boolean,
+        ColumnType::Instant,
+        ColumnType::LocalDate,
+        ColumnType::LocalTime,
+        ColumnType::LocalDateTime,
+        ColumnType::Duration,
+        ColumnType::DayOfWeek,
+        ColumnType::ZonedDateTime,
+    ] {
         let vector = ColumnType::vector(element);
         let names = [("K", ColumnType::Int), ("L", vector.clone())];
         let table: Arc<dyn Table> = in_memory_table(definition(&names), &[]).unwrap();
@@ -684,25 +694,118 @@ fn aggregations_of_vectors_of_booleans_or_instants_keep_the_element_type() {
             );
         }
     }
-    let names = [
-        ("K", ColumnType::Int),
-        ("L", ColumnType::vector(ColumnType::LocalDate)),
-    ];
-    let table = || -> Arc<dyn Table> { in_memory_table(definition(&names), &[]).unwrap() };
-    for spec in [
-        AggSpec::Min,
-        AggSpec::Max,
-        median(),
-        percentile(0.5),
-        unique(),
+    for element in [
+        ColumnType::ZoneId,
+        ColumnType::BigDecimal,
+        ColumnType::BigInteger,
     ] {
-        let aggregation = Aggregation::columns(spec.clone(), [Pair::of("L")]);
-        let message = panic_of(move || {
-            let _ = aggregate(&table(), &[aggregation], false, &["K"]);
-        });
-        assert!(
-            message.ends_with("whose result Java gives with the element type Object"),
-            "{spec:?}: {message}"
+        let names = [("K", ColumnType::Int), ("L", ColumnType::vector(element))];
+        let table = || -> Arc<dyn Table> { in_memory_table(definition(&names), &[]).unwrap() };
+        for spec in [
+            AggSpec::Min,
+            AggSpec::Max,
+            median(),
+            percentile(0.5),
+            unique(),
+        ] {
+            let aggregation = Aggregation::columns(spec.clone(), [Pair::of("L")]);
+            let message = panic_of(move || {
+                let _ = aggregate(&table(), &[aggregation], false, &["K"]);
+            });
+            assert!(
+                message.ends_with("whose result Java gives with the element type Object"),
+                "{spec:?}: {message}"
+            );
+        }
+    }
+}
+
+/// The minimum and the median of vectors of `LocalDate`s, `ZonedDateTime`s and `Duration`s
+/// keep the element type and are ordered as Java orders them: element by element, a null
+/// first, a `ZonedDateTime` by its instant, and a vector that is the start of another
+/// before it. `oracle/corpus/agg_object_vectors` holds Java's answers on more vectors.
+///
+/// Behavior: io.deephaven.vector.ObjectVector#compareTo
+#[test]
+fn aggregations_of_vectors_of_other_objects_keep_the_element_type() {
+    use arrow::array::AsArray;
+    // 2023-11-14T22:13:20Z, 1969-12-31T00:00Z, 1970-01-01T00:00Z, null,
+    // 2023-11-16T22:13:20.123Z
+    let instants = [
+        Some(1_700_000_000_000_000_000),
+        Some(-86_400_000_000_000),
+        Some(0),
+        None,
+        Some(1_700_172_800_123_000_000),
+    ];
+    let source: Arc<dyn Table> = in_memory_table(
+        definition(&[("G", ColumnType::Int), ("T", ColumnType::Instant)]),
+        &[RecordBatch::try_new(
+            Arc::new(Schema::new(vec![
+                Field::new("G", ColumnType::Int.arrow_type(), true),
+                Field::new("T", ColumnType::Instant.arrow_type(), true),
+            ])),
+            vec![
+                ints([0, 0, 1, 1, 2]),
+                Arc::new(
+                    arrow::array::TimestampNanosecondArray::from(instants.to_vec())
+                        .with_timezone("UTC"),
+                ),
+            ],
+        )
+        .unwrap()],
+    )
+    .unwrap();
+    let formulas = [
+        "D = toLocalDate(T, 'UTC')",
+        "Z = toZonedDateTime(T, timeZone(G == 0 ? `UTC` : `America/New_York`))",
+        "Dur = isNull(T) ? null : (G == 0 ? 'PT1H' : 'PT-1M-0.5S')",
+    ];
+    let made = update(&source, &formulas, &Compiler).unwrap();
+    let grouped = crate::ops::agg::group_by(&made, &["G"]).unwrap();
+    let all = |spec: AggSpec, input: &str| aggregated(&grouped, spec, input, &[]);
+    assert_eq!(all(AggSpec::Min, "D"), ["[1970-01-01, null]"]);
+    assert_eq!(all(AggSpec::Max, "D"), ["[2023-11-16]"]);
+    // The single cell of an aggregation over all rows, as its elements' nanoseconds: the
+    // instant of a `ZonedDateTime`, the length of a `Duration`.
+    let nanos = |spec: AggSpec, input: &str| -> Vec<Option<i64>> {
+        let aggregation = Aggregation::columns(spec, [Pair::new("A", input)]);
+        let result = aggregate(&grouped, &[aggregation], false, &[]).unwrap();
+        let snapshot = TableSnapshot::current(&*result).unwrap();
+        let cell = snapshot.columns[0].as_list::<i32>().value(0);
+        // a null `ZonedDateTime` is a null struct, whatever its instant field holds
+        let valid: Vec<bool> = (0..cell.len()).map(|at| cell.is_valid(at)).collect();
+        let elements = match cell.as_struct_opt() {
+            Some(zoned) => zoned.column(0).clone(),
+            None => cell,
+        };
+        let elements = arrow::compute::cast(&elements, &arrow::datatypes::DataType::Int64).unwrap();
+        let elements = elements.as_primitive::<arrow::datatypes::Int64Type>();
+        valid
+            .into_iter()
+            .enumerate()
+            .map(|(at, valid)| valid.then(|| elements.value(at)))
+            .collect()
+    };
+    // 1969-12-31T19:00-05:00[America/New_York] (the instant 0), then null
+    assert_eq!(nanos(AggSpec::Min, "Z"), [Some(0), None]);
+    assert_eq!(nanos(AggSpec::Max, "Z"), [Some(1_700_172_800_123_000_000)]);
+    // PT-1M-0.5S, then null: [PT-1M-0.5S] is before it, [PT1H, PT1H] after it
+    assert_eq!(nanos(median(), "Dur"), [Some(-60_500_000_000), None]);
+    assert_eq!(
+        nanos(AggSpec::Max, "Dur"),
+        [Some(3_600_000_000_000), Some(3_600_000_000_000)]
+    );
+    for (input, element) in [
+        ("D", ColumnType::LocalDate),
+        ("Z", ColumnType::ZonedDateTime),
+        ("Dur", ColumnType::Duration),
+    ] {
+        let aggregation = Aggregation::columns(AggSpec::Min, [Pair::new("A", input)]);
+        let result = aggregate(&grouped, &[aggregation], false, &[]).unwrap();
+        assert_eq!(
+            result.definition().columns()[0].column_type,
+            ColumnType::vector(element)
         );
     }
 }
@@ -777,6 +880,125 @@ fn typed_vectors_of_booleans_and_instants_tick_as_they_are_made_again() {
                 let recompute = move || operation(&frozen(&*again));
                 (
                     name,
+                    ConsistencyChecker::attach_with_recompute(result, recompute),
+                )
+            })
+            .collect();
+        for step in 0..12 {
+            script.push(random.next_change(&*script.table(), 6));
+            graph.run_cycle();
+            for (name, checker) in &checkers {
+                if let Err(error) = checker.verify() {
+                    panic!("{name}, seed {seed}, step {step}: {error}");
+                }
+                compared += 1;
+            }
+        }
+    }
+    assert_eq!(compared, test_seeds(0..10).count() * 12 * operations.len());
+}
+
+/// A ticking table whose columns are vectors of `LocalDate`, `LocalTime`, `LocalDateTime`,
+/// `Duration`, `DayOfWeek` and `ZonedDateTime`, one row per `G`, made from `t` (with
+/// columns `G`, `K` and `T`) by formulas and `group_by`, sorted by `G` so that a table made
+/// again lists the rows in the same order.
+fn object_vectors(t: &Arc<dyn Table>) -> Arc<dyn Table> {
+    let formulas = [
+        "D = toLocalDate(T, 'UTC')",
+        "LT = toLocalTime(T, 'UTC')",
+        "Dt = toLocalDateTime(T, 'America/New_York')",
+        "Dur = isNull(T) ? null : (K % 3 == 0 ? 'PT1H' : (K % 3 == 1 ? 'PT-1M-0.5S' : 'PT0S'))",
+        "W = dayOfWeek(T, 'UTC')",
+        "Z = toZonedDateTime(T, timeZone(K % 2 == 0 ? `UTC` : `Asia/Tokyo`))",
+    ];
+    let made = update(t, &formulas, &Compiler).unwrap();
+    let made = drop_columns(&made, &["K", "T"]).unwrap();
+    let grouped = crate::ops::agg::group_by(&made, &["G"]).unwrap();
+    sort(&grouped, &[SortColumn::ascending("G")]).unwrap()
+}
+
+/// The aggregations of A27 over all rows of [`object_vectors`].
+fn object_vector_aggregations(t: &Arc<dyn Table>) -> Arc<dyn Table> {
+    let aggregations = [
+        Aggregation::columns(AggSpec::Min, [Pair::new("MinD", "D")]),
+        Aggregation::columns(AggSpec::Max, [Pair::new("MaxZ", "Z")]),
+        Aggregation::columns(median(), [Pair::new("MedDur", "Dur")]),
+        Aggregation::columns(percentile(0.25), [Pair::new("PctLT", "LT")]),
+        Aggregation::columns(unique(), [Pair::new("UniDt", "Dt")]),
+        Aggregation::columns(
+            AggSpec::Distinct {
+                include_nulls: true,
+            },
+            [Pair::new("DisW", "W"), Pair::new("DisZ", "Z")],
+        ),
+    ];
+    aggregate(&object_vectors(t), &aggregations, false, &[]).unwrap()
+}
+
+/// The `update_by` operators of A27 on [`object_vectors`].
+fn object_vector_extremes(t: &Arc<dyn Table>) -> Arc<dyn Table> {
+    let window = RollingWindow::ticks(2, 0);
+    let operations = [
+        UpdateByOperation::new(UpdateBySpec::CumMin, &["CMinD = D", "CMinZ = Z"]),
+        UpdateByOperation::new(UpdateBySpec::CumMax, &["CMaxDur = Dur", "CMaxW = W"]),
+        UpdateByOperation::new(UpdateBySpec::RollingMin(window.clone()), &["RMinLT = LT"]),
+        UpdateByOperation::new(UpdateBySpec::RollingMax(window), &["RMaxDt = Dt"]),
+    ];
+    update_by(&object_vectors(t), &operations, &[] as &[&str]).unwrap()
+}
+
+/// The aggregations and `update_by` operators of A27 on ticking vectors of the other
+/// objects of `java.time` that Java orders: each result is the one made again from its
+/// source's rows after every cycle, and keeps the element type.
+#[test]
+fn typed_vectors_of_other_objects_tick_as_they_are_made_again() {
+    let columns = [
+        ("G", ColumnType::String),
+        ("K", ColumnType::Int),
+        ("T", ColumnType::Instant),
+    ];
+    type Operation = fn(&Arc<dyn Table>) -> Arc<dyn Table>;
+    let operations: [(&str, Operation, &str, ColumnType); 2] = [
+        (
+            "aggregations",
+            object_vector_aggregations,
+            "MaxZ",
+            ColumnType::ZonedDateTime,
+        ),
+        (
+            "update_by",
+            object_vector_extremes,
+            "CMinD",
+            ColumnType::LocalDate,
+        ),
+    ];
+    let mut compared = 0;
+    for seed in test_seeds(0..10) {
+        let graph = graph();
+        let mut random = RandomUpdates::new(seed);
+        let values = columns
+            .iter()
+            .map(|(_, column_type)| random.values(column_type, 16))
+            .collect();
+        let script = ScriptedTable::new(
+            graph.clone(),
+            definition(&columns),
+            RowSet::from_keys((0..16).map(|k| 2 * k)),
+            values,
+        );
+        let source: Arc<dyn Table> = script.table();
+        let checkers: Vec<_> = operations
+            .iter()
+            .map(|(name, operation, typed, element)| {
+                let operation = *operation;
+                let result = operation(&source);
+                let definition = result.definition();
+                let column = &definition.columns()[definition.index_of(typed).unwrap()];
+                assert_eq!(column.column_type, ColumnType::vector(element.clone()));
+                let again = source.clone();
+                let recompute = move || operation(&frozen(&*again));
+                (
+                    *name,
                     ConsistencyChecker::attach_with_recompute(result, recompute),
                 )
             })

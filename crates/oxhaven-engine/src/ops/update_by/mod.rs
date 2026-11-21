@@ -524,11 +524,15 @@ fn kernel_of(spec: &UpdateBySpec) -> Result<(Kernel, Window, Option<String>), Up
 /// `RollingStdSpec`, `RollingWAvgSpec`, `RollingGroupSpec`, `EmaSpec`, `EmsSpec`,
 /// `EmMinMaxSpec` and `EmStdSpec`
 /// Whether the minimum and maximum of a vector of `element`s are ported: vectors of the
-/// primitive types, of `String`, `Boolean` and `Instant`. Java makes the result of a vector
-/// of objects a column of `ObjectVector` of `Object`, which a client receives as strings;
-/// for `Boolean` and `Instant` Oxhaven keeps the element type, allowed difference A27 of
-/// `PARITY.md` (owner item 3.3). Vectors of other objects are not ported, and Java fails
-/// to order a vector of arrays when it compares two of them (owner item 2.2).
+/// primitive types, of `String`, `Boolean`, `Instant`, `LocalDate`, `LocalTime`,
+/// `LocalDateTime`, `Duration`, `DayOfWeek` and `ZonedDateTime`. Java makes the result of a
+/// vector of objects a column of `ObjectVector` of `Object`, which a client receives as
+/// strings; Oxhaven keeps the element type, allowed difference A27 of `PARITY.md` (owner
+/// item 3.3; Java's answers are in `oracle/corpus/agg_typed_vectors` and
+/// `oracle/corpus/agg_object_vectors`). Vectors of other objects are not ported: Java fails
+/// to order two vectors of `ZoneId`s or `Period`s, which are not `Comparable`, unless the
+/// elements it compares are the same objects, and two vectors of arrays (owner item 2.2),
+/// and the order of `BigDecimal` and `BigInteger` is not ported.
 ///
 /// Behavior: io.deephaven.engine.table.impl.updateby.internal.BaseObjectUpdateByOperator,
 /// whose result column has the input's class and the component type `Object`; observed on
@@ -538,7 +542,21 @@ fn orderable_vector(element: &ColumnType) -> bool {
     use ColumnType::*;
     matches!(
         element,
-        Byte | Char | Short | Int | Long | Float | Double | String | Boolean | Instant
+        Byte | Char
+            | Short
+            | Int
+            | Long
+            | Float
+            | Double
+            | String
+            | Boolean
+            | Instant
+            | LocalDate
+            | LocalTime
+            | LocalDateTime
+            | Duration
+            | DayOfWeek
+            | ZonedDateTime
     )
 }
 
