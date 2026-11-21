@@ -33,7 +33,7 @@
   {
    "id": "group-vector-failure",
    "class": "allowed-difference",
-   "reason": "PARITY.md A22 (owner item 7.19): Java's vector of a refreshing group_by result is a view of its group, so an aggregation grouped by it, an update_by bucketed by it, a select_distinct of it or a distinct of it fails in the cycle in which a group changes (IllegalStateException: Missing value in probe in IncrementalAggOpenHasherObject; Failed to modify data), and so does an ungroup of such a distinct. Counted only for a table that is, or is made from, an operation that holds such vectors (shape refreshing_group_vectors), and only when Java's result made again from the same rows succeeds and Oxhaven's result holds the rows of that answer: compared as multisets of rows, since an aggregation whose key changed shows the new group at the end, which a table made again cannot (tasks/12.1-fuzzer-coverage.md, F2).",
+   "reason": "PARITY.md A22 (owner items 7.19 and 7.27): Java's vector of a refreshing group_by result is a view of its group, and so are the vectors that rolling_group or the distinct aggregation make from a refreshing table and a minimum or maximum of one of these; so an aggregation grouped by it, an update_by bucketed by it, a select_distinct of it or a distinct of it fails in the cycle in which a group changes (IllegalStateException: Missing value in probe in IncrementalAggOpenHasherObject; Failed to modify data), and so does an ungroup of such a distinct. Counted only for a table that is, or is made from, an operation that holds such vectors (shape refreshing_group_vectors), and only when Java's result made again from the same rows succeeds and Oxhaven's result holds the rows of that answer: compared as multisets of rows, since an aggregation whose key changed shows the new group at the end, which a table made again cannot (tasks/12.1-fuzzer-coverage.md, F2 and F11).",
    "match": {"kind": "failure_expected",
              "operation": ["agg_by", "update_by", "select_distinct", "ungroup"],
              "steps": "later", "requires": "reference_inconsistent_rows",
@@ -43,7 +43,7 @@
   {
    "id": "group-vector-stale",
    "class": "allowed-difference",
-   "reason": "PARITY.md A22 (owner item 7.19): where Java's operation holds vectors of a refreshing group_by result (a distinct of them, or a cumulative or rolling minimum or maximum read by a later operation), it keeps a stale value when the group changes: a distinct keeps the vector it had, and what reads a minimum is not told of the change (tasks/12.1-fuzzer-coverage.md, F2 and F8). Counted only for a table that is, or is made from, an operation that holds such vectors, and only when Java's answer made again from the same rows differs from what it kept and Oxhaven's result holds the rows of the answer made again, both compared as multisets of rows (see group-vector-failure).",
+   "reason": "PARITY.md A22 (owner items 7.19 and 7.27): where Java's operation holds vectors of a refreshing group_by result (a distinct of them, or a cumulative or rolling minimum or maximum read by a later operation), or holds as keys or in a distinct the vectors that rolling_group or the distinct aggregation make from a refreshing table, or a minimum or maximum of one, it keeps a stale value when the group changes: a distinct keeps the vector it had, and what reads a minimum is not told of the change (tasks/12.1-fuzzer-coverage.md, F2, F8 and F11). Counted only for a table that is, or is made from, an operation that holds such vectors, and only when Java's answer made again from the same rows differs from what it kept and Oxhaven's result holds the rows of the answer made again, both compared as multisets of rows (see group-vector-failure).",
    "match": {"kind": "value",
              "operation": ["agg_by", "update_by", "select_distinct", "ungroup", "group_by",
                            "where", "sort"],
@@ -113,6 +113,13 @@
    "match": {"kind": "failure_expected", "operation": "ungroup",
              "shape": "null_fill_ungroup_of_a_distinct",
              "expected": "fails with INVALID_ARGUMENT", "actual": "succeeds"}
+  },
+  {
+   "id": "null-fill-ungroup-repeat-of-a-distinct",
+   "class": "allowed-difference",
+   "reason": "PARITY.md A24, third row (owner items 7.21 and 7.28): ungroup with null fill where the shorter column of a row is the vector of a distinct aggregation, on a table where Java does not fail: Java serves the vector before the missing one again (a key [true, false] beside a distinct column holding [[null, 7]] gives [null, 7] in both rows), where null fill asks for a null, and Oxhaven gives the null (tasks/12.1-fuzzer-coverage.md, F15). Counted only for a cell of such a vector in such an ungroup (shape null_fill_repeat_of_a_distinct) that Oxhaven fills with null, in an ordered result, and only when Java's cell is the vector Oxhaven shows last above it in that column.",
+   "match": {"kind": "value", "operation": "ungroup", "shape": "null_fill_repeat_of_a_distinct",
+             "actual": null}
   },
   {
    "id": "floating-vector-rolling-extreme-zero",

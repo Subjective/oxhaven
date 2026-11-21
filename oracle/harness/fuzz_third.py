@@ -43,9 +43,11 @@ Known limits). For what this module adds those are, on a refreshing table:
 - `len` of a window of strings, which the reference fails for every row
   (`ClassCastException`): on a static table only, where it is a refusal of the request.
 
-What `PARITY.md` allows since the owner's answers to items 7.19 to 7.21 (A13 for `raj`,
-A22 to A24) and to items 7.6, 7.10 and 7.13 (A19, A20) is drawn: vectors of refreshing
-groups as keys, buckets and in `distinct`, read on after a minimum or maximum; `ungroup` of
+What `PARITY.md` allows since the owner's answers to items 7.19 to 7.21 and 7.27 (A13 for
+`raj`, A22 to A24) and to items 7.6, 7.10 and 7.13 (A19, A20) is drawn: vectors of
+refreshing groups as keys, buckets and in `distinct`, read on after a minimum or maximum;
+the vectors of `rolling_group` and `distinct` of refreshing tables, and their minimums and
+maximums, as keys, buckets and in `distinct`; `ungroup` of
 whatever holds vectors; elements of conditions between windows of strings; vectors of
 floats in rolling minimums and maximums, buckets and `distinct`; `raj` of the shape of the
 chains of A13. The comparison accepts these differences through the entries of
@@ -98,11 +100,6 @@ RESTRICTIONS: dict[str, str] = {
     "V12": "filter: no filter on the row key `k` over a refreshing sort result or a table "
            "made from one (F9: the servers give the rows of such a result different row keys, "
            "which PARITY.md A4 does not compare)",
-    "V14": "keys, vector_aggregation: on a refreshing table no group-by, bucket or "
-           "select_distinct column, and no distinct, of a vector made by rolling_group or "
-           "by the distinct aggregation of a refreshing table, or by a minimum or maximum of "
-           "such a vector (F11: the reference fails or keeps stale values as for a "
-           "group_by's vectors, which PARITY.md A22 does not name; owner item 7.27)",
     "V15": "add, usable: a column that PARITY.md A23 types differently (an element of a "
            "condition between windows of strings, an ungroup of a minimum or maximum of "
            "vectors of strings) is not read by a later operation (F12: the reference refuses "
@@ -144,10 +141,8 @@ class _Third(_Second):
         # Per table: its vector columns that hold neither a null nor an empty vector.
         self.solid: dict[str, set[str]] = {}
         self.rekeyed: set[str] = set()  # refreshing sort results and what is made from them
-        # Per table: its vector columns made by rolling_group or by the distinct aggregation
-        # of a refreshing table, or by a minimum or maximum of one (V14); its minimums and maximums of vectors of strings; its columns that the
+        # Per table: its minimums and maximums of vectors of strings; its columns that the
         # reference types java.lang.Object and Oxhaven does not (V15).
-        self.windowed: dict[str, set[str]] = {}
         self.string_extremes: dict[str, set[str]] = {}
         self.objects: dict[str, set[str]] = {}
         # Aggregations grouped by a vector and minimums or maximums of vectors: what an
@@ -208,29 +203,20 @@ class _Third(_Second):
         first = self.tables[op.get("source") or op.get("left") or name]
         if self.tables[name].live and (kind == "sort" or first.name in self.rekeyed):
             self.rekeyed.add(name)  # V12
-        windowed = self._carried(self.windowed, op, first, types)
         extremes = self._carried(self.string_extremes, op, first, types)
         objects = self._carried(self.objects, op, first, types)
         if kind == "update_by":
             for spec in op["ops"]:
                 pairs = [rules.split_pair(pair) for pair in spec["columns"]]
-                if spec["op"].startswith("rolling_group"):
-                    windowed |= {out for out, _ in pairs}
-                elif spec["op"].startswith(_EXTREMES):
-                    windowed |= {out for out, made_from in pairs
-                                 if made_from in self.windowed.get(first.name, ())}
+                if spec["op"].startswith(_EXTREMES):
                     extremes |= {out for out, _ in pairs if types[out] == LIST + "string"}
                 elif spec["op"].startswith("rolling_formula") and _ELEMENT_OF_A_CONDITION.search(
                         spec["args"]["formula"]):
                     objects |= {out for out, _ in pairs if types[out] == "string"}
-        if kind == "agg_by" and first.live:
-            windowed |= {rules.split_pair(pair)[0] for agg in op["aggs"]
-                         if agg["agg"] == "distinct" for pair in agg["columns"]}
         if kind == "ungroup":
             taken = op.get("columns") or [c for c in types if first.type_of(c).startswith(LIST)]
             objects |= {column for column in taken
                         if column in self.string_extremes.get(first.name, ())}
-        self.windowed[name] = windowed
         self.string_extremes[name] = extremes
         self.objects[name] = objects
         if objects:  # V15
@@ -359,11 +345,11 @@ class _Third(_Second):
         if self.kind in _VECTOR_OPERATIONS and high > 0 and self.chance(0.5):
             # Buckets of update_by may be vectors of floats (PARITY.md A19); group-by and
             # select_distinct columns may not (V3), nor on a refreshing table vectors of
-            # booleans or timestamps (V13).
+            # booleans or timestamps (V13). On a refreshing table the vectors of
+            # rolling_group and distinct are drawn as a group's are (A22, owner item 7.27).
             elements = _BUCKETS if self.kind == "update_by" else (
                 _KEYED_LIVE if table.live else _KEYED)
-            pool = [c for c in self.vectors(table, elements) if c not in exclude
-                    and not (table.live and c in self.windowed.get(table.name, ()))]  # V14
+            pool = [c for c in self.vectors(table, elements) if c not in exclude]
             if pool:
                 column = self.rng.choice(pool)
                 by = [by[0], column] if by and high > 1 and self.chance(0.4) else [column]
@@ -493,8 +479,7 @@ class _Third(_Second):
                            columns: list[tuple[str, str]]) -> dict[str, Any] | None:
         """A count where over vector columns, or the distinct vectors of one."""
         taken = {column for column, _ in columns}
-        pool = [c for c in self.vectors(source, _DISTINCT) if c not in taken  # V1
-                and not (source.live and c in self.windowed.get(source.name, ()))]  # V14
+        pool = [c for c in self.vectors(source, _DISTINCT) if c not in taken]  # V1
         nested = any(kind.startswith(LIST + LIST) for _, kind in columns)
         if pool and not nested and "ungroup" in self.ops and self.chance(0.5):
             # One per table: `results` reads it through an `ungroup` of that column.

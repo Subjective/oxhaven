@@ -346,6 +346,9 @@ VECTOR_MAKERS = frozenset({"group_by", "group", "distinct", "rolling_group_tick"
                            "rolling_group_time"})
 # What Java's vectors of a refreshing group are views of (PARITY.md, A22).
 GROUPS = frozenset({"group_by", "group"})
+# What makes the vectors that A22 covers as keys and in `distinct`: a refreshing group's,
+# and since owner item 7.27 the windows of `rolling_group` and the vectors of `distinct`.
+VIEWS = GROUPS | {"rolling_group_tick", "rolling_group_time", "distinct"}
 EXTREMES = frozenset({"cum_min", "cum_max", "rolling_min_tick", "rolling_max_tick",
                       "rolling_min_time", "rolling_max_time"})
 _FORMULAS = frozenset({"update", "update_view", "lazy_update", "view", "select"})
@@ -379,6 +382,7 @@ class Scene:
     def __init__(self, scenario: Any, actual: Any = None):
         self.by_name = {op["name"]: op for op in scenario.operations}
         self.ticking = {item.name for item in scenario.inputs if item.ticking}
+        self.unordered = {result.table for result in scenario.results if not result.ordered}
         self.actual = actual
 
     def refreshing(self, table: str) -> bool:
@@ -488,29 +492,46 @@ def _ancestry(scene: Scene, table: str) -> list[Mapping[str, Any]]:
     return [scene.by_name[name] for name in names if name in scene.by_name]
 
 
+def view_vector(scene: Scene, table: str, column: str, makers: frozenset[str] = VIEWS,
+                depth: int = 0) -> bool:
+    """`column` of `table` is a vector that one of `makers` made from a refreshing table, or
+    a cumulative or rolling minimum or maximum of such a vector, not taken apart since."""
+    origin = scene.origin(table, column)
+    if origin is None or origin.ungrouped or origin.table is None:
+        return False
+    if origin.how in makers:
+        return scene.refreshing(origin.table)
+    return (origin.how in EXTREMES and origin.source is not None
+            and depth < len(scene.by_name)
+            and view_vector(scene, origin.table, origin.source, makers, depth + 1))
+
+
 def holds_group_vectors(scene: Scene, op: Mapping[str, Any]) -> bool:
     """PARITY.md A22: `op` holds vectors of a refreshing `group_by` (or `group`) as
     group-by, bucket or `select_distinct` columns, in `distinct`, or as the input of a
-    cumulative or rolling minimum or maximum."""
+    cumulative or rolling minimum or maximum. Since the owner's answer to item 7.27 also:
+    `op` holds as group-by, bucket or `select_distinct` columns, or in `distinct`, the
+    vectors that `rolling_group` or the `distinct` aggregation made from a refreshing table,
+    or a minimum or maximum of one (`VIEWS`). A minimum or maximum of those, read by any
+    other operation, is not covered, and neither is anything made of their elements."""
     source = op.get("source")
     if source is None:
         return False
 
-    def group_vector(column: str) -> bool:
-        origin = scene.origin(source, column)
-        return (origin is not None and origin.how in GROUPS and not origin.ungrouped
-                and origin.table is not None and scene.refreshing(origin.table))
+    def held(column: str) -> bool:
+        return view_vector(scene, source, column)
 
     kind = op["op"]
     if kind == "select_distinct":
-        return any(group_vector(column) for column in op["columns"])
+        return any(held(column) for column in op["columns"])
     if kind == "agg_by":
-        return any(group_vector(column) for column in op["by"]) or any(
-            group_vector(rules.split_pair(pair)[1]) for agg in op["aggs"]
+        return any(held(column) for column in op["by"]) or any(
+            held(rules.split_pair(pair)[1]) for agg in op["aggs"]
             if agg["agg"] == "distinct" for pair in agg["columns"])
     if kind == "update_by":
-        return any(group_vector(column) for column in op["by"]) or any(
-            group_vector(rules.split_pair(pair)[1]) for operator in op["ops"]
+        return any(held(column) for column in op["by"]) or any(
+            view_vector(scene, source, rules.split_pair(pair)[1], GROUPS)
+            for operator in op["ops"]
             if operator["op"] in EXTREMES for pair in operator["columns"])
     return False
 
@@ -603,6 +624,36 @@ def _null_fill_ungroup_of_a_distinct(scene: Scene, mismatch: rules.Mismatch) -> 
     return False
 
 
+def _null_fill_repeat_of_a_distinct(scene: Scene, mismatch: rules.Mismatch) -> bool:
+    """A24, third row, where Java does not fail (owner item 7.28): in an `ungroup` of
+    `_null_fill_ungroup_of_a_distinct`, the cell is one of the vector of the `distinct`
+    that the actual side fills with null, and Java's cell is the vector the actual side
+    shows last above it in that column (Java repeats it). Ordered results only, so that a
+    row is a position of the actual side's table."""
+    if not _null_fill_ungroup_of_a_distinct(scene, mismatch):
+        return False
+    if (mismatch.column is None or mismatch.row is None or mismatch.actual is not None
+            or mismatch.expected is None or mismatch.table in scene.unordered
+            or scene.actual is None):
+        return False
+    origin = scene.origin(scene.by_name[mismatch.table]["source"], mismatch.column)
+    if origin is None or origin.how != "distinct" or origin.ungrouped:
+        return False
+    try:
+        data = scene.actual.get(mismatch.step, mismatch.table)
+    except KeyError:
+        return False
+    if not hasattr(data, "column_names") or mismatch.column not in data.column_names:
+        return False
+    cells = rules._cells(data.column(mismatch.column))
+    if mismatch.row >= len(cells) or cells[mismatch.row] is not None:
+        return False
+    for row in range(mismatch.row - 1, -1, -1):
+        if cells[row] is not None:
+            return _same_value(cells[row], mismatch.expected)
+    return False
+
+
 def _distinct_taken_apart(scene: Scene, mismatch: rules.Mismatch) -> bool:
     """A20: the column holds the vectors of a `distinct` aggregation of a vector column,
     taken apart by an `ungroup` (how a table of arrays of arrays is compared)."""
@@ -627,5 +678,6 @@ SHAPES: dict[str, Callable[[Scene, rules.Mismatch], bool]] = {
     "ungroup_again_of_a_distinct": _ungroup_again_of_a_distinct,
     "null_fill_ungroup_of_vector_keys": _null_fill_ungroup_of_vector_keys,
     "null_fill_ungroup_of_a_distinct": _null_fill_ungroup_of_a_distinct,
+    "null_fill_repeat_of_a_distinct": _null_fill_repeat_of_a_distinct,
     "distinct_taken_apart": _distinct_taken_apart,
 }

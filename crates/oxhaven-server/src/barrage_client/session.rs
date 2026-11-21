@@ -468,7 +468,7 @@ fn subscription_request(ticket: &[u8], options: &SubscriptionOptions) -> FlightD
 /// say it is.
 ///
 /// The other attributes of the schema (`BlinkTable` among them) are left off a snapshot:
-/// owner's item 7.25 (open), whose recommendation is to keep it so.
+/// `PARITY.md` A28 (owner item 7.25, answered: keep it so).
 ///
 /// Behavior: `io.deephaven.extensions.barrage.table.BarrageTable#make` (`setFlat` of
 /// `BarrageRedirectedTable`), which `BarrageSnapshotImpl` uses as `BarrageSubscriptionImpl`

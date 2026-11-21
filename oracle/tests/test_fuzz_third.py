@@ -102,15 +102,16 @@ def test_generation_is_the_same_in_another_process():
 
 @pytest.mark.parametrize("family, digest", [
     ("asof_chains", "5ddf633816b5306b"),
-    ("vectors", "c7b28365a6e93e93"),
-    ("windows", "bb1d2442ca9d0836"),
-    ("all3", "589127cd800f5169"),
+    ("vectors", "be77c602dee3b1ab"),
+    ("windows", "e005afc81e4c3c4c"),
+    ("all3", "4a129451080832df"),
 ])
 def test_a_seed_of_the_third_generator_is_the_scenario_it_was(family, digest):
     """Digests over the scenarios of seeds 0 to 99 as the generator was when the runs of
-    task 14.2 in `tasks/12.1-fuzzer-coverage.md` were made: a seed named for those runs
-    must keep naming its scenario. (The seeds named for 12.1's own runs name other
-    scenarios since 14.2 changed the generator; the F files keep those scenarios.)"""
+    task 14.4 in `tasks/12.1-fuzzer-coverage.md` were made: a seed named for those runs
+    must keep naming its scenario. (The seeds named for the runs of 12.1 and 14.2 name
+    other scenarios of `vectors`, `windows` and `all3` since later tasks changed the
+    generator; the F files keep the scenarios they name.)"""
     digest_now = hashlib.sha256()
     for seed in range(100):
         digest_now.update(json.dumps(fuzz.generate(seed, fuzz.THIRD_FAMILIES[family], "third"),
@@ -276,7 +277,8 @@ def test_every_form_is_drawn():
 
 def _marks(doc: dict, predicted: dict) -> tuple[dict, dict]:
     """Per table, the vector columns made by `rolling_group` or by the `distinct` of a
-    refreshing table, or by a minimum or maximum of one (V14), and the columns PARITY.md A23
+    refreshing table, or by a minimum or maximum of one (drawn as keys and in `distinct`
+    since V14 was lifted, PARITY.md A22 after owner item 7.27), and the columns PARITY.md A23
     types differently (V15), followed by name through the tables that pass them on."""
     live = _live(doc)
     windowed: dict[str, set[str]] = {}
@@ -324,8 +326,10 @@ def _marks(doc: dict, predicted: dict) -> tuple[dict, dict]:
 
 
 def test_what_an_owner_item_or_a_finding_restricts_is_not_drawn():
-    """`fuzz_third.RESTRICTIONS`, one check per entry."""
+    """`fuzz_third.RESTRICTIONS`, one check per entry; and what a lifted one kept out is
+    drawn (V14, lifted after owner item 7.27)."""
     seen: Counter = Counter()
+    lifted: Counter = Counter()
     floats = ("float32", "float64")
     marked = {(family, seed): _marks(doc, predicted)
               for family, runs in GENERATED.items() for seed, (doc, predicted) in enumerate(runs)}
@@ -351,8 +355,8 @@ def test_what_an_owner_item_or_a_finding_restricts_is_not_drawn():
                             seen["V13"] += 1
                             assert element not in ("bool", "timestamp"), where
                     if first in live:
-                        seen["V14"] += 1
-                        assert column not in windowed.get(first, ()), where
+                        lifted["key of a window or distinct, refreshing"] += (
+                            column in windowed.get(first, ()))
                 if kind == "update_by":
                     for operator in op["ops"]:
                         name = operator["op"]
@@ -384,8 +388,8 @@ def test_what_an_owner_item_or_a_finding_restricts_is_not_drawn():
                                 seen["V1"] += 1
                                 assert types[column][len(LIST):] not in ("bool", "timestamp"), where
                                 if first in live:
-                                    seen["V14"] += 1
-                                    assert column not in windowed.get(first, ()), where
+                                    lifted["distinct of a window or distinct, refreshing"] += (
+                                        column in windowed.get(first, ()))
                 for text in _filters(op) if kind in ("agg_by", "update_by") else []:
                     for column in re.findall(r"([A-Za-z_]\w*)\[", text):
                         seen["V8"] += types.get(column, "").startswith(LIST)
@@ -448,6 +452,8 @@ def test_what_an_owner_item_or_a_finding_restricts_is_not_drawn():
                 for text in op.get("filters", []) + _filters(op):
                     assert not re.search(r"\bk\b", text), (seed, op)
     assert not {name: seen[name] for name in fuzz_third.RESTRICTIONS if seen[name] <= 5}, seen
+    assert "V14" not in fuzz_third.RESTRICTIONS
+    assert len(lifted) == 2 and min(lifted.values()) >= 5, lifted
 
 
 def test_every_restriction_is_written_up():
