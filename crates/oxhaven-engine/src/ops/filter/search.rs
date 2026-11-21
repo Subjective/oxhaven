@@ -10,6 +10,7 @@ use super::literal::{
     parse_java_double, parse_java_float, parse_java_integer, Decimal, Key,
 };
 use super::pattern::Matcher;
+use chrono_tz::Tz;
 use oxhaven_column::sentinel::{NULL_CHAR, NULL_DOUBLE, NULL_FLOAT, NULL_LONG};
 use oxhaven_contracts::expr::FormulaCompiler;
 use oxhaven_contracts::schema::{ColumnType, TableDefinition};
@@ -40,6 +41,7 @@ pub(super) fn expand(
     if text.is_empty() {
         return Ok(Resolved::Nothing);
     }
+    let zone = server_zone();
     let mut filters = Vec::new();
     for (index, column) in definition.columns().iter().enumerate() {
         let formatting = FORMAT_SUFFIXES
@@ -49,7 +51,7 @@ pub(super) fn expand(
             continue;
         }
         let filter = match column.column_type.list_element() {
-            None => quick_filter(index, &column.column_type, text, compiler)?,
+            None => quick_filter(index, &column.column_type, text, compiler, zone)?,
             // Behavior: WhereFilterFactory#createVectorQuickFilter and
             // VectorComponentFilterWrapper#maybeCreateFilterWrapper: the element type's
             // filter, which every quick filter exposes as a chunk filter, applied to the
@@ -68,11 +70,13 @@ pub(super) fn expand(
                             | ColumnType::Float
                             | ColumnType::Double
                     );
-                quick_filter(index, element, text, compiler)?.map(|filter| Resolved::AnyElement {
-                    column: index,
-                    element_type: element.clone(),
-                    element: Box::new(filter),
-                    null_element_fails: primitive,
+                quick_filter(index, element, text, compiler, zone)?.map(|filter| {
+                    Resolved::AnyElement {
+                        column: index,
+                        element_type: element.clone(),
+                        element: Box::new(filter),
+                        null_element_fails: primitive,
+                    }
                 })
             }
         };
@@ -94,7 +98,8 @@ fn matching(column: usize, key: Key) -> Resolved {
 }
 
 /// The filter of one column for the search text, or `None` if a column of this type has
-/// nothing that the text could be.
+/// nothing that the text could be. A date in an `Instant` column stands for the time from
+/// the instant it names to the same time of the next day in `zone`, the server's.
 ///
 /// Behavior: io.deephaven.engine.table.impl.select.WhereFilterFactory#createQuickFilterInternal,
 /// io.deephaven.engine.table.impl.select.WhereFilterFactory.InferenceResult
@@ -103,6 +108,7 @@ fn quick_filter(
     column_type: &ColumnType,
     text: &str,
     compiler: &dyn FormulaCompiler,
+    zone: Tz,
 ) -> Result<Option<Resolved>, String> {
     let integer = |min: i64, max: i64| {
         parse_java_integer(text, min, max).ok().map(|value| {
@@ -199,11 +205,9 @@ fn quick_filter(
                 let upper = match precision(text) {
                     Precision::None => i128::from(lower),
                     Precision::Nanos(unit) => i128::from(lower) + i128::from(unit),
-                    // Java adds the day in its own time zone, which need not be UTC.
-                    Precision::Day => unported!(
-                        "io.deephaven.time.DateTimeUtils#timeZone",
-                        "a search for the date {text:?} in an Instant column"
-                    ),
+                    // Java adds the day in the server's time zone, whatever zone the
+                    // text names: 23, 24 or 25 hours.
+                    Precision::Day => one_day_later(lower, zone),
                 };
                 Some(Resolved::Between {
                     column,
@@ -420,6 +424,90 @@ fn epoch_nanos(nanos: i128) -> Result<i64, String> {
         ));
     }
     Ok(nanos as i64)
+}
+
+/// The server's time zone, in which a search adds a day to a date: the zone `TZ` names,
+/// else the one `/etc/localtime` links to, else UTC, as the console's `deephaven.time`
+/// finds it (`_java_time.system_zone`). A name the time zone database does not hold is
+/// UTC too.
+///
+/// Java's `ZoneId#systemDefault` also honours `-Duser.timezone`, and reads the zone from
+/// the contents of `/etc/localtime` when it is not a link; neither exists here, so a
+/// server can differ from Java only by how its zone is set, never for the same zone.
+///
+/// Behavior: io.deephaven.time.DateTimeUtils#timeZone(), which is
+/// java.time.ZoneId#systemDefault
+fn server_zone() -> Tz {
+    #[cfg(test)]
+    if let Some(zone) = TEST_ZONE.with(std::cell::Cell::get) {
+        return zone;
+    }
+    let mut name = std::env::var("TZ")
+        .unwrap_or_default()
+        .trim_start_matches(':')
+        .to_string();
+    if name.is_empty() {
+        name = std::fs::canonicalize("/etc/localtime")
+            .ok()
+            .and_then(|path| {
+                let path = path.to_str()?.to_string();
+                path.split_once("zoneinfo/")
+                    .map(|(_, zone)| zone.to_string())
+            })
+            .unwrap_or_default();
+    }
+    name.parse().unwrap_or(Tz::UTC)
+}
+
+#[cfg(test)]
+thread_local! {
+    static TEST_ZONE: std::cell::Cell<Option<Tz>> = const { std::cell::Cell::new(None) };
+}
+
+/// Runs `f` with `zone` as the server's time zone on this thread: the searches it makes
+/// add days there whatever the machine's zone is.
+#[cfg(test)]
+pub(super) fn with_server_zone<R>(zone: Tz, f: impl FnOnce() -> R) -> R {
+    let before = TEST_ZONE.with(|cell| cell.replace(Some(zone)));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+    TEST_ZONE.with(|cell| cell.set(before));
+    result.unwrap_or_else(|payload| std::panic::resume_unwind(payload))
+}
+
+/// The instant one day after `nanos` in `zone`, in nanoseconds: the same local time on the
+/// next date. A local time the clocks skip is moved later by the length of the gap; of a
+/// local time that occurs twice, the one with the offset `nanos` has, else the earlier.
+///
+/// Behavior: java.time.ZonedDateTime#plus(long, TemporalUnit) with `ChronoUnit.DAYS`, which
+/// resolves the local date and time by java.time.ZonedDateTime#ofLocal with the offset it
+/// had as the one it prefers
+fn one_day_later(nanos: i64, zone: Tz) -> i128 {
+    use chrono::{LocalResult, Offset, TimeZone};
+    const SECOND: i64 = 1_000_000_000;
+    let fraction = nanos.rem_euclid(SECOND);
+    let start = chrono::DateTime::from_timestamp(nanos.div_euclid(SECOND), 0)
+        .expect("chrono holds every instant of a long of nanoseconds")
+        .with_timezone(&zone);
+    let offset = start.offset().fix();
+    let local = start.naive_local() + chrono::Days::new(1);
+    let seconds = match zone.from_local_datetime(&local) {
+        LocalResult::Single(at) => at.timestamp(),
+        LocalResult::Ambiguous(earlier, later) => {
+            if later.offset().fix() == offset {
+                later.timestamp()
+            } else {
+                earlier.timestamp()
+            }
+        }
+        // In a gap the local time is read with the offset before it, which is the offset
+        // in force a day earlier than the local time read as UTC.
+        LocalResult::None => {
+            let day_before = local.and_utc() - chrono::TimeDelta::days(1);
+            let before = zone.offset_from_utc_datetime(&day_before.naive_utc()).fix();
+            local.and_utc().timestamp() - i64::from(before.local_minus_utc())
+        }
+    };
+    i128::from(seconds) * i128::from(SECOND) + i128::from(fraction)
 }
 
 #[cfg(test)]
@@ -1166,10 +1254,172 @@ mod tests {
         assert_eq!(found_in(&table, "x", &["V"]), [0i64; 0]);
     }
 
+    /// The instants of the scenario `search_dates` of `oracle/scenarios/static`, in order,
+    /// and a null: for each start of a day below, the instant and the one before it at the
+    /// start, an hour earlier and 23, 24 and 25 hours later. Row `K` is the `K`th.
+    fn day_ends() -> Vec<Option<i64>> {
+        const HOUR: i64 = 3600 * SECOND;
+        // midnight of each date in the zone the search names (UTC)
+        let starts = [
+            1_699_920_000, // 2023-11-14
+            1_699_938_000, // 2023-11-14 in New York
+            1_699_887_600, // 2023-11-14 in Tokyo
+            1_699_142_400, // 2023-11-05
+            1_699_156_800, // 2023-11-05 in New York
+            1_678_597_200, // 2023-03-12 in New York
+            1_678_518_000, // 2023-03-11 in Denver
+            1_699_074_000, // 2023-11-04 in Chicago
+        ];
+        let mut instants = std::collections::BTreeSet::new();
+        for start in starts {
+            let start = start * SECOND;
+            for end in [
+                start,
+                start + 23 * HOUR,
+                start + 24 * HOUR,
+                start + 25 * HOUR,
+            ] {
+                instants.extend([end - 1, end]);
+            }
+            instants.extend([start - HOUR - 1, start - HOUR]);
+        }
+        let mut cells: Vec<Option<i64>> = instants.into_iter().map(Some).collect();
+        cells.push(None);
+        cells
+    }
+
+    fn found_in_zone(table: &Arc<dyn Table>, text: &str, zone: Tz) -> Vec<i64> {
+        with_server_zone(zone, || found_in(table, text, &[]))
+            .into_iter()
+            .map(|k| k - 1)
+            .collect()
+    }
+
+    /// Every expectation was observed on Deephaven 42.9 with the rows of `day_ends`, on a
+    /// server in UTC and on one started with `TZ=America/New_York`
+    /// (`DateTimeUtils.timeZone()` was `Etc/UTC` and `America/New_York`). The UTC answers
+    /// are recorded in `oracle/corpus/search_dates`.
     #[test]
-    #[should_panic(expected = "unported: io.deephaven.time.DateTimeUtils#timeZone")]
-    fn a_search_for_a_day_in_an_instant_column_is_not_ported() {
-        let _ = filter(&mixed(), &[search("2023-11-14 UTC", &["T"])], &Compiler);
+    fn a_search_for_a_date_in_an_instant_column_spans_a_day_of_the_servers_zone() {
+        let t = TimestampNanosecondArray::from(day_ends()).with_timezone("UTC");
+        let table = static_table(vec![("T", ColumnType::Instant, Arc::new(t) as ArrayRef)]);
+        let new_york: Tz = "America/New_York".parse().unwrap();
+        let range = |first: i64, last: i64| (first..=last).collect::<Vec<i64>>();
+        // the text, then the rows found in UTC and in New York
+        let cases = [
+            ("2023-11-14 UTC", range(55, 68), range(55, 68)),
+            ("2023-11-14T UTC", range(55, 68), range(55, 68)),
+            ("2023-11-14 ET", range(59, 74), range(59, 74)),
+            ("2023-11-14 JP", range(51, 62), range(51, 62)),
+            // New York leaves summer time on 2023-11-05: a day of 25 hours
+            ("2023-11-05 UTC", range(27, 38), range(27, 40)),
+            ("2023-11-05 ET", range(31, 44), range(31, 46)),
+            // and starts it on 2023-03-12: 23 hours
+            ("2023-03-12 ET", range(7, 16), range(7, 14)),
+            // 02:00 in New York on 2023-03-12 does not exist: the next day starts at 03:00
+            // summer time, 24 hours later
+            ("2023-03-11 MT", range(3, 10), range(3, 10)),
+            // 01:00 in New York on 2023-11-05 is there twice: the next day starts at the
+            // first, with the offset the day had, 24 hours later
+            ("2023-11-04 CT", range(23, 32), range(23, 32)),
+        ];
+        for (text, utc, ny) in cases {
+            assert_eq!(found_in_zone(&table, text, Tz::UTC), utc, "{text} in UTC");
+            assert_eq!(
+                found_in_zone(&table, text, new_york),
+                ny,
+                "{text} in New York"
+            );
+        }
+        // no day: a lower case `t`, a zone with a `/`, a date alone or followed by `T`
+        for text in [
+            "2023-11-14t UTC",
+            "2023-11-14 America/New_York",
+            "2023-11-14",
+            "2023-11-14T",
+        ] {
+            for zone in [Tz::UTC, new_york] {
+                assert_eq!(found_in_zone(&table, text, zone), [0i64; 0], "{text}");
+            }
+        }
+    }
+
+    /// Observed on Deephaven 42.9 as above, for a vector of the instants of `day_ends`
+    /// four at a time (`group_by` of `G`, the scenario `search_dates`): a group is kept
+    /// when one of its instants is in the day.
+    #[test]
+    fn a_search_for_a_date_in_a_vector_of_instants_spans_a_day_of_the_servers_zone() {
+        let ends = day_ends();
+        let groups: Vec<String> = (0..ends.len())
+            .map(|k| if k + 1 == ends.len() { 0 } else { k / 4 })
+            .map(|group| format!("g{group}"))
+            .collect();
+        let t = TimestampNanosecondArray::from(ends).with_timezone("UTC");
+        let table = static_table(vec![
+            (
+                "G",
+                ColumnType::String,
+                Arc::new(StringArray::from(groups)) as ArrayRef,
+            ),
+            ("T", ColumnType::Instant, Arc::new(t) as ArrayRef),
+        ]);
+        let grouped = crate::ops::agg::group_by(&table, &["G"]).unwrap();
+        let kept = |text: &str, zone: Tz| {
+            let result = with_server_zone(zone, || {
+                filter(&grouped, &[search(text, &[])], &Compiler).unwrap()
+            });
+            let snapshot = oxhaven_testkit::TableSnapshot::current(&*result).unwrap();
+            let names = snapshot.columns[0]
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            names
+                .iter()
+                .map(|name| name.unwrap().to_string())
+                .collect::<Vec<_>>()
+        };
+        let groups = |range: std::ops::RangeInclusive<i32>| {
+            range.map(|group| format!("g{group}")).collect::<Vec<_>>()
+        };
+        let new_york: Tz = "America/New_York".parse().unwrap();
+        assert_eq!(kept("2023-11-05 UTC", Tz::UTC), groups(6..=9));
+        assert_eq!(kept("2023-11-05 UTC", new_york), groups(6..=10));
+        assert_eq!(kept("2023-03-11 MT", new_york), groups(0..=2));
+    }
+
+    #[test]
+    fn a_day_in_a_zone_is_the_same_time_of_the_next_date() {
+        let new_york: Tz = "America/New_York".parse().unwrap();
+        let tokyo: Tz = "Asia/Tokyo".parse().unwrap();
+        const HOUR: i128 = 3600 * SECOND as i128;
+        let later = |nanos: i64, zone: Tz| (one_day_later(nanos, zone) - i128::from(nanos)) / HOUR;
+        // 2023-11-05T00:00Z: 20:00 in New York the day before, in summer time
+        let fall = 1_699_142_400 * SECOND;
+        assert_eq!(later(fall, Tz::UTC), 24);
+        assert_eq!(later(fall, new_york), 25);
+        assert_eq!(later(fall, tokyo), 24);
+        // a fraction of a second is kept
+        assert_eq!(
+            one_day_later(fall + 7, new_york),
+            one_day_later(fall, new_york) + 7
+        );
+        // before the epoch
+        assert_eq!(later(-SECOND / 2, new_york), 24);
+        // the last instants of a long: the day after is beyond a long
+        assert!(one_day_later(i64::MAX, Tz::UTC) > i128::from(i64::MAX));
+    }
+
+    /// Observed on Deephaven 42.9 in UTC: `INVALID_ARGUMENT`, `DateTimeOverflowException:
+    /// Numeric overflow detected during conversion of 9223372800 to nanoseconds`.
+    #[test]
+    fn a_date_whose_day_ends_beyond_a_long_of_nanoseconds_fails_the_search() {
+        // 2262-04-11 starts before the last instant a long holds and ends after it
+        let FilterError::Invalid(message) =
+            with_server_zone(Tz::UTC, || refused("2262-04-11 UTC", &["T"]))
+        else {
+            panic!("failed otherwise");
+        };
+        assert!(message.contains("DateTimeOverflowException"), "{message}");
     }
 
     #[test]
