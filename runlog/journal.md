@@ -1559,3 +1559,5 @@ A corpus of five console scripts with an Oxhaven server as the remote, recorded 
 - 2026-11-21 05:13 UTC: Josh approved 7.25 to 7.29 as recommended. Started 14.4 (record them: PARITY A28 to A30, widen A22 and A24, lift fuzzer V14) and 14.5 (extend A27 to other object vectors under answer 3.3), both on Opus.
 
 - 2026-11-21 06:18 UTC: PR 191 (14.4, owner items 7.25 to 7.29 recorded, A22/A24 widened, A28 to A30) merged on green as ace4828e.
+
+- 2026-11-21 06:42 UTC: PR 192 (14.5, A27 extended to date, time and duration vectors) merged on green as dec36f27. All owner answers of 21 November carried out; 4.3 (Kafka CDC decimals) stays queued with the remaining refusals.
