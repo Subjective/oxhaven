@@ -1555,3 +1555,5 @@ A corpus of five console scripts with an Oxhaven server as the remote, recorded 
 - 2026-11-21 04:01 UTC: PR 189 (13.4, TLS through OpenSSL, plus 7.23 refusal and PARITY A26) merged on green as 7e1d2ffa.
 
 - 2026-11-21 04:16 UTC: PR 190 (14.3, date search in server zone, typed Boolean/Instant vectors as PARITY A27) merged on green as eb0d03d4. Other object vectors (LocalDate, ZonedDateTime, BigDecimal) min/max now refused; candidate follow-up under owner item 3.3.
+
+- 2026-11-21 05:13 UTC: Josh approved 7.25 to 7.29 as recommended. Started 14.4 (record them: PARITY A28 to A30, widen A22 and A24, lift fuzzer V14) and 14.5 (extend A27 to other object vectors under answer 3.3), both on Opus.
