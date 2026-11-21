@@ -286,6 +286,7 @@ fn results_match_the_recorded_java_results() {
     // Results of this test's operations that need an operation of another task, or an
     // input this test cannot make.
     let not_run = [
+        "agg_typed_vectors/sorted: agg_by",
         "empty_table_and_meta/five_tail: update",
         "error_unknown_column/after_bad_where: where",
         "flatten_reverse/flat_big: where",
@@ -312,13 +313,13 @@ fn results_match_the_recorded_java_results() {
         .collect();
     let expected = [
         ("agg_all_by", 43),
-        ("agg_by", 74),
+        ("agg_by", 79),
         ("aj", 12),
         ("column_statistics", 19),
         ("drop_columns", 8),
         ("empty_table", 2),
         ("exact_join", 5),
-        ("filter", 113),
+        ("filter", 130),
         ("group_by", 13),
         ("head_by", 14),
         ("join", 7),
@@ -339,9 +340,9 @@ fn results_match_the_recorded_java_results() {
         ("snapshot_when", 20),
         ("tail_by", 10),
         ("time_table", 2),
-        ("ungroup", 15),
+        ("ungroup", 17),
         ("update", 39),
-        ("update_by", 42),
+        ("update_by", 43),
         ("update_view", 16),
         ("view", 40),
         ("where", 53),

@@ -25,7 +25,7 @@ use std::fs::File;
 use std::path::PathBuf;
 
 /// The `agg_by` operations that are not run, as `scenario.operation: why`.
-const NOT_RUN: [&str; 49] = [
+const NOT_RUN: [&str; 55] = [
     "agg_by_no_keys.all_d: the source is made by where",
     "agg_by_sets.by_key: the source is made by update_view",
     "agg_by_sets.no_key: the source is made by update_view",
@@ -51,6 +51,12 @@ const NOT_RUN: [&str; 49] = [
     "agg_by_statistics.bool_var: no aggregation var",
     "agg_by_statistics.pct_out_of_range: no aggregation pct",
     "agg_by_statistics.string_weight: no aggregation weighted_avg",
+    "agg_typed_vectors.extremes: the source is made by group_by",
+    "agg_typed_vectors.middles: the source is made by group_by",
+    "agg_typed_vectors.uniques: the source is made by group_by",
+    "agg_typed_vectors.formulas: no aggregation formula",
+    "agg_typed_vectors.kept_types: the source is made by group_by",
+    "agg_typed_vectors.nested: the source is made by group_by",
     "partitioned_tables.seeded: it has initial groups",
     "partitioned_tables.seeded_kept: it has initial groups",
     "pipeline.by_region: the source is made by natural_join",
@@ -675,7 +681,7 @@ fn aggregations_match_the_recorded_java_results() {
         }
     }
     assert!(scenarios > 0);
-    assert_eq!(scenarios, 91);
+    assert_eq!(scenarios, 93);
     assert_eq!(tally.not_run, NOT_RUN);
     assert_eq!(tally.agg_all_by, AGG_ALL_BY);
     let compared: Vec<String> = tally

@@ -482,7 +482,7 @@ fn replay(name: &str, scenario: &Value, outcome: &mut Outcome) {
 fn results_match_the_ones_recorded_from_java() {
     let mut outcome = Outcome::default();
     let scenarios = scenarios();
-    assert_eq!(scenarios.len(), 91);
+    assert_eq!(scenarios.len(), 93);
     for (name, scenario) in &scenarios {
         replay(name, scenario, &mut outcome);
     }

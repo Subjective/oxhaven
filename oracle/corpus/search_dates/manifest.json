@@ -1,0 +1,110 @@
+{
+  "format": 2,
+  "scenario": "search_dates",
+  "scenario_sha256": "11914f1a60cd1814eb750d849ac0e277e6b892c96560b16ce4dea51191632f7f",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "s_utc",
+      "file": "step000.s_utc.arrow",
+      "rows": 14
+    },
+    {
+      "step": 0,
+      "table": "s_et",
+      "file": "step000.s_et.arrow",
+      "rows": 16
+    },
+    {
+      "step": 0,
+      "table": "s_jp",
+      "file": "step000.s_jp.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "s_fall_utc",
+      "file": "step000.s_fall_utc.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "s_fall_et",
+      "file": "step000.s_fall_et.arrow",
+      "rows": 14
+    },
+    {
+      "step": 0,
+      "table": "s_spring_et",
+      "file": "step000.s_spring_et.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "s_gap_mt",
+      "file": "step000.s_gap_mt.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "s_overlap_ct",
+      "file": "step000.s_overlap_ct.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "s_lower_t",
+      "file": "step000.s_lower_t.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "s_upper_t",
+      "file": "step000.s_upper_t.arrow",
+      "rows": 14
+    },
+    {
+      "step": 0,
+      "table": "s_region",
+      "file": "step000.s_region.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "s_date_only",
+      "file": "step000.s_date_only.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "s_date_t",
+      "file": "step000.s_date_t.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "g_utc",
+      "file": "step000.g_utc.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "g_et",
+      "file": "step000.g_et.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "g_fall_utc",
+      "file": "step000.g_fall_utc.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "g_gap_mt",
+      "file": "step000.g_gap_mt.arrow",
+      "rows": 3
+    }
+  ]
+}
