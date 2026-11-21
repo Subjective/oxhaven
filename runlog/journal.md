@@ -1553,3 +1553,5 @@ A corpus of five console scripts with an Oxhaven server as the remote, recorded 
 - 2026-11-21 02:52 UTC: Josh chose system OpenSSL for TLS (7.24), fail for unreadable dh:// hosts (7.23) and approved sections 2 to 4 of review-items-2. Started 13.4 (TLS, plus 7.23) and 14.3 (2.4 date search, 3.3 typed vectors), both on Opus.
 
 - 2026-11-21 04:01 UTC: PR 189 (13.4, TLS through OpenSSL, plus 7.23 refusal and PARITY A26) merged on green as 7e1d2ffa.
+
+- 2026-11-21 04:16 UTC: PR 190 (14.3, date search in server zone, typed Boolean/Instant vectors as PARITY A27) merged on green as eb0d03d4. Other object vectors (LocalDate, ZonedDateTime, BigDecimal) min/max now refused; candidate follow-up under owner item 3.3.
