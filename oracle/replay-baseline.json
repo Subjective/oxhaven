@@ -9,6 +9,7 @@
   "agg_by_sets": {"state": "clean"},
   "agg_by_statistics": {"state": "clean"},
   "agg_by_sum_count": {"state": "clean"},
+  "agg_object_vectors": {"state": "clean"},
   "agg_typed_vectors": {"state": "clean"},
   "aj_int_keys": {"state": "clean"},
   "aj_timestamps": {"state": "clean"},

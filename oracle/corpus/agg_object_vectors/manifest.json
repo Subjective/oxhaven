@@ -1,0 +1,92 @@
+{
+  "format": 2,
+  "scenario": "agg_object_vectors",
+  "scenario_sha256": "32b93dd5b25cf740ae442eecaf9b1d5abefebe2a246d9060551ab14e908e32f1",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "extremes",
+      "file": "step000.extremes.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "middles",
+      "file": "step000.middles.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "uniques",
+      "file": "step000.uniques.arrow",
+      "rows": 15
+    },
+    {
+      "step": 0,
+      "table": "formulas",
+      "file": "step000.formulas.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "cumulative_kept",
+      "file": "step000.cumulative_kept.arrow",
+      "rows": 15
+    },
+    {
+      "step": 0,
+      "table": "sorted",
+      "file": "step000.sorted.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "taken_apart",
+      "file": "step000.taken_apart.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "groups_apart",
+      "file": "step000.groups_apart.arrow",
+      "rows": 15
+    },
+    {
+      "step": 0,
+      "table": "distinct_D",
+      "file": "step000.distinct_D.arrow",
+      "rows": 13
+    },
+    {
+      "step": 0,
+      "table": "distinct_LT",
+      "file": "step000.distinct_LT.arrow",
+      "rows": 15
+    },
+    {
+      "step": 0,
+      "table": "distinct_Dt",
+      "file": "step000.distinct_Dt.arrow",
+      "rows": 15
+    },
+    {
+      "step": 0,
+      "table": "distinct_Dur",
+      "file": "step000.distinct_Dur.arrow",
+      "rows": 15
+    },
+    {
+      "step": 0,
+      "table": "distinct_W",
+      "file": "step000.distinct_W.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "distinct_Z",
+      "file": "step000.distinct_Z.arrow",
+      "rows": 15
+    }
+  ]
+}
