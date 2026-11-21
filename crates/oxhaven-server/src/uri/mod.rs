@@ -255,9 +255,9 @@ pub fn remote_ticket(remote: &RemoteUri) -> Result<Vec<u8>, ResolveError> {
     }
 }
 
-/// The client configuration of a target: TLS for `dh`, which the client refuses
-/// (`ClientError::TlsNotAvailable`, owner question 7.24), and the default port of the
-/// scheme when the target names none.
+/// The client configuration of a target: TLS with the system's root certificates for `dh`,
+/// as Java's resolver connects with `TrustJdk`, and the default port of the scheme when the
+/// target names none.
 ///
 /// Behavior: `io.deephaven.client.impl.ClientConfig` with `target`, and
 /// `io.deephaven.client.impl.ChannelHelper` (the default ports)

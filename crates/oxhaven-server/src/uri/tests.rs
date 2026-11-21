@@ -393,13 +393,16 @@ async fn remote_failures_come_before_or_without_a_session() {
             )
         );
     }
-    // TLS is refused by name
-    let tls = resolve(&resolvers, &format!("dh://127.0.0.1:{port}/scope/t")).await;
-    assert_eq!(
-        tls.unwrap_err(),
-        "TLS connections to remote servers are not ported yet: \
-         io.deephaven.client.impl.ChannelHelper#channelBuilder (useTransportSecurity)"
-    );
+    // `dh://` is TLS: against a server that speaks plaintext, the handshake fails
+    let plaintext = local.address.port();
+    let tls = resolve(&resolvers, &format!("dh://127.0.0.1:{plaintext}/scope/t")).await;
+    let tls = tls.unwrap_err();
+    if cfg!(feature = "tls") {
+        assert!(tls.starts_with("cannot connect: "), "{tls}");
+        assert!(tls.contains("TLS handshake failed"), "{tls}");
+    } else {
+        assert!(tls.contains("the `tls` feature"), "{tls}");
+    }
     // a failed connection is not kept
     let refused = resolve(&resolvers, &format!("dh+plain://127.0.0.1:{port}/scope/t")).await;
     assert!(refused.unwrap_err().starts_with("cannot connect: "));

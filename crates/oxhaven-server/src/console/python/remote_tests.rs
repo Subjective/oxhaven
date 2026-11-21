@@ -203,19 +203,22 @@ async fn failures_are_dherrors_with_the_references_messages() {
         "java.lang.UnsupportedOperationException: Proxying not supported yet, see \
          https://github.com/deephaven/deephaven-core/issues/1483"
     );
-    const TLS: &str = "TLS connections to remote servers are not ported yet: \
-                       io.deephaven.client.impl.ChannelHelper#channelBuilder \
-                       (useTransportSecurity)";
-    assert_eq!(
-        resolving(&format!("dh://127.0.0.1:{port}/scope/fixed")),
-        TLS
-    );
+    // TLS against a server that speaks plaintext
+    let tls = resolving(&format!("dh://127.0.0.1:{port}/scope/fixed"));
+    assert!(tls.contains("TLS handshake failed"), "{tls}");
     let missing = resolving(&format!("dh+plain://127.0.0.1:{port}/scope/missing"));
     assert!(missing.starts_with("NotFound: "), "{missing}");
 
     let session =
         |arguments: &str| raised(&python, &format!("barrage_session({arguments})"), SESSION);
-    assert_eq!(session(&format!("'127.0.0.1', {port}, use_tls=True")), TLS);
+    let tls = session(&format!("'127.0.0.1', {port}, use_tls=True"));
+    assert!(tls.contains("TLS handshake failed"), "{tls}");
+    assert_eq!(
+        session(&format!(
+            "'127.0.0.1', {port}, use_tls=True, tls_root_certs=b'pem'"
+        )),
+        "invalid client configuration: tls_root_certs holds no PEM encoded certificate"
+    );
     assert_eq!(
         session(&format!("'127.0.0.1', {port}, tls_root_certs=b'pem'")),
         "tls_root_certs is provided but use_tls is False"

@@ -32,7 +32,7 @@ use crate::session::{export_id_to_bytes, ExportState, ExportValue};
 use crate::test_support::{TestServer, PSK};
 
 /// Options that make the server send each change as soon as it has it.
-const PROMPT: SubscriptionOptions = SubscriptionOptions {
+pub(super) const PROMPT: SubscriptionOptions = SubscriptionOptions {
     use_deephaven_nulls: true,
     columns_as_list: false,
     min_update_interval_ms: 1,
@@ -54,7 +54,7 @@ async fn connect(server: &TestServer) -> (BarrageSession, Arc<SteppedUpdateGraph
     (session, local)
 }
 
-fn publish(server: &TestServer, name: &str, table: Arc<dyn Table>) -> Vec<u8> {
+pub(super) fn publish(server: &TestServer, name: &str, table: Arc<dyn Table>) -> Vec<u8> {
     server
         .state
         .scope
@@ -82,7 +82,7 @@ async fn until(
 }
 
 /// Waits until `copy` has what `source` has, row for row and key for key.
-async fn caught_up(local: &SteppedUpdateGraph, source: &dyn Table, copy: &dyn Table) {
+pub(super) async fn caught_up(local: &SteppedUpdateGraph, source: &dyn Table, copy: &dyn Table) {
     until(
         local,
         || diff_tables(source, copy).is_none() && *source.row_set() == *copy.row_set(),
@@ -118,7 +118,7 @@ fn rows_of(table: &dyn Table) -> Vec<Vec<String>> {
         .collect()
 }
 
-fn batch_of(definition: &TableDefinition, columns: Vec<ArrayRef>) -> RecordBatch {
+pub(super) fn batch_of(definition: &TableDefinition, columns: Vec<ArrayRef>) -> RecordBatch {
     let fields: Vec<Field> = definition
         .columns()
         .iter()
@@ -244,7 +244,7 @@ fn rarer_types() -> Arc<dyn Table> {
     in_memory_table(definition, &[batch]).unwrap()
 }
 
-fn random_types() -> TableDefinition {
+pub(super) fn random_types() -> TableDefinition {
     definition(&[
         ("Bo", ColumnType::Boolean),
         ("By", ColumnType::Byte),
@@ -262,7 +262,7 @@ fn random_types() -> TableDefinition {
     ])
 }
 
-fn empty_of(definition: &TableDefinition) -> Vec<ArrayRef> {
+pub(super) fn empty_of(definition: &TableDefinition) -> Vec<ArrayRef> {
     definition
         .columns()
         .iter()
@@ -738,7 +738,8 @@ async fn tables_are_fetched_by_scope_application_and_shared_tickets() {
 }
 
 /// Each way of authenticating the test server takes works, a wrong key is refused with
-/// the server's status, TLS is refused before anything is sent, and extra headers arrive.
+/// the server's status, root certificates without TLS are refused before anything is sent,
+/// and extra headers arrive. TLS has its own tests (`tls_tests.rs`).
 #[tokio::test(flavor = "multi_thread")]
 async fn a_session_authenticates_or_says_why_not() {
     let server = TestServer::start().await;
@@ -773,15 +774,6 @@ async fn a_session_authenticates_or_says_why_not() {
         panic!("{refused}");
     };
     assert_eq!(status.code(), tonic::Code::Unauthenticated);
-
-    let mut tls = config(&server);
-    tls.use_tls = true;
-    let refused = BarrageSession::connect(tls, local.clone(), None)
-        .await
-        .err()
-        .unwrap();
-    assert!(matches!(refused, ClientError::TlsNotAvailable), "{refused}");
-    assert!(refused.to_string().contains("ChannelHelper#channelBuilder"));
 
     let mut certs = config(&server);
     certs.tls_root_certs = Some(b"pem".to_vec());
