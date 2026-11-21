@@ -1,0 +1,56 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "ok"
+    },
+    {
+      "step": 2,
+      "outcome": "ok"
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to resolve the URI. : sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target",
+      "operation": "failed to resolve the URI."
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to get a barrage session to the target remote Deephaven server. : sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target",
+      "operation": "failed to get a barrage session to the target remote Deephaven server."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to get a barrage session to the target remote Deephaven server. : sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target",
+      "operation": "failed to get a barrage session to the target remote Deephaven server."
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to get a barrage session to the target remote Deephaven server. : java.security.cert.CertificateException: No subject alternative names matching IP address 127.0.0.1 found",
+      "operation": "failed to get a barrage session to the target remote Deephaven server."
+    },
+    {
+      "step": 7,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to get a barrage session to the target remote Deephaven server. : io.netty.handler.ssl.NotSslRecordException: not an SSL/TLS record: 485454502f312e31203430302042616420526571756573740d0a636f6e6e656374696f6e3a20636c6f73650d0a636f6e74656e742d6c656e6774683a20300d0a646174653a205361742c203231204e6f",
+      "operation": "failed to get a barrage session to the target remote Deephaven server."
+    },
+    {
+      "step": 8,
+      "outcome": "ok"
+    }
+  ]
+}

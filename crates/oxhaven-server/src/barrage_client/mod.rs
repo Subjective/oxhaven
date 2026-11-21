@@ -22,9 +22,13 @@ mod message;
 mod replica;
 mod schema;
 mod session;
+#[cfg(feature = "tls")]
+mod tls;
 
 #[cfg(test)]
 mod tests;
+#[cfg(all(test, feature = "tls"))]
+mod tls_tests;
 
 pub use error::ClientError;
 pub use message::{ModifiedColumn, RemoteMessage};

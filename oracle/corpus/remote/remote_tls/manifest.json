@@ -1,0 +1,172 @@
+{
+  "format": 2,
+  "scenario": "remote_tls",
+  "scenario_sha256": "4f23606bdd78a5f8d0c25084adb263fbb98214674e4fdef64d869624eb1438dd",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "t_types",
+      "file": "step000.t_types.arrow",
+      "rows": 40
+    },
+    {
+      "step": 0,
+      "table": "s_types",
+      "file": "step000.s_types.arrow",
+      "rows": 40
+    },
+    {
+      "step": 0,
+      "table": "t_src",
+      "file": "step000.t_src.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "t_types",
+      "file": "step001.t_types.arrow",
+      "rows": 40
+    },
+    {
+      "step": 1,
+      "table": "s_types",
+      "file": "step001.s_types.arrow",
+      "rows": 40
+    },
+    {
+      "step": 1,
+      "table": "t_src",
+      "file": "step001.t_src.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "t_types",
+      "file": "step002.t_types.arrow",
+      "rows": 40
+    },
+    {
+      "step": 2,
+      "table": "s_types",
+      "file": "step002.s_types.arrow",
+      "rows": 40
+    },
+    {
+      "step": 2,
+      "table": "t_src",
+      "file": "step002.t_src.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "t_types",
+      "file": "step003.t_types.arrow",
+      "rows": 40
+    },
+    {
+      "step": 3,
+      "table": "s_types",
+      "file": "step003.s_types.arrow",
+      "rows": 40
+    },
+    {
+      "step": 3,
+      "table": "t_src",
+      "file": "step003.t_src.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "t_types",
+      "file": "step004.t_types.arrow",
+      "rows": 40
+    },
+    {
+      "step": 4,
+      "table": "s_types",
+      "file": "step004.s_types.arrow",
+      "rows": 40
+    },
+    {
+      "step": 4,
+      "table": "t_src",
+      "file": "step004.t_src.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "t_types",
+      "file": "step005.t_types.arrow",
+      "rows": 40
+    },
+    {
+      "step": 5,
+      "table": "s_types",
+      "file": "step005.s_types.arrow",
+      "rows": 40
+    },
+    {
+      "step": 5,
+      "table": "t_src",
+      "file": "step005.t_src.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "t_types",
+      "file": "step006.t_types.arrow",
+      "rows": 40
+    },
+    {
+      "step": 6,
+      "table": "s_types",
+      "file": "step006.s_types.arrow",
+      "rows": 40
+    },
+    {
+      "step": 6,
+      "table": "t_src",
+      "file": "step006.t_src.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "t_types",
+      "file": "step007.t_types.arrow",
+      "rows": 40
+    },
+    {
+      "step": 7,
+      "table": "s_types",
+      "file": "step007.s_types.arrow",
+      "rows": 40
+    },
+    {
+      "step": 7,
+      "table": "t_src",
+      "file": "step007.t_src.arrow",
+      "rows": 3
+    },
+    {
+      "step": 8,
+      "table": "t_types",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 8,
+      "table": "s_types",
+      "file": "step008.s_types.arrow",
+      "rows": 40
+    },
+    {
+      "step": 8,
+      "table": "t_src",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

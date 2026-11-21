@@ -604,6 +604,28 @@ the calendars' descriptions are Oxhaven's own text. Every other date of the thre
 and all of `UTC`, must match. The sources for each date and the recorded comparison are in
 `tasks/12.5-shipped-calendars.md` and `crates/oxhaven-expr/src/calendar/shipped_tests.rs`.
 
+### A26. URIs whose host Java cannot read
+
+Approved by the owner on 2026-11-21 (item 7.23 of the second batch of review items: "fail
+with a clear error").
+
+Java's `java.net.URI` reads an authority that is no host name, address and port it accepts
+(an underscore, `dh://my_server/scope/t`; a non-ASCII or percent-encoded host; `1.2.3` or
+`-host`; a port that is negative, too large or given twice, `dh://h:99999999999/scope/t`) as
+registry-based, without a host. `UriHelper#isLocalPath` asks for no host, not for no
+authority, so `deephaven.uri.resolve` takes such a URI as a local one: the query scope
+variable or application field of this server, or `None`, not the table of the server the
+user named. The CSV and Parquet resolvers drop such an authority too.
+
+Rule: Oxhaven refuses such a URI when it resolves it, for every resolver that would drop the
+authority (`dh:` query scope and application URIs, `csv:` and its variants, `parquet:`),
+with `java.lang.IllegalArgumentException: '<authority>' in '<uri>' is no host name, address
+or port that can be read; the URI would resolve on this server` inside the `DHError` of
+`resolve`. Parsing is unchanged: the URI types read such a URI as Java does, and a URI with
+no authority, or with a host Java reads, resolves as in Java. Recorded in the remote-table
+scenario `remote_unread_host` (`oracle/remote-baseline.json`), whose steps succeed in Java
+and fail here; `crates/oxhaven-server/src/uri/mod.rs` (`check_unread_host`).
+
 ## Determinism
 
 Oxhaven must give the same answer as itself on every run, for the same inputs and the same

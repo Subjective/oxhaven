@@ -83,6 +83,7 @@ async fn remote_tables_are_resolved_subscribed_and_snapshotted() {
 from deephaven.uri import resolve
 from deephaven.barrage import barrage_session, BarrageSession
 from deephaven.table import Table
+from deephaven.dherror import DHError
 
 base = "dh+plain://127.0.0.1:{port}"
 resolved = resolve(base + "/scope/ticking")
@@ -108,8 +109,12 @@ local_value = [1, 2]
 assert resolve("dh:///scope/local_value") is local_value
 assert resolve("dh:///scope/missing") is None
 assert resolve("dh:///app/missing/field/f") is None
-# owner question 7.23: a host Java cannot read makes the URI local
-assert resolve("dh://host_name/scope/local_value") is local_value
+# owner question 7.23: a host Java cannot read is refused (PARITY.md A26)
+try:
+    resolve("dh://host_name/scope/local_value")
+    raise AssertionError("resolved")
+except DHError as error:
+    assert "is no host name, address or port that can be read" in str(error), error
 "#
     ));
     let ticking = remote.ticking.table();
@@ -203,19 +208,22 @@ async fn failures_are_dherrors_with_the_references_messages() {
         "java.lang.UnsupportedOperationException: Proxying not supported yet, see \
          https://github.com/deephaven/deephaven-core/issues/1483"
     );
-    const TLS: &str = "TLS connections to remote servers are not ported yet: \
-                       io.deephaven.client.impl.ChannelHelper#channelBuilder \
-                       (useTransportSecurity)";
-    assert_eq!(
-        resolving(&format!("dh://127.0.0.1:{port}/scope/fixed")),
-        TLS
-    );
+    // TLS against a server that speaks plaintext
+    let tls = resolving(&format!("dh://127.0.0.1:{port}/scope/fixed"));
+    assert!(tls.contains("TLS handshake failed"), "{tls}");
     let missing = resolving(&format!("dh+plain://127.0.0.1:{port}/scope/missing"));
     assert!(missing.starts_with("NotFound: "), "{missing}");
 
     let session =
         |arguments: &str| raised(&python, &format!("barrage_session({arguments})"), SESSION);
-    assert_eq!(session(&format!("'127.0.0.1', {port}, use_tls=True")), TLS);
+    let tls = session(&format!("'127.0.0.1', {port}, use_tls=True"));
+    assert!(tls.contains("TLS handshake failed"), "{tls}");
+    assert_eq!(
+        session(&format!(
+            "'127.0.0.1', {port}, use_tls=True, tls_root_certs=b'pem'"
+        )),
+        "invalid client configuration: tls_root_certs holds no PEM encoded certificate"
+    );
     assert_eq!(
         session(&format!("'127.0.0.1', {port}, tls_root_certs=b'pem'")),
         "tls_root_certs is provided but use_tls is False"

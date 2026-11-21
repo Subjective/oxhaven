@@ -7,15 +7,9 @@ use tonic::Status;
 /// server sent, or of something this client does not read.
 #[derive(Clone, Debug)]
 pub enum ClientError {
-    /// The configuration cannot be used: a bad host, header or authority.
+    /// The configuration cannot be used: a bad host, header, authority or root certificate.
     Config(String),
-    /// TLS was asked for. The workspace has no TLS stack under an accepted licence, so
-    /// the connection is refused before anything is sent.
-    ///
-    /// Behavior: `io.deephaven.client.impl.ChannelHelper#channelBuilder` (the `dh://`
-    /// branch, `useTransportSecurity`), which is not ported
-    TlsNotAvailable,
-    /// The connection could not be made.
+    /// The connection could not be made, or its TLS handshake failed.
     Connect(String),
     /// The server answered a call with this status.
     Status(Status),
@@ -34,10 +28,6 @@ impl std::fmt::Display for ClientError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ClientError::Config(problem) => write!(f, "invalid client configuration: {problem}"),
-            ClientError::TlsNotAvailable => f.write_str(
-                "TLS connections to remote servers are not ported yet: \
-                 io.deephaven.client.impl.ChannelHelper#channelBuilder (useTransportSecurity)",
-            ),
             ClientError::Connect(problem) => write!(f, "cannot connect: {problem}"),
             ClientError::Status(status) => {
                 write!(f, "{:?}: {}", status.code(), status.message())

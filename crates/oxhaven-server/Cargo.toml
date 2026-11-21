@@ -16,7 +16,11 @@ default = ["mimalloc"]
 mimalloc = ["dep:mimalloc"]
 # The Python console: embeds CPython, so building with it needs a Python 3 with a shared
 # libpython and its headers, and running needs that libpython. See docs/CONSOLE.md.
-python = ["dep:oxhaven-csv", "dep:oxhaven-kafka", "dep:oxhaven-parquet", "dep:pyo3", "dep:prost-reflect", "dep:serde_json", "arrow/ffi"]
+python = ["dep:oxhaven-csv", "dep:oxhaven-kafka", "dep:oxhaven-parquet", "dep:pyo3", "dep:prost-reflect", "dep:serde_json", "arrow/ffi", "tls"]
+# TLS connections of the Barrage client (`dh://`, `use_tls=True`), through the system's
+# OpenSSL 3, which the Kafka client of the `python` feature links too; the console turns it
+# on. Without it, a TLS connection is refused by name.
+tls = ["dep:openssl", "dep:tokio-openssl"]
 
 [dependencies]
 arrow.workspace = true
@@ -44,11 +48,13 @@ oxhaven-kafka = { path = "../oxhaven-kafka", optional = true }
 oxhaven-parquet = { path = "../oxhaven-parquet", optional = true }
 oxhaven-proto = { path = "../oxhaven-proto" }
 oxhaven-uri = { path = "../oxhaven-uri" }
+openssl = { workspace = true, optional = true }
 prost.workspace = true
 prost-reflect = { workspace = true, optional = true }
 pyo3 = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 tokio.workspace = true
+tokio-openssl = { workspace = true, optional = true }
 tokio-stream.workspace = true
 tokio-tungstenite.workspace = true
 tonic.workspace = true
@@ -60,3 +66,8 @@ uuid.workspace = true
 [dev-dependencies]
 oxhaven-testkit = { path = "../oxhaven-testkit" }
 tonic-prost.workspace = true
+
+# Sets the environment OpenSSL reads the system's roots from, so it runs in a process of its own.
+[[test]]
+name = "tls_system_roots"
+required-features = ["tls"]
