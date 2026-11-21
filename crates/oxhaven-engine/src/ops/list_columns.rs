@@ -387,32 +387,17 @@ fn panic_of(f: impl FnOnce() + std::panic::UnwindSafe) -> String {
     }
 }
 
-/// The distinct values of a vector of Booleans lose their inner element type in Java (a
-/// client receives strings, owner item 3.3), and an array is not a `Comparable` in Java,
-/// which fails when it first compares two of them.
+/// The distinct values of a vector of other objects than strings, Booleans and Instants
+/// lose their inner element type in Java (a client receives strings, owner item 3.3), which
+/// `PARITY.md` A27 does not cover, and an array is not a `Comparable` in Java, which fails
+/// when it first compares two of them.
 #[test]
 fn aggregations_of_a_list_column_that_are_not_ported() {
     let distinct = AggSpec::Distinct {
         include_nulls: false,
     };
-    let booleans = ColumnType::vector(ColumnType::Boolean);
-    let table: Arc<dyn Table> = in_memory_table(
-        definition(&[("D", booleans.clone())]),
-        &[RecordBatch::try_new(
-            Arc::new(Schema::new(vec![Field::new(
-                "D",
-                booleans.arrow_type(),
-                true,
-            )])),
-            vec![list_of(
-                &booleans,
-                [Some(1)],
-                Arc::new(arrow::array::BooleanArray::from(vec![true])),
-            )],
-        )
-        .unwrap()],
-    )
-    .unwrap();
+    let dates = ColumnType::vector(ColumnType::LocalDate);
+    let table: Arc<dyn Table> = in_memory_table(definition(&[("D", dates)]), &[]).unwrap();
     let aggregation = Aggregation::columns(distinct, [Pair::of("D")]);
     let table = std::panic::AssertUnwindSafe(table);
     let message = panic_of(move || {
@@ -422,7 +407,7 @@ fn aggregations_of_a_list_column_that_are_not_ported() {
     assert_eq!(
         message,
         "unported: io.deephaven.engine.table.impl.by.AggregationProcessor: \
-         makeDistinctOperator for a column of type Vector(Boolean)"
+         makeDistinctOperator for a column of type Vector(LocalDate)"
     );
 
     let array = ColumnType::array(ColumnType::Int);
@@ -640,37 +625,172 @@ fn a_range_filter_of_a_list_column_is_refused() {
 }
 
 /// Java gives the minimum, maximum, median, percentile and unique value of a vector of
-/// Booleans or Instants as a column without a component type, which a client receives as
-/// lists of strings. That is not reproduced. The aggregations that count, or that read
-/// the input column, are answered.
+/// Booleans or Instants, and the vectors inside their distinct values, with the element
+/// type `Object`, which a client receives as lists of strings. Oxhaven keeps the element
+/// type: allowed difference A27 of `PARITY.md` (owner item 3.3; Java's answers are in
+/// `oracle/corpus/agg_typed_vectors`). Of a vector of other objects, such as `LocalDate`,
+/// they are not ported.
 #[test]
-fn a_stored_vector_of_booleans_or_instants_is_not_ported() {
+fn aggregations_of_vectors_of_booleans_or_instants_keep_the_element_type() {
+    let vector = ColumnType::vector(ColumnType::Boolean);
+    let elements = arrow::array::BooleanArray::from(vec![None, Some(false), Some(true)]);
+    let cells = list_of(&vector, [Some(2), Some(1), Some(0)], Arc::new(elements));
+    let fields = vec![
+        Field::new("G", ColumnType::String.arrow_type(), true),
+        Field::new("L", vector.arrow_type(), true),
+    ];
+    let batch = RecordBatch::try_new(
+        Arc::new(Schema::new(fields)),
+        vec![strings(["a", "a", "b"]), cells],
+    )
+    .unwrap();
+    let names = [("G", ColumnType::String), ("L", vector.clone())];
+    let booleans: Arc<dyn Table> = in_memory_table(definition(&names), &[batch]).unwrap();
+    let by_key = |spec: AggSpec| aggregated(&booleans, spec, "L", &["G"]);
+    // null is less than false, which is less than true; the start of a vector less than it
+    assert_eq!(by_key(AggSpec::Min), ["[null, false]", "[]"]);
+    assert_eq!(by_key(AggSpec::Max), ["[true]", "[]"]);
+    assert_eq!(by_key(unique()), ["null", "[]"]);
+    let distinct = AggSpec::Distinct {
+        include_nulls: false,
+    };
+    assert_eq!(
+        by_key(distinct.clone()),
+        ["[[null, false], [true]]", "[[]]"]
+    );
     for element in [ColumnType::Boolean, ColumnType::Instant] {
-        let names = [("K", ColumnType::Int), ("L", ColumnType::vector(element))];
-        let table = || -> Arc<dyn Table> { in_memory_table(definition(&names), &[]).unwrap() };
+        let vector = ColumnType::vector(element);
+        let names = [("K", ColumnType::Int), ("L", vector.clone())];
+        let table: Arc<dyn Table> = in_memory_table(definition(&names), &[]).unwrap();
         for spec in [
             AggSpec::Min,
             AggSpec::Max,
             median(),
             percentile(0.5),
             unique(),
+            AggSpec::First,
+            distinct.clone(),
         ] {
             let aggregation = Aggregation::columns(spec.clone(), [Pair::of("L")]);
-            let message = panic_of(move || {
-                let _ = aggregate(&table(), &[aggregation], false, &["K"]);
-            });
-            assert!(
-                message.ends_with("whose result Java gives without its component type"),
-                "{spec:?}: {message}"
+            let result = aggregate(&table, &[aggregation], false, &["K"]).unwrap();
+            let expected = match spec {
+                AggSpec::Distinct { .. } => ColumnType::vector(vector.clone()),
+                _ => vector.clone(),
+            };
+            assert_eq!(
+                result.definition().columns()[1].column_type,
+                expected,
+                "{spec:?}"
             );
         }
-        let sorted = AggSpec::SortedLast {
-            columns: vec!["K".to_string()],
-        };
-        let count = AggSpec::CountDistinct { count_nulls: false };
-        for spec in [AggSpec::First, AggSpec::Last, sorted, count] {
-            let aggregation = Aggregation::columns(spec, [Pair::of("L")]);
-            aggregate(&table(), &[aggregation], false, &["K"]).unwrap();
+    }
+    let names = [
+        ("K", ColumnType::Int),
+        ("L", ColumnType::vector(ColumnType::LocalDate)),
+    ];
+    let table = || -> Arc<dyn Table> { in_memory_table(definition(&names), &[]).unwrap() };
+    for spec in [
+        AggSpec::Min,
+        AggSpec::Max,
+        median(),
+        percentile(0.5),
+        unique(),
+    ] {
+        let aggregation = Aggregation::columns(spec.clone(), [Pair::of("L")]);
+        let message = panic_of(move || {
+            let _ = aggregate(&table(), &[aggregation], false, &["K"]);
+        });
+        assert!(
+            message.ends_with("whose result Java gives with the element type Object"),
+            "{spec:?}: {message}"
+        );
+    }
+}
+
+/// The aggregations of A27 on a ticking table whose columns are vectors of Booleans and
+/// Instants, of all rows: an aggregation by keys kept up to date lists its groups in the
+/// order they were first seen, which one made again cannot.
+fn typed_vector_aggregations(t: &Arc<dyn Table>) -> Arc<dyn Table> {
+    let aggregations = [
+        Aggregation::columns(AggSpec::Min, [Pair::new("MinB", "B")]),
+        Aggregation::columns(AggSpec::Max, [Pair::new("MaxT", "T")]),
+        Aggregation::columns(median(), [Pair::new("MedB", "B")]),
+        Aggregation::columns(percentile(0.25), [Pair::new("PctT", "T")]),
+        Aggregation::columns(unique(), [Pair::new("UniB", "B")]),
+        Aggregation::columns(
+            AggSpec::Distinct {
+                include_nulls: true,
+            },
+            [Pair::new("DisT", "T")],
+        ),
+    ];
+    aggregate(t, &aggregations, false, &[]).unwrap()
+}
+
+/// The `update_by` operators of A27 on the same table.
+fn typed_vector_extremes(t: &Arc<dyn Table>) -> Arc<dyn Table> {
+    let operations = [
+        UpdateByOperation::new(UpdateBySpec::CumMin, &["CMinB = B"]),
+        UpdateByOperation::new(UpdateBySpec::CumMax, &["CMaxT = T"]),
+    ];
+    update_by(t, &operations, &["G"]).unwrap()
+}
+
+/// The aggregations and `update_by` operators of A27 on ticking tables whose columns are
+/// vectors of Booleans and Instants: each result is the one made again from its source's
+/// rows after every cycle.
+#[test]
+fn typed_vectors_of_booleans_and_instants_tick_as_they_are_made_again() {
+    let columns = [
+        ("G", ColumnType::String),
+        ("B", ColumnType::vector(ColumnType::Boolean)),
+        ("T", ColumnType::vector(ColumnType::Instant)),
+    ];
+    type Operation = fn(&Arc<dyn Table>) -> Arc<dyn Table>;
+    let operations: [(&str, Operation, &str); 2] = [
+        ("aggregations", typed_vector_aggregations, "MinB"),
+        ("update_by", typed_vector_extremes, "CMinB"),
+    ];
+    let mut compared = 0;
+    for seed in test_seeds(0..10) {
+        let graph = graph();
+        let mut random = RandomUpdates::new(seed);
+        let values = columns
+            .iter()
+            .map(|(_, column_type)| random.values(column_type, 8))
+            .collect();
+        let script = ScriptedTable::new(
+            graph.clone(),
+            definition(&columns),
+            RowSet::from_keys((0..8).map(|k| 2 * k)),
+            values,
+        );
+        let source: Arc<dyn Table> = script.table();
+        let checkers: Vec<_> = operations
+            .iter()
+            .map(|&(name, operation, typed)| {
+                let result = operation(&source);
+                let definition = result.definition();
+                let column = &definition.columns()[definition.index_of(typed).unwrap()];
+                assert_eq!(column.column_type, ColumnType::vector(ColumnType::Boolean));
+                let again = source.clone();
+                let recompute = move || operation(&frozen(&*again));
+                (
+                    name,
+                    ConsistencyChecker::attach_with_recompute(result, recompute),
+                )
+            })
+            .collect();
+        for step in 0..12 {
+            script.push(random.next_change(&*script.table(), 6));
+            graph.run_cycle();
+            for (name, checker) in &checkers {
+                if let Err(error) = checker.verify() {
+                    panic!("{name}, seed {seed}, step {step}: {error}");
+                }
+                compared += 1;
+            }
         }
     }
+    assert_eq!(compared, test_seeds(0..10).count() * 12 * operations.len());
 }
