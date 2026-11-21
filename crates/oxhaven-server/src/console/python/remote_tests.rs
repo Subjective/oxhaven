@@ -83,6 +83,7 @@ async fn remote_tables_are_resolved_subscribed_and_snapshotted() {
 from deephaven.uri import resolve
 from deephaven.barrage import barrage_session, BarrageSession
 from deephaven.table import Table
+from deephaven.dherror import DHError
 
 base = "dh+plain://127.0.0.1:{port}"
 resolved = resolve(base + "/scope/ticking")
@@ -108,8 +109,12 @@ local_value = [1, 2]
 assert resolve("dh:///scope/local_value") is local_value
 assert resolve("dh:///scope/missing") is None
 assert resolve("dh:///app/missing/field/f") is None
-# owner question 7.23: a host Java cannot read makes the URI local
-assert resolve("dh://host_name/scope/local_value") is local_value
+# owner question 7.23: a host Java cannot read is refused (PARITY.md A26)
+try:
+    resolve("dh://host_name/scope/local_value")
+    raise AssertionError("resolved")
+except DHError as error:
+    assert "is no host name, address or port that can be read" in str(error), error
 "#
     ));
     let ticking = remote.ticking.table();

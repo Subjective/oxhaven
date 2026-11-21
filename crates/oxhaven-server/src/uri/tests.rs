@@ -49,7 +49,8 @@ fn a_resolver_is_chosen_by_scheme_then_by_shape() {
             "dh+plain://gateway?uri=https%3A%2F%2Fexample.com%2Fx",
             Ok(BarrageTable),
         ),
-        // owner question 7.23: no host Java can read, so local
+        // owner question 7.23: no host Java can read, so the local resolvers, as in Java;
+        // resolving refuses them (PARITY.md A26)
         ("dh://host_name/scope/t", Ok(QueryScope)),
         ("dh://host:99999999999/app/a/field/f", Ok(Application)),
         ("csv:///tmp/x.csv", Ok(Csv)),
@@ -137,8 +138,16 @@ fn an_authority_without_a_host_is_found() {
     assert_eq!(authority("dh://host/scope/t"), None);
     assert_eq!(authority("dh:///scope/t"), None);
     assert_eq!(authority("dh:/scope/t"), None);
-    // Java's answer, kept: the URI is resolved here
-    assert!(check_unread_host(&Uri::parse("dh://host_name/scope/t").unwrap()).is_ok());
+    // refused, where Java resolves it here (PARITY.md A26)
+    assert_eq!(
+        check_unread_host(&Uri::parse("dh://host_name/scope/t").unwrap())
+            .unwrap_err()
+            .to_string(),
+        "java.lang.IllegalArgumentException: 'host_name' in 'dh://host_name/scope/t' is no \
+         host name, address or port that can be read; the URI would resolve on this server"
+    );
+    assert!(check_unread_host(&Uri::parse("dh://host/scope/t").unwrap()).is_ok());
+    assert!(check_unread_host(&Uri::parse("dh:///scope/t").unwrap()).is_ok());
 }
 
 #[test]
@@ -272,9 +281,22 @@ async fn local_variables_and_fields_resolve_and_missing_ones_are_none() {
     let app = local.state.applications.create("my_app", "My app").unwrap();
     app.set_field("f", ExportValue::Table(x.clone())).unwrap();
 
-    for s in ["dh:///scope/x", "dh:/scope/x", "dh://host_name/scope/x"] {
+    for s in ["dh:///scope/x", "dh:/scope/x"] {
         let found = table_of(resolve(&resolvers, s).await.unwrap());
         assert!(Arc::ptr_eq(&found, &x), "{s}");
+    }
+    // Java resolves these here, their authority dropped; refused (PARITY.md A26)
+    for s in [
+        "dh://host_name/scope/x",
+        "dh://h:99999999999/app/my_app/field/f",
+        "parquet://host_name/x.parquet",
+        "csv://host_name/x.csv",
+    ] {
+        let refused = resolve(&resolvers, s).await.unwrap_err();
+        assert!(
+            refused.contains("is no host name, address or port that can be read"),
+            "{s}: {refused}"
+        );
     }
     let field = table_of(
         resolve(&resolvers, "dh:///app/my_app/field/f")

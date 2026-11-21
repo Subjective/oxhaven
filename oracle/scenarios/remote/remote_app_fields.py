@@ -1,8 +1,9 @@
 # Application fields of the remote: resolved as `/app/<id>/field/<name>` and as
 # `/field/<name>` (the host is the application id), subscribed and snapshotted by the ticket
 # `a/<id>/f/<name>`; and the calls that answer from the local server: a local variable, a
-# value, a missing variable or application (None), and an authority Java cannot read as a
-# host, which makes the URI a local one (owner item 7.23).
+# value, a missing variable or application (None). An authority Java cannot read as a host,
+# which makes the URI a local one in Java and is refused here (owner item 7.23, PARITY.md
+# A26), is in remote_unread_host.
 # oracle: results r_app, r_sorted, r_host, b_app, s_app, local_t, r_local, outcomes
 import os
 
@@ -36,8 +37,6 @@ cases = [
     ("local value", "dh:///scope/local_value"),
     ("local missing", "dh:///scope/missing"),
     ("local app missing", "dh:///app/none/field/f"),
-    ("7.23 host_name is local", "dh://host_name/scope/local_t"),
-    ("7.23 huge port is local", "dh://h:99999999999/scope/local_value"),
 ]
 outcomes = new_table([
     string_col("Case", [name for name, _ in cases]),

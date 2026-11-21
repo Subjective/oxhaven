@@ -439,7 +439,9 @@ plaintext port, so they fail in the handshake). `remote_tls`: sessions over TLS 
 TLS relay (below) with the run's roots: a static table subscribed and snapshotted, a view
 of an input table followed through changes; and the handshakes that fail: the system's roots (for
 `dh://` and for a session without `tls_root_certs`), another authority's roots, an address
-the certificate does not name, the plaintext port.
+the certificate does not name, the plaintext port. `remote_unread_host`: two URIs whose
+host Java cannot read, which Java resolves locally and Oxhaven refuses (`PARITY.md` A26),
+listed as that difference in the baseline.
 
 **TLS.** Neither remote serves TLS, so `remote-services.sh` puts a relay in front of it
 (`bin/tls_front.py`, Python's `ssl`, ALPN `h2`) on another free port of `127.0.0.1`. Its

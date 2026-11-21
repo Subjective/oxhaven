@@ -1053,13 +1053,18 @@ Refused, each with a text that says why:
 
 | Case | Java | This server |
 | --- | --- | --- |
+| A URI whose host Java cannot read (`dh://host_name/...`, `parquet://host_name/...`) | resolves it on this server, its authority dropped | refused: no host that can be read (owner question 7.23, `PARITY.md` A26) |
 | A subscription inside an update cycle (a listener) or under a shared lock that Python code took itself | waits for a cycle that cannot run (not tried) | refused: the subscription waits for an update cycle (owner question 7.26) |
 | `csv+http(s):` | fetches the URL from the server | `not ported yet: io.deephaven.csv.CsvTools#readCsv(URL, CsvSpecs)`, as `deephaven.csv.read` refuses it |
 
-Kept as Java has it, and asked of the owner as question 7.23: a `dh://` URI whose host
-Java cannot read (`dh://host_name/scope/t`, `dh://h:99999999999/...`) is a local URI, its
-authority dropped, so it resolves to this console's variable; `parquet://` and the CSV
-schemes drop such an authority too. `UNREAD_HOST_IS_LOCAL` in `uri/mod.rs` is the one switch.
+A URI whose host Java cannot read (`dh://host_name/scope/t`, `dh://h:99999999999/...`) is
+refused, by the owner's answer to question 7.23 (`PARITY.md` A26): Java reads such an
+authority as one without a host, takes the URI as local and resolves it to this console's
+variable, its authority dropped; `parquet://` and the CSV schemes drop such an authority
+too. Here `resolve` fails with `java.lang.IllegalArgumentException: '<authority>' in
+'<uri>' is no host name, address or port that can be read; the URI would resolve on this
+server` (`check_unread_host` in `uri/mod.rs`). The oracle scenario `remote_unread_host`
+records Java's answer and is listed as this difference in `oracle/remote-baseline.json`.
 
 Other differences, from the comparison: the text of a failure on the network or of the
 remote server (`NotFound: Could not resolve ...` where Java writes its exception chain
