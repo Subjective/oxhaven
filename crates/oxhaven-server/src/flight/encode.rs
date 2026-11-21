@@ -342,7 +342,8 @@ impl BatchWriter {
     /// `FlightData.data_body` out of the message, and Deephaven's reader refuses a record
     /// batch message without it ("Missing body tag"): Java writes the field, of length
     /// zero, for every record batch. So a Java client could not read an empty table, a
-    /// snapshot of a blink table, or an update that only removes or shifts rows.
+    /// snapshot of a blink table, or an update that only removes or shifts rows. The eight
+    /// bytes in place of Java's empty field are `PARITY.md` A30 (owner item 7.29).
     ///
     /// Behavior: `io.deephaven.extensions.barrage.BarrageMessageWriterImpl#getInputStream`
     /// (the record batch header) and

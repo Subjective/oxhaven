@@ -53,8 +53,8 @@ fn client_error(error: ClientError) -> PyErr {
 }
 
 /// Refuses a subscription on a thread where Python code holds the shared lock: the
-/// subscription waits for a cycle, which that lock keeps out. A command's own hold is
-/// given up for the wait instead.
+/// subscription waits for a cycle, which that lock keeps out, and Java would wait for good
+/// (`PARITY.md` A29). A command's own hold is given up for the wait instead.
 fn refuse_under_shared_lock() -> PyResult<()> {
     if super::listener::holds_the_shared_lock_only() {
         return Err(PyRuntimeError::new_err(
