@@ -528,6 +528,15 @@ vectors:
   of the change. Seen: a group going from `[-4, 8]` to `[8]`, the minimum shows `[8]` and a
   `count_where` of `len(U9) > 1` over it stays 1.
 
+Extended by the owner on 2026-11-21 (item 7.27 of the second batch of review items: "as
+recommended"): on a refreshing table the vectors made by `rolling_group_tick` and
+`rolling_group_time` and by the `distinct` aggregation are views as well, and so is the
+cumulative or rolling minimum or maximum of one of them. Held as group-by columns of an
+aggregation, as `update_by` buckets or as `select_distinct` columns, or in `agg.distinct`,
+they fail or go stale in Java as the first two cases above say. The first two cases, and
+the rule below, hold for them too. A minimum or maximum of them read by any other operation
+is not covered by this extension.
+
 Rule: Oxhaven's vectors are values, and each of these results is the one the same
 operations give when they are made again from the tables' rows after each cycle, as A13 does
 for as-of joins, and so is each result made from them. Row order is not part of this: a
@@ -535,12 +544,14 @@ group whose key vector changed is a new group to Oxhaven and comes after the oth
 for any key that changes, while a result made again lists its groups in the order of its
 rows. Where Java's incremental result agrees with Java's result made again,
 Oxhaven must match it. Nothing else of vectors on refreshing tables is covered. Recorded in
-`tasks/12.1-fuzzer-coverage.md` (F2, F8) with the scenario files
-`F2_vector_of_a_refreshing_group_as_key.json` and
-`F8_minimum_of_vectors_of_a_refreshing_group_read_on.json`; the fuzzer counts a seed as this
+`tasks/12.1-fuzzer-coverage.md` (F2, F8, F11) with the scenario files
+`F2_vector_of_a_refreshing_group_as_key.json`,
+`F8_minimum_of_vectors_of_a_refreshing_group_read_on.json` and
+`F11_vectors_of_windows_and_distincts_as_keys.json`; the fuzzer counts a seed as this
 difference only when Java's two answers differ for it, or for a table it is made from, and
 Oxhaven's result holds the rows of the one made again (`oracle/fuzz-known-findings.json`,
-the entries `group-vector-*`).
+the entries `group-vector-*`; which operations hold such vectors is
+`known.holds_group_vectors`).
 
 ### A23. Element types that Java loses
 
@@ -574,11 +585,23 @@ what's recommended").
 | `ungroup` with null fill of an aggregation grouped by a vector column, where a key vector has more elements than the row's other ungrouped column | makes the table and fails to read it (`Assertion failed: asserted first <= last`) | nulls for the missing elements |
 | `ungroup` with null fill where the shorter column of a row is the vector of a `distinct` aggregation | makes the table and fails to read it (`ArrayIndexOutOfBoundsException` in `ET/ssms/IntSegmentedSortedMultiset.java: IntSegmentedSortedMultiset#get`) | nulls for the missing elements |
 
+The third row covers as well, since the owner's answer of 2026-11-21 to item 7.28 ("as
+recommended"), the same request on a table where Java does not fail: where the `distinct`
+column of a row holds vectors (the `distinct` of a vector column), Java serves the vector
+before a missing element again in its place. A key vector `[true, false]` beside a
+`distinct` column holding the one vector `[null, 7]` gives `[null, 7]` in both rows in Java,
+and `[null, 7]` and a null in Oxhaven.
+
 Rule: Oxhaven serves these three as the request asks: the elements, or nulls for the
 missing elements as null fill gives for other columns. Without null fill both servers refuse
 the last two alike (`Array sizes differ`). Nothing else of `ungroup` is covered. Recorded in
-`tasks/12.1-fuzzer-coverage.md` (F7) with the scenario file
-`F7_ungroup_after_aggregations_over_vectors.json`.
+`tasks/12.1-fuzzer-coverage.md` (F7, F15) with the scenario files
+`F7_ungroup_after_aggregations_over_vectors.json` and
+`F15_null_fill_ungroup_repeats_a_distinct.json`; the fuzzer sets each row apart by its own
+entry of `oracle/fuzz-known-findings.json` (`ungroup-again-of-a-distinct`,
+`null-fill-ungroup-of-vector-keys`, `null-fill-ungroup-of-a-distinct`, and for the repeated
+vector `null-fill-ungroup-repeat-of-a-distinct`, which takes only a cell that Oxhaven fills
+with null and Java fills with the vector above it).
 
 ### A25. Twelve dates of the example business calendars
 
@@ -658,6 +681,82 @@ not one of these two shapes is compared as usual. Vectors of other objects (`Loc
 operations on them. Recorded in `oracle/corpus/agg_typed_vectors`; the oracle applies the
 rule in `rules.typed_vector_columns` (which columns) and `rules.a27_field` (which schemas),
 for every scenario, the fuzzer and the replay gate alike.
+
+### A28. Attributes of a snapshot of another server's table
+
+Approved by the owner on 2026-11-21 (item 7.25 of the second batch of review items: "as
+recommended").
+
+Java's static snapshot of another server's table (`BarrageSession.snapshot`, the Python
+`deephaven.barrage` session's `snapshot`) carries every attribute of the schema the remote
+sent, `BlinkTable`, `AddOnly` and `AppendOnly` among them, on a table that does not refresh
+(`BG/table/BarrageTable.java: BarrageTable#make`). Java's engine does not treat a table that
+does not refresh as a blink table, so in Java the attribute changes only what the attribute
+map shows.
+
+Rule: Oxhaven's snapshot is a static table without these attributes; it is flat exactly
+when the remote's schema says the remote table is, as in Java. A subscription
+(`BarrageSession.subscribe`) carries `BlinkTable`, `AddOnly` and `AppendOnly` as Java's
+does. The other attributes of the schema (`SortedColumns`, `InputTable` and the rest) are
+attributes of the local table neither of a snapshot nor of a subscription; that is not part
+of this difference and is recorded separately (`remote_ticking` in
+`oracle/remote-baseline.json`). Every row and column of a snapshot must match. Why:
+not every place in Oxhaven that reads the blink attribute asks whether the table refreshes
+(the Barrage producer refuses any table that has it), so carrying it could change what a
+snapshot can be used for. Recorded in the remote-table scenario `remote_blink`
+(`oracle/remote-baseline.json`, `table_metadata:BlinkTable` of `s_blink`);
+`snapshot_table` in `crates/oxhaven-server/src/barrage_client/session.rs` and
+`a_blink_table_is_snapshotted_and_its_subscription_answers_as_the_server_does` in
+`crates/oxhaven-server/src/barrage_client/tests.rs`.
+
+### A29. A subscription to another server's table where no update cycle can run
+
+Approved by the owner on 2026-11-21 (item 7.26 of the second batch of review items: "as
+recommended").
+
+A script that subscribes to another server's table (`deephaven.uri.resolve("dh+plain://...")`,
+`BarrageSession.subscribe`) waits on the subscription's future, which completes only after
+an update cycle of the local graph has applied what arrived. Inside an update cycle (in a
+table listener), or on a thread where the script itself holds the update graph's shared lock
+(`with update_graph.shared_lock(...)`), that cycle cannot run, and by reading
+`UpdateGraphAwareCompletableFuture#get` Java waits for good (not tried on Java).
+
+Rule: Oxhaven refuses such a subscription at once: inside a cycle with `a remote table
+cannot be subscribed to inside an update cycle: the subscription waits for a cycle`, and
+under a shared lock the script took with `a remote table cannot be subscribed to while
+holding the update graph's shared lock: the subscription waits for an update cycle, which
+the lock keeps out`, each inside the `DHError` of the call. A console command's own hold of
+the lock is given up for the wait, as Java gives up its exclusive lock, so the ordinary
+script, which subscribes outside a listener and takes no lock itself, works as in Java.
+Recorded in `tasks/13.2b-uri-python.md` ("Refused") and `docs/CONSOLE.md`;
+`waiting_for_subscription` in `crates/oxhaven-server/src/uri/mod.rs`,
+`refuse_under_shared_lock` in `crates/oxhaven-server/src/console/python/remote.rs`, and
+`a_subscription_is_refused_inside_a_cycle` in `crates/oxhaven-server/src/uri/tests.rs`.
+
+### A30. The body of a record batch without bytes
+
+Approved by the owner on 2026-11-21 (item 7.29 of the second batch of review items: "as
+recommended").
+
+For a record batch whose buffers are all empty (an empty table, a Barrage update that only
+removes or shifts rows, a batch without columns), in `DoGet` and in Barrage messages, Java
+writes the body field of the Flight message with length zero
+(`BG/BarrageMessageWriterImpl.java: BarrageMessageWriterImpl#getInputStream`,
+`proto/proto-backplane-grpc-flight/src/main/java/io/deephaven/proto/flight/util/MessageHelper.java:
+MessageHelper#wrapInMessage`), and Java's own reader refuses a
+record batch message without that field (`BG/util/BarrageMessageReaderImpl.java:
+BarrageMessageReaderImpl#parseFrom`, "Missing body tag"). Oxhaven encodes Flight messages
+with the `arrow-flight` crate's types through `prost`, which leaves an empty field out, so it
+cannot write a field of length zero.
+
+Rule: for such a batch Oxhaven sends eight zero bytes as the body, with `bodyLength` 8 in
+the IPC message; no buffer reads them. Everything else of the message, the buffers' offsets
+and lengths among them, must match. Java's and Arrow's readers accept such a body, and the
+data are the same. Recorded in `tasks/13.3-remote-tables-tests.md` (Findings); `finish` of
+the batch writer in `crates/oxhaven-server/src/flight/encode.rs`,
+`a_batch_without_bytes_still_carries_a_body` in `crates/oxhaven-server/src/flight/tests.rs`,
+and the `DoGet` fixture comparison of that file (`as_sent_here`), which expects these eight
+bytes exactly where Java's body is empty and all its buffers have length zero.
 
 ## Determinism
 
