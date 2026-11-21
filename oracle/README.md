@@ -434,7 +434,21 @@ the copy; then the session is closed, its tables fail, and those of `resolve` ke
 `/field/<name>`, and what a missing field or application answers. `remote_blink`: a blink
 table on the remote, its snapshot, its subscription, and an append-only table made of it.
 `remote_errors`: the refusals of `resolve` and `barrage_session` listed by task 13.2b, one a
-step, each with Java's exception and message.
+step, each with Java's exception and message (its two TLS steps connect to the remote's
+plaintext port, so they fail in the handshake). `remote_tls`: sessions over TLS through the
+TLS relay (below) with the run's roots: a static table subscribed and snapshotted, a view
+of an input table followed through changes; and the handshakes that fail: the system's roots (for
+`dh://` and for a session without `tls_root_certs`), another authority's roots, an address
+the certificate does not name, the plaintext port.
+
+**TLS.** Neither remote serves TLS, so `remote-services.sh` puts a relay in front of it
+(`bin/tls_front.py`, Python's `ssl`, ALPN `h2`) on another free port of `127.0.0.1`. Its
+certificate names `localhost` alone and is signed by a certificate authority that `openssl`
+makes at every start under `<output>/tls/`, beside a second authority that signed nothing;
+no key is checked in. The scripts read `ORACLE_REMOTE_TLS_TARGET` (`localhost:<port>`),
+`ORACLE_REMOTE_TLS_ROOTS` and `ORACLE_REMOTE_TLS_OTHER_ROOTS` (the two authorities' PEM
+files) from the environment. Neither console is told to trust the authority otherwise, so
+`dh://`, which uses the system's roots in both, fails there.
 
 **Recording.** Against the Java reference only:
 
@@ -456,8 +470,10 @@ seed, record every scenario again.
 **Not in the corpus.** A snapshot or subscription with a viewport or a subset of columns:
 `BarrageSession.snapshot` and `subscribe` of Java's Python API take a ticket and nothing
 else, so no console script reaches them (the Barrage client's unit tests do). `BigDecimal`
-and `BigInteger` columns, which an Oxhaven remote does not make. TLS (refused). A remote that
-stops while a table is open, and reconnection.
+and `BigInteger` columns, which an Oxhaven remote does not make. A `dh://` connection that
+trusts the run's authority through the system's roots (the JDK's trust store, OpenSSL's
+`SSL_CERT_FILE`): it would change the environment of every scenario; the client's tests
+cover it. A remote that stops while a table is open, and reconnection.
 
 ## Fuzz
 
