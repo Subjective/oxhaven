@@ -727,7 +727,7 @@ fn scenarios_match_the_recorded_java_results() {
         }
     }
     paths.sort();
-    assert_eq!(paths.len(), 93);
+    assert_eq!(paths.len(), 94);
     let mut tally = Tally::default();
     // `search_dates` was recorded on a server in UTC, the zone a date search spans a day of.
     search::with_server_zone(chrono_tz::Tz::UTC, || {

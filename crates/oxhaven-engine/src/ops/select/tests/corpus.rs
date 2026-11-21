@@ -482,7 +482,7 @@ fn replay(name: &str, scenario: &Value, outcome: &mut Outcome) {
 fn results_match_the_ones_recorded_from_java() {
     let mut outcome = Outcome::default();
     let scenarios = scenarios();
-    assert_eq!(scenarios.len(), 93);
+    assert_eq!(scenarios.len(), 94);
     for (name, scenario) in &scenarios {
         replay(name, scenario, &mut outcome);
     }
@@ -590,6 +590,13 @@ fn results_match_the_ones_recorded_from_java() {
     assert_eq!(
         outcome.not_run,
         [
+            "agg_object_vectors.cumulative_kept: update_by",
+            "agg_object_vectors.distinct_D: ungroup",
+            "agg_object_vectors.distinct_LT: ungroup",
+            "agg_object_vectors.distinct_Dt: ungroup",
+            "agg_object_vectors.distinct_Dur: ungroup",
+            "agg_object_vectors.distinct_W: ungroup",
+            "agg_object_vectors.distinct_Z: ungroup",
             "column_arrays.sparse_before: where",
             "column_arrays.computed: where",
             "column_arrays.whole: where",
