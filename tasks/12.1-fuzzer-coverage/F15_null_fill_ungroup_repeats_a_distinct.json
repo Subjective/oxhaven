@@ -1,0 +1,18 @@
+{
+ "format": 1,
+ "name": "F15_null_fill_ungroup_repeats_a_distinct",
+ "description": "Task 12.1, F15 (task 14.4, PARITY.md A24 third row after owner item 7.28), from seed 339 of all3 of task 14.2. A group_by with no keys makes one row, K = [true, false] and RS = [null, 7]; an aggregation by the vector K with the distinct of RS holds one vector in A3; an ungroup of every vector column with null fill (the default) takes K apart into two rows and A3 into one. Oxhaven fills the second row of A3 with null, as null fill asks; Java serves [null, 7] again in it. Without null fill both refuse (Array sizes differ). o2 holds arrays of arrays, which the comparison cannot read, so it is compared through o2v, as the fuzzer does.",
+ "inputs": [
+  {"name": "r",
+   "columns": [{"name": "K", "type": "bool"}, {"name": "R1", "type": "int64"}, {"name": "RS", "type": "int64"}],
+   "rows": [[true, 7, null], [false, 0, 7]]}
+ ],
+ "operations": [
+  {"name": "o1", "op": "group_by", "source": "r", "by": []},
+  {"name": "o2", "op": "agg_by", "source": "o1", "by": ["K"], "aggs": [{"agg": "distinct", "columns": ["A3 = RS"], "args": {"include_nulls": false}}]},
+  {"name": "o2v", "op": "ungroup", "source": "o2", "columns": ["A3"]},
+  {"name": "o11", "op": "ungroup", "source": "o2"},
+  {"name": "o12", "op": "ungroup", "source": "o2", "null_fill": false}
+ ],
+ "results": [{"table": "o1"}, {"table": "o2v"}, {"table": "o11"}, {"table": "o12"}]
+}

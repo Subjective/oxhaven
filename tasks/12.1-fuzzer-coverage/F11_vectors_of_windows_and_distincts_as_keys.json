@@ -1,0 +1,29 @@
+{
+ "format": 1,
+ "name": "F11_vectors_of_windows_and_distincts_as_keys",
+ "description": "Task 12.1, F11 (task 14.4, PARITY.md A22 after owner item 7.27). The vectors that rolling_group_tick and the distinct aggregation make from a refreshing table, and a cumulative minimum of a window, as group-by columns of agg_by, as select_distinct columns, as update_by buckets, and in the distinct aggregation. The steps change a value inside a window, add a row and delete one. Java fails or keeps stale values as for a refreshing group_by's vectors; Oxhaven's vectors are values and its results are Java's answer made again from the rows. The table rm reads the minimum of a window by a count where, which A22 does not cover for windows.",
+ "inputs": [
+  {"name": "t", "ticking": {"key_columns": ["Id"]},
+   "columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "int32"}, {"name": "C", "type": "int32"}],
+   "rows": [[1, 1, 5], [2, 1, 6], [3, 2, 5], [4, 2, 6], [5, 3, 7]]}
+ ],
+ "operations": [
+  {"name": "w", "op": "update_by", "source": "t", "by": [], "ops": [{"op": "rolling_group_tick", "columns": ["G = C"], "args": {"rev_ticks": 2, "fwd_ticks": 0}}]},
+  {"name": "a", "op": "agg_by", "source": "w", "by": ["G"], "aggs": [{"agg": "count", "column": "N"}]},
+  {"name": "sd", "op": "select_distinct", "source": "w", "columns": ["G"]},
+  {"name": "u", "op": "update_by", "source": "w", "by": ["G"], "ops": [{"op": "cum_sum", "columns": ["X = K"]}]},
+  {"name": "m", "op": "update_by", "source": "w", "by": [], "ops": [{"op": "cum_min", "columns": ["M = G"]}]},
+  {"name": "am", "op": "agg_by", "source": "m", "by": ["M"], "aggs": [{"agg": "count", "column": "N"}]},
+  {"name": "rm", "op": "agg_by", "source": "m", "by": [], "aggs": [{"agg": "count_where", "column": "N", "args": {"filters": ["len(M) > 1"]}}]},
+  {"name": "dt", "op": "agg_by", "source": "t", "by": ["K"], "aggs": [{"agg": "distinct", "columns": ["D = C"]}]},
+  {"name": "sdd", "op": "select_distinct", "source": "dt", "columns": ["D"]},
+  {"name": "ad", "op": "agg_by", "source": "dt", "by": [], "aggs": [{"agg": "distinct", "columns": ["E = D"]}]},
+  {"name": "adv", "op": "ungroup", "source": "ad", "columns": ["E"]}
+ ],
+ "results": [{"table": "w"}, {"table": "a"}, {"table": "sd"}, {"table": "u"}, {"table": "m"}, {"table": "am"}, {"table": "rm"}, {"table": "dt"}, {"table": "sdd"}, {"table": "adv"}],
+ "steps": [
+  {"actions": [{"action": "add", "table": "t", "rows": [[2, 1, 8]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[6, 1, 5]]}]},
+  {"actions": [{"action": "delete", "table": "t", "rows": [[3]]}]}
+ ]
+}
