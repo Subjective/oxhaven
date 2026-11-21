@@ -663,16 +663,143 @@ def test_a27_needs_every_other_field_metadata_key_to_match():
     assert kinds(typed_diff(of_strings, _BOOLEANS)) == [rules.COLUMN_TYPE]
 
 
-def test_a27_covers_only_booleans_and_instants_inside_vectors():
-    dates = _typed_vector([[19675]], pa.date32(), "io.deephaven.vector.ObjectVector",
-                          "java.time.LocalDate")
-    assert kinds(typed_diff(_java_vector([["2023-11-14"]]), dates)) == [rules.COLUMN_TYPE]
+def test_a27_leaves_vectors_of_strings_as_they_are():
     strings = _typed_vector([["a"]], pa.string(), "io.deephaven.vector.ObjectVector",
                             "java.lang.String")
     assert typed_diff(_java_vector([["a"]]), strings) == []
     assert kinds(typed_diff(_java_vector([["a"]]), _typed_vector(
         [["b"]], pa.string(), "io.deephaven.vector.ObjectVector",
         "java.lang.String"))) == [rules.VALUE]
+
+
+_DAY_MS = 86_400_000
+_OBJECT_VECTOR = "io.deephaven.vector.ObjectVector"
+
+
+def test_a27_covers_the_other_objects_inside_vectors():
+    # Observed on 42.9 (`corpus/agg_object_vectors`): the texts Java sends for a minimum of
+    # each class, and the cells Oxhaven sends for the same typed vector.
+    cases = [
+        (pa.date64(), "java.time.LocalDate", [[19675 * _DAY_MS, None, -1 * _DAY_MS]],
+         [["2023-11-14", None, "1969-12-31"]]),
+        (pa.time64("ns"), "java.time.LocalTime",
+         [[80_000_000_000_000, 25_200_000_000_000, 86_399_999_999_999, 0, 80_001_500_000_000]],
+         [["22:13:20", "07:00", "23:59:59.999999999", "00:00", "22:13:21.500"]]),
+        (pa.duration("ns"), "java.time.Duration",
+         [[3_600_000_000_000, -60_500_000_000, 90_061_000_000_123, -1, 0]],
+         [["PT1H", "PT-1M-0.5S", "PT25H1M1.000000123S", "PT-0.000000001S", "PT0S"]]),
+        (_TIMESTAMPS, "java.time.ZonedDateTime",
+         [[1_700_000_000_000_000_000, 1_710_054_000_000_000_000, 1_730_617_200_000_000_001,
+           -86_400_000_000_000]],
+         [["2023-11-14T22:13:20Z[UTC]", "2024-03-10T16:00+09:00[Asia/Tokyo]",
+           "2024-11-03T02:00:00.000000001-05:00[America/New_York]", "1969-12-31T00:00Z[UTC]"]]),
+    ]
+    for arrow_type, element, typed_cells, java_cells in cases:
+        typed = _typed_vector(typed_cells, arrow_type, _OBJECT_VECTOR, element)
+        assert typed_diff(_java_vector(java_cells), typed) == [], element
+        # Each element is still compared.
+        shifted = [[cell + 1 if cell is not None else None for cell in row]
+                   for row in typed_cells]
+        assert kinds(typed_diff(_java_vector(java_cells),
+                                _typed_vector(shifted, arrow_type, _OBJECT_VECTOR, element))) == [
+            rules.VALUE], element
+        # Without A27 for the column, the schemas differ.
+        assert kinds(typed_diff(_java_vector(java_cells), typed, typed=False)) == [
+            rules.COLUMN_TYPE], element
+
+
+def test_a27_compares_the_instant_of_a_zoned_date_time():
+    zoned = _typed_vector([[1_700_000_000_000_000_000]], _TIMESTAMPS, _OBJECT_VECTOR,
+                          "java.time.ZonedDateTime")
+    # The zone is not sent: any text that names the instant is accepted ...
+    for text in ("2023-11-14T22:13:20Z[UTC]", "2023-11-15T07:13:20+09:00[Asia/Tokyo]",
+                 "2023-11-14T17:13:20-05:00[America/New_York]", "2023-11-14T22:13:20Z",
+                 "2023-11-14T23:43:20+01:30"):
+        assert typed_diff(_java_vector([[text]]), zoned) == [], text
+    # ... and no other.
+    for text in ("2023-11-14T22:13:20-05:00[America/New_York]", "2023-11-14T22:13:20.000000001Z",
+                 "2023-11-14T22:13:20", "2023-11-14T22:13:20Z[UTC"):
+        assert kinds(typed_diff(_java_vector([[text]]), zoned)) == [rules.VALUE], text
+
+
+def test_a27_needs_the_arrow_type_of_the_class():
+    # A date sent as days, a time in microseconds, a duration in milliseconds, a zoned date
+    # and time in another unit, a time of day sent as a date: not how Oxhaven sends them.
+    for arrow_type, element in ((pa.date32(), "java.time.LocalDate"),
+                                (pa.time64("us"), "java.time.LocalTime"),
+                                (pa.duration("ms"), "java.time.Duration"),
+                                (pa.timestamp("ms", tz="UTC"), "java.time.ZonedDateTime"),
+                                (pa.date64(), "java.time.LocalTime"),
+                                (pa.int32(), "java.time.Period")):
+        typed = _typed_vector([[0]], arrow_type, _OBJECT_VECTOR, element)
+        assert kinds(typed_diff(_java_vector([["x"]]), typed)) == [rules.COLUMN_TYPE], element
+    # Inside a vector, a class that both send as text has Java's component type.
+    texts = _typed_vector([["2024-03-10T03:00"]], pa.string(), _OBJECT_VECTOR,
+                          "java.time.LocalDateTime")
+    assert kinds(typed_diff(_java_vector([["2024-03-10T03:00"]]), texts)) == [
+        rules.COLUMN_METADATA]
+
+
+def test_a27_covers_the_other_objects_taken_apart():
+    java = lambda cells: _column("V", cells, pa.string(), type="java.lang.Object")  # noqa: E731
+    cases = [
+        (["2023-11-14", None], [19675 * _DAY_MS, None], pa.date64(), "java.time.LocalDate",
+         True),
+        (["07:00"], [25_200_000_000_000], pa.time64("ns"), "java.time.LocalTime", True),
+        (["PT1H"], [3_600_000_000_000], pa.duration("ns"), "java.time.Duration", True),
+        (["2023-11-15T07:13:20+09:00[Asia/Tokyo]"], [1_700_000_000_000_000_000], _TIMESTAMPS,
+         "java.time.ZonedDateTime", True),
+        (["2024-03-10T03:00"], ["2024-03-10T03:00"], pa.string(), "java.time.LocalDateTime",
+         True),
+        (["SUNDAY"], ["SUNDAY"], pa.string(), "java.time.DayOfWeek", True),
+        (["Asia/Tokyo"], ["Asia/Tokyo"], pa.string(), "java.time.ZoneId", False),
+    ]
+    for java_cells, cells, arrow_type, element, sortable in cases:
+        sorts = {"isSortable": "true"} if sortable else {}
+        typed = _column("V", cells, arrow_type, type=element, **sorts)
+        assert typed_diff(java(java_cells), typed, taken_apart=True) == [], element
+        # Only for a column an ungroup took apart.
+        assert typed_diff(java(java_cells), typed) != [], element
+        # The sortability is that of the class.
+        other = {} if sortable else {"isSortable": "true"}
+        assert kinds(typed_diff(java(java_cells), _column("V", cells, arrow_type, type=element,
+                                                          **other), taken_apart=True)) in (
+            [rules.COLUMN_TYPE], [rules.COLUMN_METADATA]), element
+    # A text that is not Java's.
+    assert kinds(typed_diff(java(["MONDAY"]), _column(
+        "V", ["SUNDAY"], pa.string(), type="java.time.DayOfWeek", isSortable="true"),
+        taken_apart=True)) == [rules.VALUE]
+
+
+def test_the_texts_of_java_time_classes():
+    assert rules.java_local_date_text(0) == "1970-01-01"
+    assert rules.java_local_date_text(-1) == "1969-12-31"
+    assert rules.java_local_date_text(19_782) == "2024-02-29"
+    assert rules.java_local_date_text(-719_528) == "0000-01-01"
+    assert rules.java_local_date_text(-719_529) == "-0001-12-31"
+    assert rules.java_local_date_text(2_932_897) == "+10000-01-01"
+    assert rules.java_local_date_text(2_932_896) == "9999-12-31"
+    for days in (-1_000_000, -719_529, -1, 0, 59, 60, 11_016, 2_932_897, 5_000_000):
+        assert rules._days(*rules._civil(days)) == days
+    assert rules.java_local_time_text(0) == "00:00"
+    assert rules.java_local_time_text(61_000_000_000) == "00:01:01"
+    assert rules.java_local_time_text(1_000_000) == "00:00:00.001"
+    assert rules.java_local_time_text(1_000) == "00:00:00.000001"
+    assert rules.java_local_time_text(1) == "00:00:00.000000001"
+    assert rules.java_local_time_text(86_399_999_999_999) == "23:59:59.999999999"
+    assert rules.java_duration_text(0) == "PT0S"
+    assert rules.java_duration_text(-1) == "PT-0.000000001S"
+    assert rules.java_duration_text(-60_500_000_000) == "PT-1M-0.5S"
+    assert rules.java_duration_text(90_061_000_000_123) == "PT25H1M1.000000123S"
+    assert rules.java_duration_text(3_600_000_000_001) == "PT1H0.000000001S"
+    assert rules.java_duration_text(7_200_000_000_000) == "PT2H"
+    assert rules.java_zoned_instant_text("2024-03-10T01:59:59.999999999-05:00[America/New_York]") \
+        == "2024-03-10T06:59:59.999999999Z"
+    assert rules.java_zoned_instant_text("1969-12-31T19:00-05:00[America/New_York]") \
+        == "1970-01-01T00:00:00Z"
+    assert rules.java_zoned_instant_text("2023-11-14T23:13:20+01:00:00") \
+        == "2023-11-14T22:13:20Z"
+    assert rules.java_zoned_instant_text("not a time") == "not a time"
 
 
 def test_a27_accepts_a_typed_column_that_ungroup_took_apart():
@@ -758,3 +885,21 @@ def test_the_recorded_a27_scenario_names_its_typed_columns():
     assert found["sorted"] == found["extremes"]
     assert found["taken_apart"] == {name: True for name in found["middles"]}
     assert set(found["nested_apart"]) == {"DisB", "DisT", "DisS", "GrpB", "GrpT", "GrpS"}
+
+
+def test_the_recorded_scenario_of_other_objects_names_its_typed_columns():
+    from pathlib import Path
+
+    from harness import scenario as sc
+    path = Path(__file__).resolve().parent.parent / "scenarios/static/agg_object_vectors.json"
+    found = rules.typed_vector_columns(sc.load(path).operations)
+    classes = ("D", "LT", "Dt", "Dur", "W", "Z")
+    assert set(found["extremes"]) == {f"{p}{c}" for p in ("Min", "Max") for c in classes}
+    assert set(found["formulas"]) == {f"F{c}" for c in classes + ("Zi",)}
+    assert found["sorted"] == found["extremes"]
+    assert found["taken_apart"] == {name: True for name in found["middles"]}
+    assert found["cumulative_kept"] == {
+        f"{p}{c}": False for p in ("CMin", "CMax", "RMin", "RMax") for c in classes}
+    assert found["groups_apart"] == {f"Grp{c}": True for c in classes}
+    for c in classes:
+        assert found[f"distinct_{c}"] == {f"Dis{c}": True}

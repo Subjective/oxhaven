@@ -624,8 +624,9 @@ type SharedShownRows = [Option<Arc<Mutex<ShownRows>>>; 2];
 /// Whether the distinct values of a column of `column_type`, a vector, are served: a
 /// vector of integers, `char`s, strings, floats or doubles, whose distinct vectors Java
 /// keeps in an `ObjectVector` that names the input's vector class as its component type,
-/// and of Booleans or Instants, whose inner vectors Java sends as vectors of strings and
-/// Oxhaven with their element type (allowed difference A27 of `PARITY.md`, owner item 3.3).
+/// and of the other objects of [`typed_vector_element`], whose inner vectors Java sends as
+/// vectors of strings and Oxhaven with their element type (allowed difference A27 of
+/// `PARITY.md`, owner item 3.3).
 ///
 /// Of floats and doubles, two vectors that differ only in the sign of a zero are one
 /// value. Oxhaven shows the first of them the group was given, as it does for distinct
@@ -640,10 +641,19 @@ fn distinct_vector(column_type: &ColumnType) -> bool {
     matches!(column_type, ColumnType::Vector(element) if typed_vector_element(element))
 }
 
-/// Whether a vector of `element`s that an operator keeps as an object is served: one of a
-/// primitive type or of strings, whose element type Java keeps, or of Booleans or Instants,
-/// whose element type Java loses (it sends their text) and Oxhaven keeps, allowed
-/// difference A27 of `PARITY.md` (owner item 3.3).
+/// Whether a vector of `element`s that an operator orders and keeps as an object is served:
+/// one of a primitive type or of strings, whose element type Java keeps, or of Booleans,
+/// Instants, `LocalDate`s, `LocalTime`s, `LocalDateTime`s, `Duration`s, `DayOfWeek`s or
+/// `ZonedDateTime`s, whose element type Java loses (it sends their text) and Oxhaven keeps,
+/// allowed difference A27 of `PARITY.md` (owner item 3.3; Java's answers are in
+/// `oracle/corpus/agg_typed_vectors` and `oracle/corpus/agg_object_vectors`).
+///
+/// Not of `ZoneId`s or `Period`s, which are not `Comparable`, so that Java fails to order
+/// two vectors of them unless the elements it compares are the same objects (owner item
+/// 2.2), nor of `BigDecimal`s or `BigInteger`s, whose order is not ported.
+///
+/// Behavior: io.deephaven.vector.ObjectVector#compareTo, which compares the elements with
+/// io.deephaven.util.compare.ObjectComparisons#compare
 fn typed_vector_element(element: &ColumnType) -> bool {
     matches!(
         element,
@@ -657,7 +667,25 @@ fn typed_vector_element(element: &ColumnType) -> bool {
             | ColumnType::String
             | ColumnType::Boolean
             | ColumnType::Instant
+            | ColumnType::LocalDate
+            | ColumnType::LocalTime
+            | ColumnType::LocalDateTime
+            | ColumnType::Duration
+            | ColumnType::DayOfWeek
+            | ColumnType::ZonedDateTime
     )
+}
+
+/// Whether the formula aggregation's result, a vector of `element`s, is served: those of
+/// [`typed_vector_element`], and of `ZoneId`s, which the formula does not order. Java gives
+/// such a vector of an object the element type `Object` and sends its elements as text;
+/// Oxhaven keeps the element type (allowed difference A27 of `PARITY.md`). A vector of
+/// `ZoneId`s is sent as text either way.
+///
+/// Not of `Period`s, which a client is sent as their months alone, nor of `BigDecimal`s or
+/// `BigInteger`s, which no formula can make and whose result the oracle has not recorded.
+fn typed_formula_element(element: &ColumnType) -> bool {
+    typed_vector_element(element) || *element == ColumnType::ZoneId
 }
 
 fn make_operator(
@@ -699,10 +727,10 @@ fn make_operator(
     // Observed: the operators that store their result as objects (minimum, maximum,
     // median, percentile, unique) make the column of a vector of objects an `ObjectVector`
     // of `Object`, which a client receives as lists of strings. For strings that is the
-    // same; for Booleans and Instants Oxhaven keeps the element type, allowed difference
-    // A27 of `PARITY.md` (owner item 3.3). Vectors of other objects are not ported. The
-    // first, the last and the sorted first and last read the input column itself, and
-    // keep its type.
+    // same; for the other objects of `typed_vector_element` Oxhaven keeps the element type,
+    // allowed difference A27 of `PARITY.md` (owner item 3.3). Vectors of other objects are
+    // not ported. The first, the last and the sorted first and last read the input column
+    // itself, and keep its type.
     let object_result = |java_method: &str| {
         if let ColumnType::Vector(element) = input_type {
             if element.list_element().is_none() && !typed_vector_element(element) {
@@ -770,9 +798,9 @@ fn make_operator(
         // Observed: the distinct vectors of a group, ordered as vectors are (`Scalar::compare`),
         // as a vector of vectors whose component type is the input's vector class. That
         // holds for vectors of integers, `char`s, strings, floats and doubles. Of a vector of
-        // Booleans or Instants Java's result loses the inner element type (a client receives
-        // strings), which Oxhaven keeps (A27); vectors of other objects, deeper vectors and
-        // arrays are refused.
+        // Booleans, Instants and the other objects of `typed_vector_element` Java's result
+        // loses the inner element type (a client receives strings), which Oxhaven keeps
+        // (A27); vectors of other objects, deeper vectors and arrays are refused.
         AggSpec::Distinct { .. }
             if input_type.list_element().is_some() && !distinct_vector(input_type) =>
         {
@@ -1504,11 +1532,11 @@ fn each_formula(
         .map_err(invalid_formula)?;
     // Observed: `each` for a Boolean column is an `ObjectVector` whose element type Java
     // has lost, which a client receives as a list of the strings `true` and `false`; for
-    // an Instant column, of the instants as text. Oxhaven keeps the element type: allowed
-    // difference A27 of `PARITY.md` (owner item 3.3). Java sends a vector of any other
-    // object as text too, which is not ported.
+    // an Instant column, of the instants as text, and so for the other objects. Oxhaven
+    // keeps the element type: allowed difference A27 of `PARITY.md` (owner item 3.3). The
+    // objects `typed_formula_element` does not take are not ported.
     if let ColumnType::Vector(element) = formula.result_type() {
-        if element.list_element().is_none() && !typed_vector_element(element) {
+        if element.list_element().is_none() && !typed_formula_element(element) {
             unported!(
                 "io.deephaven.engine.table.impl.by.FormulaChunkedOperator#FormulaChunkedOperator",
                 "an AggSpecFormula whose result is a vector of {element:?}, which Java gives \

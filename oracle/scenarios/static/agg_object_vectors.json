@@ -1,0 +1,648 @@
+{
+  "format": 1,
+  "name": "agg_object_vectors",
+  "description": "Aggregations and update_by operators whose result is a vector of LocalDate, LocalTime, LocalDateTime, Duration, DayOfWeek or ZonedDateTime, of a table whose columns are vectors (group_by): min, max, median, percentile, unique, the formula aggregation's group (also of ZoneId), cumulative and rolling minimum and maximum, and the vectors inside a distinct or group of them (through an ungroup). Java's result column has the element type Object, which it sends as vectors of strings; Oxhaven sends LocalDate, LocalTime, Duration and ZonedDateTime elements typed, and the others as the same text (PARITY.md A27). Instants with fractions of 3, 6 and 9 digits, both DST changes of New York, before 1970, and nulls. Also a sort and an ungroup of such results, which Java sends as java.lang.Object. The aggregations that keep the element type (first, last, sorted_last) are left out: the server's test of recorded list fields does not know vectors of these classes.",
+  "inputs": [
+    {
+      "name": "t",
+      "columns": [
+        {
+          "name": "K",
+          "type": "int32"
+        },
+        {
+          "name": "H",
+          "type": "int32"
+        },
+        {
+          "name": "G",
+          "type": "int32"
+        },
+        {
+          "name": "T",
+          "type": "timestamp"
+        }
+      ],
+      "rows": [
+        [
+          0,
+          0,
+          0,
+          1700000000000000000
+        ],
+        [
+          1,
+          0,
+          1,
+          1700000001500000000
+        ],
+        [
+          2,
+          0,
+          2,
+          1700000003000246000
+        ],
+        [
+          3,
+          0,
+          3,
+          1700000004500000003
+        ],
+        [
+          4,
+          0,
+          0,
+          1710054000000000000
+        ],
+        [
+          5,
+          0,
+          1,
+          1710053999999999999
+        ],
+        [
+          6,
+          0,
+          2,
+          1730613600000000000
+        ],
+        [
+          7,
+          0,
+          3,
+          1730617200000000001
+        ],
+        [
+          8,
+          1,
+          0,
+          0
+        ],
+        [
+          9,
+          1,
+          1,
+          -1500000001
+        ],
+        [
+          10,
+          1,
+          2,
+          null
+        ],
+        [
+          11,
+          1,
+          3,
+          1700086400000000000
+        ],
+        [
+          12,
+          1,
+          0,
+          1700172800123000000
+        ],
+        [
+          13,
+          1,
+          1,
+          1700259200000123000
+        ],
+        [
+          14,
+          1,
+          2,
+          1704067199999999999
+        ],
+        [
+          15,
+          1,
+          3,
+          1704067200000000000
+        ],
+        [
+          16,
+          2,
+          0,
+          1609459200000000000
+        ],
+        [
+          17,
+          2,
+          1,
+          1640995199000000000
+        ],
+        [
+          18,
+          2,
+          2,
+          null
+        ],
+        [
+          19,
+          2,
+          3,
+          1700000000000000000
+        ],
+        [
+          20,
+          2,
+          0,
+          1700000060000000000
+        ],
+        [
+          21,
+          2,
+          1,
+          1700003600000000000
+        ],
+        [
+          22,
+          2,
+          2,
+          1700090000000000007
+        ],
+        [
+          23,
+          2,
+          3,
+          1715000000000000000
+        ],
+        [
+          24,
+          3,
+          0,
+          -86400000000000
+        ],
+        [
+          25,
+          3,
+          1,
+          1700000000000000000
+        ],
+        [
+          26,
+          3,
+          2,
+          1720000000000000000
+        ]
+      ]
+    }
+  ],
+  "operations": [
+    {
+      "name": "base",
+      "op": "update",
+      "source": "t",
+      "formulas": [
+        "D = toLocalDate(T, 'UTC')",
+        "LT = toLocalTime(T, 'UTC')",
+        "Dt = toLocalDateTime(T, 'America/New_York')",
+        "Dur = isNull(T) ? null : (K % 5 == 0 ? 'PT1H' : (K % 5 == 1 ? 'PT-1M-0.5S' : (K % 5 == 2 ? 'PT25H1M1.000000123S' : (K % 5 == 3 ? 'PT-0.000000001S' : 'PT0S'))))",
+        "W = dayOfWeek(T, 'UTC')",
+        "Z = toZonedDateTime(T, timeZone(K % 3 == 0 ? `UTC` : K % 3 == 1 ? `Asia/Tokyo` : `America/New_York`))",
+        "Zi = isNull(T) ? null : timeZone(K % 3 == 0 ? `UTC` : K % 3 == 1 ? `Asia/Tokyo` : `America/New_York`)"
+      ]
+    },
+    {
+      "name": "g",
+      "op": "group_by",
+      "source": "base",
+      "by": [
+        "H",
+        "G"
+      ]
+    },
+    {
+      "name": "extremes",
+      "op": "agg_by",
+      "source": "g",
+      "by": [
+        "H"
+      ],
+      "aggs": [
+        {
+          "agg": "min",
+          "columns": [
+            "MinD = D",
+            "MinLT = LT",
+            "MinDt = Dt",
+            "MinDur = Dur",
+            "MinW = W",
+            "MinZ = Z"
+          ]
+        },
+        {
+          "agg": "max",
+          "columns": [
+            "MaxD = D",
+            "MaxLT = LT",
+            "MaxDt = Dt",
+            "MaxDur = Dur",
+            "MaxW = W",
+            "MaxZ = Z"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "middles",
+      "op": "agg_by",
+      "source": "g",
+      "by": [
+        "H"
+      ],
+      "aggs": [
+        {
+          "agg": "median",
+          "columns": [
+            "MedD = D",
+            "MedLT = LT",
+            "MedDt = Dt",
+            "MedDur = Dur",
+            "MedW = W",
+            "MedZ = Z"
+          ]
+        },
+        {
+          "agg": "pct",
+          "columns": [
+            "PctD = D",
+            "PctLT = LT",
+            "PctDt = Dt",
+            "PctDur = Dur",
+            "PctW = W",
+            "PctZ = Z"
+          ],
+          "args": {
+            "percentile": 0.25
+          }
+        }
+      ]
+    },
+    {
+      "name": "uniques",
+      "op": "agg_by",
+      "source": "g",
+      "by": [
+        "H",
+        "G"
+      ],
+      "aggs": [
+        {
+          "agg": "unique",
+          "columns": [
+            "UniD = D",
+            "UniLT = LT",
+            "UniDt = Dt",
+            "UniDur = Dur",
+            "UniW = W",
+            "UniZ = Z"
+          ]
+        },
+        {
+          "agg": "unique",
+          "columns": [
+            "UnnD = D",
+            "UnnLT = LT",
+            "UnnDt = Dt",
+            "UnnDur = Dur",
+            "UnnW = W",
+            "UnnZ = Z"
+          ],
+          "args": {
+            "include_nulls": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "formulas",
+      "op": "agg_by",
+      "source": "base",
+      "by": [
+        "H"
+      ],
+      "aggs": [
+        {
+          "agg": "formula",
+          "columns": [
+            "FD = D",
+            "FLT = LT",
+            "FDt = Dt",
+            "FDur = Dur",
+            "FW = W",
+            "FZ = Z",
+            "FZi = Zi"
+          ],
+          "args": {
+            "formula": "each",
+            "formula_param": "each"
+          }
+        }
+      ]
+    },
+    {
+      "name": "cumulative",
+      "op": "update_by",
+      "source": "g",
+      "by": [
+        "H"
+      ],
+      "ops": [
+        {
+          "op": "cum_min",
+          "columns": [
+            "CMinD = D",
+            "CMinLT = LT",
+            "CMinDt = Dt",
+            "CMinDur = Dur",
+            "CMinW = W",
+            "CMinZ = Z"
+          ]
+        },
+        {
+          "op": "cum_max",
+          "columns": [
+            "CMaxD = D",
+            "CMaxLT = LT",
+            "CMaxDt = Dt",
+            "CMaxDur = Dur",
+            "CMaxW = W",
+            "CMaxZ = Z"
+          ]
+        },
+        {
+          "op": "rolling_min_tick",
+          "columns": [
+            "RMinD = D",
+            "RMinLT = LT",
+            "RMinDt = Dt",
+            "RMinDur = Dur",
+            "RMinW = W",
+            "RMinZ = Z"
+          ],
+          "args": {
+            "rev_ticks": 2
+          }
+        },
+        {
+          "op": "rolling_max_tick",
+          "columns": [
+            "RMaxD = D",
+            "RMaxLT = LT",
+            "RMaxDt = Dt",
+            "RMaxDur = Dur",
+            "RMaxW = W",
+            "RMaxZ = Z"
+          ],
+          "args": {
+            "rev_ticks": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "cumulative_kept",
+      "op": "view",
+      "source": "cumulative",
+      "formulas": [
+        "H",
+        "G",
+        "CMinD",
+        "CMinLT",
+        "CMinDt",
+        "CMinDur",
+        "CMinW",
+        "CMinZ",
+        "CMaxD",
+        "CMaxLT",
+        "CMaxDt",
+        "CMaxDur",
+        "CMaxW",
+        "CMaxZ",
+        "RMinD",
+        "RMinLT",
+        "RMinDt",
+        "RMinDur",
+        "RMinW",
+        "RMinZ",
+        "RMaxD",
+        "RMaxLT",
+        "RMaxDt",
+        "RMaxDur",
+        "RMaxW",
+        "RMaxZ"
+      ]
+    },
+    {
+      "name": "sorted",
+      "op": "sort",
+      "source": "extremes",
+      "by": [
+        {
+          "column": "MinD",
+          "direction": "descending"
+        }
+      ]
+    },
+    {
+      "name": "taken_apart",
+      "op": "ungroup",
+      "source": "middles"
+    },
+    {
+      "name": "distincts",
+      "op": "agg_by",
+      "source": "g",
+      "by": [
+        "H"
+      ],
+      "aggs": [
+        {
+          "agg": "distinct",
+          "columns": [
+            "DisD = D",
+            "DisLT = LT",
+            "DisDt = Dt",
+            "DisDur = Dur",
+            "DisW = W",
+            "DisZ = Z"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "groups",
+      "op": "agg_by",
+      "source": "g",
+      "by": [
+        "H"
+      ],
+      "aggs": [
+        {
+          "agg": "group",
+          "columns": [
+            "GrpD = D",
+            "GrpLT = LT",
+            "GrpDt = Dt",
+            "GrpDur = Dur",
+            "GrpW = W",
+            "GrpZ = Z"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "groups_apart",
+      "op": "ungroup",
+      "source": "groups"
+    },
+    {
+      "name": "distinct_D_all",
+      "op": "ungroup",
+      "source": "distincts",
+      "columns": [
+        "DisD"
+      ]
+    },
+    {
+      "name": "distinct_D",
+      "op": "view",
+      "source": "distinct_D_all",
+      "formulas": [
+        "H",
+        "DisD"
+      ]
+    },
+    {
+      "name": "distinct_LT_all",
+      "op": "ungroup",
+      "source": "distincts",
+      "columns": [
+        "DisLT"
+      ]
+    },
+    {
+      "name": "distinct_LT",
+      "op": "view",
+      "source": "distinct_LT_all",
+      "formulas": [
+        "H",
+        "DisLT"
+      ]
+    },
+    {
+      "name": "distinct_Dt_all",
+      "op": "ungroup",
+      "source": "distincts",
+      "columns": [
+        "DisDt"
+      ]
+    },
+    {
+      "name": "distinct_Dt",
+      "op": "view",
+      "source": "distinct_Dt_all",
+      "formulas": [
+        "H",
+        "DisDt"
+      ]
+    },
+    {
+      "name": "distinct_Dur_all",
+      "op": "ungroup",
+      "source": "distincts",
+      "columns": [
+        "DisDur"
+      ]
+    },
+    {
+      "name": "distinct_Dur",
+      "op": "view",
+      "source": "distinct_Dur_all",
+      "formulas": [
+        "H",
+        "DisDur"
+      ]
+    },
+    {
+      "name": "distinct_W_all",
+      "op": "ungroup",
+      "source": "distincts",
+      "columns": [
+        "DisW"
+      ]
+    },
+    {
+      "name": "distinct_W",
+      "op": "view",
+      "source": "distinct_W_all",
+      "formulas": [
+        "H",
+        "DisW"
+      ]
+    },
+    {
+      "name": "distinct_Z_all",
+      "op": "ungroup",
+      "source": "distincts",
+      "columns": [
+        "DisZ"
+      ]
+    },
+    {
+      "name": "distinct_Z",
+      "op": "view",
+      "source": "distinct_Z_all",
+      "formulas": [
+        "H",
+        "DisZ"
+      ]
+    }
+  ],
+  "results": [
+    {
+      "table": "extremes"
+    },
+    {
+      "table": "middles"
+    },
+    {
+      "table": "uniques"
+    },
+    {
+      "table": "formulas"
+    },
+    {
+      "table": "cumulative_kept"
+    },
+    {
+      "table": "sorted"
+    },
+    {
+      "table": "taken_apart"
+    },
+    {
+      "table": "groups_apart"
+    },
+    {
+      "table": "distinct_D"
+    },
+    {
+      "table": "distinct_LT"
+    },
+    {
+      "table": "distinct_Dt"
+    },
+    {
+      "table": "distinct_Dur"
+    },
+    {
+      "table": "distinct_W"
+    },
+    {
+      "table": "distinct_Z"
+    }
+  ]
+}

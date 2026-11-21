@@ -33,12 +33,14 @@ The rules, in the order they are applied to one result of one step:
 6. A column of a type the rules do not know is reported as `unsupported_type`, never passed.
 
 One allowed difference replaces rules 1 and 4 for one column. Typed vectors (A27): where the
-reference sends as a vector of strings a vector of Booleans or Instants that an aggregation or
-`update_by` operator kept as objects (`typed_vector_columns`), the other side may send it with
-its element type, and then each element written as Java writes it (`java_text`) must be the
-reference's string. The same for such a column taken apart by `ungroup`, which the reference
-sends as `java.lang.Object` text, also for strings. Every other field metadata key must still
-match (`a27_field`).
+reference sends as a vector of strings a vector of objects that an aggregation or `update_by`
+operator kept as objects (`typed_vector_columns`), the other side may send it with its element
+type (Booleans, Instants, `LocalDate`, `LocalTime`, `Duration`, `ZonedDateTime`), and then each
+element written as Java writes it (`java_text`) must be the reference's string; of a
+`ZonedDateTime`, whose zone the typed side does not send, the instant Java's text names must be
+the one sent (`java_expected`). The same for such a column taken apart by `ungroup`, which the
+reference sends as `java.lang.Object` text, also for strings, `LocalDateTime`, `DayOfWeek` and
+`ZoneId`. Every other field metadata key must still match (`a27_field`).
 
 A script scenario (`scripts.py`) adds one rule, applied to the script of each step before the
 results of that step are compared:
@@ -416,9 +418,10 @@ def computed_columns(operations: Iterable[Mapping[str, Any]]) -> dict[str, froze
 # ---------------------------------------------------------------- typed vectors (A27)
 
 # A27: the aggregations and update_by operators whose result Java keeps as objects, so that
-# the result of a vector of Booleans or Instants is a vector of `Object` that Java sends as
-# strings (observed on 42.9: `oracle/corpus/agg_typed_vectors`). `distinct` and `group` of a
-# vector column hold such vectors inside theirs.
+# the result of a vector of Booleans, Instants or other objects is a vector of `Object` that
+# Java sends as strings (observed on 42.9: `oracle/corpus/agg_typed_vectors` and
+# `oracle/corpus/agg_object_vectors`). `distinct` and `group` of a vector column hold such
+# vectors inside theirs.
 TYPED_VECTOR_AGGREGATIONS = frozenset({
     "min", "max", "median", "pct", "unique", "formula", "distinct", "group",
 })
@@ -428,8 +431,21 @@ _PASS_ON = frozenset({"where", "sort", "head", "tail", "slice", "flatten", "reve
                       "head_by", "tail_by", "snapshot", "ungroup", "where_in"})
 _OBJECT_VECTOR = "io.deephaven.vector.ObjectVector"
 _EPOCH = date(1970, 1, 1)
-# The element classes A27 covers, by the Arrow type the other side sends them as.
-_TYPED_ELEMENTS = {"bool": "java.lang.Boolean", "timestamp[ns, tz=UTC]": "java.time.Instant"}
+# The element classes A27 covers, each with the Arrow type the other side sends it as. A
+# `ZonedDateTime` is sent as its instant alone, a `LocalDate` as the milliseconds of its start.
+_TYPED_CLASSES = {
+    "java.lang.Boolean": "bool",
+    "java.time.Instant": "timestamp[ns, tz=UTC]",
+    "java.time.LocalDate": "date64[ms]",
+    "java.time.LocalTime": "time64[ns]",
+    "java.time.Duration": "duration[ns]",
+    "java.time.ZonedDateTime": "timestamp[ns, tz=UTC]",
+}
+# The classes that both sides send as text, also inside a vector, where they are the same; a
+# column of them that an `ungroup` took apart is `java.lang.Object` in the reference. Each with
+# whether its column is sortable (`ZoneId` is not `Comparable`).
+_TEXT_CLASSES = {"java.lang.String": True, "java.time.LocalDateTime": True,
+                 "java.time.DayOfWeek": True, "java.time.ZoneId": False}
 
 
 def typed_vector_columns(
@@ -506,33 +522,127 @@ def _depth(arrow_type: pa.DataType) -> tuple[int, pa.DataType]:
 
 
 def a27_field(expected: pa.Field, actual: pa.Field, rules: "Rules",
-              taken_apart: bool = False) -> bool:
-    """A27: whether `actual` is the typed form of the column the reference sent as
-    `expected`. A vector that the reference sends with strings for elements and
-    `java.lang.String` for component type, and the other side with Booleans or Instants and
-    their class (vectors of vectors, of `distinct` and `group`, are compared through an
-    `ungroup` of them, which gives such vectors); or, only for a column that an `ungroup`
-    took apart (`taken_apart`), a `java.lang.Object` column of text that the other side sends
-    as a sortable column of Booleans, Instants or strings. Every other compared metadata key
-    is the same."""
+              taken_apart: bool = False) -> str | None:
+    """A27: the element class of `actual` if it is the typed form of the column the reference
+    sent as `expected`, else None. A vector that the reference sends with strings for elements
+    and `java.lang.String` for component type, and the other side with the elements of one of
+    `_TYPED_CLASSES` and that class (vectors of vectors, of `distinct` and `group`, are
+    compared through an `ungroup` of them, which gives such vectors); or, only for a column
+    that an `ungroup` took apart (`taken_apart`), a `java.lang.Object` column of text that the
+    other side sends as a column of one of `_TYPED_CLASSES` or `_TEXT_CLASSES`, sortable unless
+    it is a `ZoneId`. Every other compared metadata key is the same."""
     e_depth, e_leaf = _depth(expected.type)
     a_depth, a_leaf = _depth(actual.type)
     if e_depth != a_depth or not pat.is_string(e_leaf) or (e_depth == 0 and not taken_apart):
-        return False
+        return None
     e_meta = _metadata(expected.metadata, rules.compared_field_metadata)
     a_meta = _metadata(actual.metadata, rules.compared_field_metadata)
-    typed = _TYPED_ELEMENTS.get(str(a_leaf))
     if e_depth == 0:
-        if pat.is_string(a_leaf):
-            typed = "java.lang.String"
+        typed = a_meta.get("deephaven:type")
+        if _TYPED_CLASSES.get(typed) == str(a_leaf):
+            sortable = True
+        elif typed in _TEXT_CLASSES and pat.is_string(a_leaf):
+            sortable = _TEXT_CLASSES[typed]
+        else:
+            return None
         want = {key: value for key, value in e_meta.items() if key != "deephaven:type"}
-        want.update({"deephaven:type": typed, "deephaven:isSortable": "true"})
-        return (typed is not None and e_meta.get("deephaven:type") == "java.lang.Object"
-                and "deephaven:isSortable" not in e_meta and a_meta == want)
+        want["deephaven:type"] = typed
+        if sortable:
+            want["deephaven:isSortable"] = "true"
+        accepted = (e_meta.get("deephaven:type") == "java.lang.Object"
+                    and "deephaven:isSortable" not in e_meta and a_meta == want)
+        return typed if accepted else None
+    typed = a_meta.get("deephaven:componentType")
     want = dict(e_meta)
     want["deephaven:componentType"] = typed
-    return (e_depth == 1 and typed is not None and e_meta.get("deephaven:type") == _OBJECT_VECTOR
-            and e_meta.get("deephaven:componentType") == "java.lang.String" and a_meta == want)
+    accepted = (e_depth == 1 and _TYPED_CLASSES.get(typed) == str(a_leaf)
+                and e_meta.get("deephaven:type") == _OBJECT_VECTOR
+                and e_meta.get("deephaven:componentType") == "java.lang.String"
+                and a_meta == want)
+    return typed if accepted else None
+
+
+def _civil(days: int) -> tuple[int, int, int]:
+    """The proleptic Gregorian year, month and day `days` after 1970-01-01, for any year
+    (`datetime.date` stops at 9999)."""
+    days += 719_468
+    era = days // 146_097
+    day_of_era = days - era * 146_097
+    year_of_era = (day_of_era - day_of_era // 1460 + day_of_era // 36_524
+                   - day_of_era // 146_096) // 365
+    day_of_year = day_of_era - (365 * year_of_era + year_of_era // 4 - year_of_era // 100)
+    shifted_month = (5 * day_of_year + 2) // 153
+    day = day_of_year - (153 * shifted_month + 2) // 5 + 1
+    month = shifted_month + 3 if shifted_month < 10 else shifted_month - 9
+    year = year_of_era + era * 400 + (1 if month <= 2 else 0)
+    return year, month, day
+
+
+def _days(year: int, month: int, day: int) -> int:
+    """The inverse of `_civil`."""
+    year -= 1 if month <= 2 else 0
+    era = year // 400
+    year_of_era = year - era * 400
+    day_of_year = (153 * (month + (-3 if month > 2 else 9)) + 2) // 5 + day - 1
+    day_of_era = year_of_era * 365 + year_of_era // 4 - year_of_era // 100 + day_of_year
+    return era * 146_097 + day_of_era - 719_468
+
+
+def java_local_date_text(days: int) -> str:
+    """A date as `java.time.LocalDate#toString` writes it (ISO-8601, `uuuu-MM-dd`): the year
+    in four digits, with a sign before a year beyond 9999 or before year 0."""
+    year, month, day = _civil(days)
+    if year > 9999:
+        year_text = f"+{year}"
+    elif year < 0:
+        year_text = f"-{-year:04}"
+    else:
+        year_text = f"{year:04}"
+    return f"{year_text}-{month:02}-{day:02}"
+
+
+def _fraction_text(nanos: int) -> str:
+    """The fraction of a second as `java.time` writes it: nothing for none, else a point and
+    3, 6 or 9 digits, the fewest that hold it."""
+    if nanos == 0:
+        return ""
+    if nanos % 1_000_000 == 0:
+        return f".{nanos // 1_000_000:03}"
+    if nanos % 1000 == 0:
+        return f".{nanos // 1000:06}"
+    return f".{nanos:09}"
+
+
+def java_local_time_text(nanos: int) -> str:
+    """A time of day, `nanos` after midnight, as `java.time.LocalTime#toString` writes it:
+    `HH:mm`, then `:ss` if the seconds or the fraction are not zero, then the fraction."""
+    seconds, fraction = divmod(nanos, 1_000_000_000)
+    text = f"{seconds // 3600:02}:{seconds // 60 % 60:02}"
+    if seconds % 60 or fraction:
+        text += f":{seconds % 60:02}{_fraction_text(fraction)}"
+    return text
+
+
+def java_duration_text(nanos: int) -> str:
+    """A duration as `java.time.Duration#toString` writes it: `PT`, then the hours, minutes
+    and seconds that are not zero, each with its letter, the seconds with the digits of
+    fraction they need and no trailing zeros; `PT0S` for zero. Every part of a negative
+    duration has the sign (`PT-1M-0.5S`, seen on Deephaven 42.9)."""
+    if nanos == 0:
+        return "PT0S"
+    sign = "-" if nanos < 0 else ""
+    seconds, fraction = divmod(abs(nanos), 1_000_000_000)
+    text = "PT"
+    if seconds // 3600:
+        text += f"{sign}{seconds // 3600}H"
+    if seconds // 60 % 60:
+        text += f"{sign}{seconds // 60 % 60}M"
+    if seconds % 60 or fraction:
+        text += f"{sign}{seconds % 60}"
+        if fraction:
+            text += "." + f"{fraction:09}".rstrip("0")
+        text += "S"
+    return text
 
 
 def java_instant_text(nanos: int) -> str:
@@ -543,28 +653,68 @@ def java_instant_text(nanos: int) -> str:
     days, second = divmod(seconds, 86_400)
     date = _EPOCH + timedelta(days=days)
     text = f"{date.isoformat()}T{second // 3600:02}:{second // 60 % 60:02}:{second % 60:02}"
-    if fraction % 1_000_000 == 0 and fraction:
-        text += f".{fraction // 1_000_000:03}"
-    elif fraction % 1000 == 0 and fraction:
-        text += f".{fraction // 1000:06}"
-    elif fraction:
-        text += f".{fraction:09}"
-    return text + "Z"
+    return text + _fraction_text(fraction) + "Z"
 
 
-def java_text(arrow_type: pa.DataType, cell: Any) -> Any:
-    """A27: a cell of the typed side (as `_cells` gives it) written as the reference writes
-    its element: `true` or `false`, an instant as `java_instant_text`, a string as itself.
-    Lists element by element; null stays null."""
+_ZONED = re.compile(r"([+-]?\d{4,})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?"
+                    r"(Z|[+-]\d{2}:\d{2}(?::\d{2})?)(\[[^\]]+\])?")
+
+
+def java_zoned_instant_text(text: str) -> str:
+    """The instant that a `java.time.ZonedDateTime#toString` text names (its local date and
+    time less its offset; the zone in brackets, if any, does not change it), as
+    `java_instant_text` writes it. A text of another form is returned as it is, so that it
+    differs from every instant's."""
+    match = _ZONED.fullmatch(text)
+    if match is None:
+        return text
+    year, month, day, hour, minute, second, fraction, offset, _ = match.groups()
+    local = (_days(int(year), int(month), int(day)) * 86_400 + int(hour) * 3600
+             + int(minute) * 60 + int(second or 0))
+    shift = 0
+    if offset != "Z":
+        parts = [int(part) for part in offset[1:].split(":")] + [0]
+        shift = (parts[0] * 3600 + parts[1] * 60 + parts[2]) * (-1 if offset[0] == "-" else 1)
+    nanos = (local - shift) * 1_000_000_000 + int((fraction or "0").ljust(9, "0"))
+    return java_instant_text(nanos)
+
+
+def java_text(element: str, cell: Any) -> Any:
+    """A27: a cell of the typed side (as `_cells` gives it) whose elements are of the class
+    `element`, written as the reference writes such an element: `true` or `false`, an instant
+    as `java_instant_text`, a `ZonedDateTime` (sent as its instant) as the same, a date (sent
+    as the milliseconds of its start) as `java_local_date_text`, a time of day as `java_local_time_text`, a
+    duration as `java_duration_text`, a text as itself. Lists element by element; null stays
+    null."""
     if cell is None:
         return None
-    if pat.is_list(arrow_type) or pat.is_large_list(arrow_type):
-        return [java_text(arrow_type.value_type, item) for item in cell]
-    if pat.is_boolean(arrow_type):
+    if isinstance(cell, list):
+        return [java_text(element, item) for item in cell]
+    if element == "java.lang.Boolean":
         return "true" if cell else "false"
-    if pat.is_timestamp(arrow_type):
+    if element in ("java.time.Instant", "java.time.ZonedDateTime"):
         return java_instant_text(cell)
+    if element == "java.time.LocalDate":
+        # A date is the start of its day; any other count of milliseconds is no date.
+        days, rest = divmod(cell, 86_400_000)
+        return java_local_date_text(days) if rest == 0 else f"{cell} ms"
+    if element == "java.time.LocalTime":
+        return java_local_time_text(cell)
+    if element == "java.time.Duration":
+        return java_duration_text(cell)
     return cell
+
+
+def java_expected(element: str, cell: Any) -> Any:
+    """A27: a cell of the reference's text for elements of the class `element`, as far as the
+    typed side can show it: of a `ZonedDateTime`, the instant (`java_zoned_instant_text`),
+    since the typed side sends the instant without the zone; of the other classes, the text
+    itself."""
+    if cell is None or element != "java.time.ZonedDateTime":
+        return cell
+    if isinstance(cell, list):
+        return [java_expected(element, item) for item in cell]
+    return java_zoned_instant_text(cell)
 
 
 # ---------------------------------------------------------------- comparison
@@ -647,17 +797,19 @@ def compare_tables(
         return [mismatch(COLUMN_COUNT, expected=expected.column_names,
                          actual=actual.column_names)]
     comparable = True
-    # A27: the columns whose typed cells are compared as the reference's text.
-    as_text: set[int] = set()
+    # A27: the columns whose typed cells are compared as the reference's text, each with the
+    # class of its elements.
+    as_text: dict[int, str] = {}
     for index, (e_field, a_field) in enumerate(zip(expected.schema, actual.schema)):
         if e_field.name != a_field.name:
             out.append(mismatch(COLUMN_NAME, column=e_field.name, expected=e_field.name,
                                 actual=a_field.name, note=f"column position {index}"))
             comparable = False
             continue
-        if typed and e_field.name in typed and a27_field(e_field, a_field, rules,
-                                                         typed[e_field.name]):
-            as_text.add(index)
+        element = (a27_field(e_field, a_field, rules, typed[e_field.name])
+                   if typed and e_field.name in typed else None)
+        if element is not None:
+            as_text[index] = element
             continue
         if e_field.type != a_field.type:
             out.append(mismatch(COLUMN_TYPE, column=e_field.name, expected=str(e_field.type),
@@ -695,9 +847,13 @@ def compare_tables(
         out.append(mismatch(ROW_COUNT, expected=expected.num_rows, actual=actual.num_rows))
 
     # 3. Row alignment.
-    e_columns = [_cells(c) for c in expected.columns]
+    e_columns = [
+        [java_expected(as_text[index], cell) for cell in _cells(column)] if index in as_text
+        else _cells(column)
+        for index, column in enumerate(expected.columns)
+    ]
     a_columns = [
-        [java_text(column.type, cell) for cell in _cells(column)] if index in as_text
+        [java_text(as_text[index], cell) for cell in _cells(column)] if index in as_text
         else _cells(column)
         for index, column in enumerate(actual.columns)
     ]

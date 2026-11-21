@@ -649,38 +649,56 @@ no authority, or with a host Java reads, resolves as in Java. Recorded in the re
 scenario `remote_unread_host` (`oracle/remote-baseline.json`), whose steps succeed in Java
 and fail here; `crates/oxhaven-server/src/uri/mod.rs` (`check_unread_host`).
 
-### A27. Vectors of Booleans and Instants that Java keeps as objects
+### A27. Vectors of objects that Java keeps as `Object`
 
 Approved by the owner on 2026-11-21 (item 3.3 of the review items of 21 November: "Do
-what's recommended").
+what's recommended"), for every vector Java gives with the element type `Object` (task 14.5).
 
-In Java the result of these operations on a column of vectors of `Boolean` or `Instant` is
-an `ObjectVector` whose element type is `Object`, not `Boolean` or `Instant`:
+In Java the result of these operations on a column of vectors of `Boolean`, `Instant`,
+`LocalDate`, `LocalTime`, `LocalDateTime`, `Duration`, `DayOfWeek` or `ZonedDateTime` is an
+`ObjectVector` whose element type is `Object`, not the class of the elements:
 
 - the aggregations `min`, `max`, `median`, `pct` and `unique`, and `formula` when its result
-  is such a vector (`each`);
+  is such a vector (`each`; also of `ZoneId`);
 - `cum_min`, `cum_max`, `rolling_min_*` and `rolling_max_*`;
 - `distinct` and `group` of such a column, whose cells are vectors of these vectors.
 
 `Object` is not a type Barrage sends natively, so Java sends the column as a list of strings
 with component type `java.lang.String` (`BG/util/BarrageUtil.java:
 BarrageUtil#columnDefinitionsToFields`), each element written by `toString()`: `true` or
-`false`, an instant as `Instant#toString` writes it (`2023-11-14T22:13:21.500Z`), a null as
-null. After `ungroup` of such a column, and of the same results of vectors of strings, Java's
-column is `java.lang.Object`, sent as text and not sortable, as in A23. `first`, `last`,
+`false`, an instant as `Instant#toString` writes it (`2023-11-14T22:13:21.500Z`), a date as
+`2023-11-14`, a time of day as `07:00` or `22:13:21.500`, a duration as `PT-1M-0.5S`, a
+`ZonedDateTime` as `2024-03-10T16:00+09:00[Asia/Tokyo]`, a null as null. After `ungroup` of
+such a column, and of the same results of vectors of strings, Java's column is
+`java.lang.Object`, sent as text and not sortable, as in A23. `first`, `last`,
 `sorted_first` and `sorted_last` keep the element type in Java too.
 
-Rule: Oxhaven keeps the element type. Its column is a list of Booleans or of timestamps,
-with component type `java.lang.Boolean` or `java.time.Instant`, and after `ungroup` a
-sortable `java.lang.Boolean`, `java.time.Instant` or `java.lang.String` column. For a column
-made by one of these operations, and passed on unchanged since, the oracle writes each of
-Oxhaven's elements as Java writes it, and the text must be Java's string, element by
-element; every other field metadata key must match exactly, and a column whose schema is
-not one of these two shapes is compared as usual. Vectors of other objects (`LocalDate`,
-`ZonedDateTime`, `BigDecimal` and the others) are not covered: Oxhaven refuses these
-operations on them. Recorded in `oracle/corpus/agg_typed_vectors`; the oracle applies the
-rule in `rules.typed_vector_columns` (which columns) and `rules.a27_field` (which schemas),
-for every scenario, the fuzzer and the replay gate alike.
+Rule: Oxhaven keeps the element type. Its column is a list of Booleans, timestamps, dates,
+times of day or durations, with the class as component type (`java.lang.Boolean`,
+`java.time.Instant`, `java.time.LocalDate`, `java.time.LocalTime`, `java.time.Duration`,
+`java.time.ZonedDateTime`, which is sent as its instant alone, as Java sends a typed one);
+after `ungroup` it is a column of that class, sortable. A vector of `LocalDateTime`,
+`DayOfWeek` or `ZoneId` is sent as text with component type `java.lang.String` in both, the
+same; after `ungroup` it is a column of that class, sortable but for `ZoneId`, and the same
+text. For a column made by one of these operations, and passed on unchanged since, the
+oracle writes each of Oxhaven's elements as Java writes it, and the text must be Java's
+string, element by element. A `ZonedDateTime` is the one exception, since Oxhaven's typed
+column does not carry the zone: the instant Java's text names (its local date and time less
+its offset) must be Oxhaven's instant, to the nanosecond, and the zone in Java's text is not
+compared. Every other field metadata key must match exactly, and a column whose schema is
+not one of these shapes is compared as usual.
+
+Not covered, and refused by Oxhaven: these operations on vectors of `ZoneId` or `Period`
+(other than `formula` of `ZoneId`), which Java fails to order (observed on 42.9 for `min` and
+`cum_min` of vectors of `ZoneId`; whether it fails depends on object identity, owner item
+2.2); `formula` of vectors of `Period`, whose typed column a client is sent as months alone
+(the days lost); and vectors of `BigDecimal` or `BigInteger`, which no formula makes, so no
+scenario can record Java's text, and whose order is not ported (a `BigDecimal` typed column
+is sent without its trailing zeros, so its scale could not be compared with Java's text).
+
+Recorded in `oracle/corpus/agg_typed_vectors` and `oracle/corpus/agg_object_vectors`; the
+oracle applies the rule in `rules.typed_vector_columns` (which columns) and `rules.a27_field`
+(which schemas), for every scenario, the fuzzer and the replay gate alike.
 
 ### A28. Attributes of a snapshot of another server's table
 
