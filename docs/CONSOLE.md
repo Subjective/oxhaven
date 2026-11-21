@@ -1006,6 +1006,7 @@ one against a third server (a Deephaven one) and compares the tables and the err
   | `dh:///scope/<name>` | the variable of the console, or `None` |
   | `dh:///app/<id>/field/<name>` | the application field, or `None` |
   | `dh+plain://host[:port]/scope/<name>`, `/app/<id>/field/<name>`, `/field/<name>` (the host is the application id) | a subscription to the table of that server: a refreshing table of this server's update graph |
+  | `dh://host[:port]/...`, the same paths | the same, over TLS ("TLS" below); the default port is 443 |
   | `csv:`, `csv+file:`, `file+csv:` (and `csv+http(s):`, `http(s)+csv:`) | the CSV file, read by `oxhaven-csv` as `deephaven.csv.read` reads it |
   | `parquet:///<path>` | the Parquet file or directory, read by `oxhaven-parquet` |
 
@@ -1020,6 +1021,26 @@ one against a third server (a Deephaven one) and compares the tables and the err
   session each call; `BarrageSession.subscribe(ticket)`, `snapshot(ticket)`, `close()`, and
   `with`. A ticket is `bytes`, or a `str` taken as its UTF-8 bytes (`TableSpec#ticket`).
   Closing a session fails the tables it subscribed to on the next cycle.
+- **TLS** (`dh://`, `use_tls=True`; task 13.4), through the system's OpenSSL 3, the library
+  the Kafka client links (`docs/KAFKA.md`, "What is built"), in the `tls` feature of the
+  server crate, which `python` turns on. As Java's client (`ChannelHelper#channelBuilder`,
+  gRPC's Netty TLS): the server's certificate must chain to the system's root certificates
+  (OpenSSL's default paths, which `SSL_CERT_FILE` and `SSL_CERT_DIR` move; Java's are the
+  JDK's trust store), or, when `tls_root_certs` is given, to those PEM roots alone, which
+  replace the system's as Java's `TrustCustom` does; it must name the host connected to (a
+  DNS name, or an address in an IP entry), as Java's `HTTPS` endpoint identification asks;
+  and the server must agree to `h2` by ALPN, else `Failed ALPN negotiation: Unable to find
+  compatible protocol`, gRPC's text. The name is sent as SNI unless it is an address. A
+  failed handshake is `cannot connect: <host:port>: transport error: TLS handshake failed:
+  ...` with OpenSSL's reason (`the server's certificate is not trusted: unable to get local
+  issuer certificate`, `... hostname mismatch`, `... IP address mismatch`, `wrong version
+  number` for a server that speaks plaintext), where Java names its exception
+  (`SSLHandshakeException: PKIX path building failed`, `NotSslRecordException`); the
+  outcome is the same. `tls_root_certs` that hold no PEM certificate are refused before
+  anything is sent. Not ported, as there is no property system: the `outbound.ssl.*` and
+  `ssl.*` properties by which a Java server adds trust material for its own `dh://`
+  connections (`SslConfigModule`); protocols and ciphers are OpenSSL's defaults, not the
+  JDK's.
 - **Waiting.** A subscription is complete only after a cycle of this server has applied
   what arrived, so the command's wait for it gives the update graph's lock up and takes it
   again, as a blocking write to an input table does ("Input tables written from a
@@ -1032,14 +1053,18 @@ Refused, each with a text that says why:
 
 | Case | Java | This server |
 | --- | --- | --- |
-| `dh://` (TLS), `use_tls=True` | connects with TLS | `TLS connections to remote servers are not ported yet: ...` (owner question 7.24) |
+| A URI whose host Java cannot read (`dh://host_name/...`, `parquet://host_name/...`) | resolves it on this server, its authority dropped | refused: no host that can be read (owner question 7.23, `PARITY.md` A26) |
 | A subscription inside an update cycle (a listener) or under a shared lock that Python code took itself | waits for a cycle that cannot run (not tried) | refused: the subscription waits for an update cycle (owner question 7.26) |
 | `csv+http(s):` | fetches the URL from the server | `not ported yet: io.deephaven.csv.CsvTools#readCsv(URL, CsvSpecs)`, as `deephaven.csv.read` refuses it |
 
-Kept as Java has it, and asked of the owner as question 7.23: a `dh://` URI whose host
-Java cannot read (`dh://host_name/scope/t`, `dh://h:99999999999/...`) is a local URI, its
-authority dropped, so it resolves to this console's variable; `parquet://` and the CSV
-schemes drop such an authority too. `UNREAD_HOST_IS_LOCAL` in `uri/mod.rs` is the one switch.
+A URI whose host Java cannot read (`dh://host_name/scope/t`, `dh://h:99999999999/...`) is
+refused, by the owner's answer to question 7.23 (`PARITY.md` A26): Java reads such an
+authority as one without a host, takes the URI as local and resolves it to this console's
+variable, its authority dropped; `parquet://` and the CSV schemes drop such an authority
+too. Here `resolve` fails with `java.lang.IllegalArgumentException: '<authority>' in
+'<uri>' is no host name, address or port that can be read; the URI would resolve on this
+server` (`check_unread_host` in `uri/mod.rs`). The oracle scenario `remote_unread_host`
+records Java's answer and is listed as this difference in `oracle/remote-baseline.json`.
 
 Other differences, from the comparison: the text of a failure on the network or of the
 remote server (`NotFound: Could not resolve ...` where Java writes its exception chain

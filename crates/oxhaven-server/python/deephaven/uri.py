@@ -2,9 +2,9 @@
 
 Behavior: `deephaven.uri` (the name, the signature and the error text). The resolvers are
 those of Deephaven 42.9: a query scope variable (`dh:///scope/<name>`), an application
-field (`dh:///app/<id>/field/<name>`), a table of another server (`dh+plain://host:port/...`;
-`dh://`, which is TLS, is not supported yet), a CSV file (`csv:`, `csv+file:`) and a Parquet
-file (`parquet:`). `docs/CONSOLE.md`, "Remote tables and URIs", has the details.
+field (`dh:///app/<id>/field/<name>`), a table of another server (`dh+plain://host:port/...`,
+or `dh://host:port/...` over TLS with the system's root certificates), a CSV file (`csv:`,
+`csv+file:`) and a Parquet file (`parquet:`). `docs/CONSOLE.md`, "Remote tables and URIs", has the details.
 """
 
 from typing import Any

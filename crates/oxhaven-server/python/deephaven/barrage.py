@@ -2,8 +2,9 @@
 create an instance of it for accessing resources on remote Deephaven servers.
 
 Behavior: `deephaven.barrage` (the names, signatures, defaults and error texts). The session
-is this server's own Barrage client. TLS (`use_tls`, `tls_root_certs`) is not supported yet:
-asking for it fails with an error that says so.
+is this server's own Barrage client. TLS (`use_tls`, `tls_root_certs`) goes through the
+system's OpenSSL: the server's certificate is checked against the system's root certificates,
+or only against `tls_root_certs` when given, and against the host name.
 """
 
 from __future__ import annotations
@@ -125,8 +126,7 @@ def barrage_session(
             must be "user:password"; when auth_type is "Anonymous", it will be ignored; when
             auth_type is a custom-built authenticator, it must conform to the specific
             requirement of the authenticator
-        use_tls (bool): if True, use a TLS connection, which is not supported yet. Defaults
-            to False
+        use_tls (bool): if True, use a TLS connection.  Defaults to False
         tls_root_certs (Optional[bytes]): PEM encoded root certificates to use for TLS
             connection, or None to use system defaults. If not None implies use a TLS
             connection and the use_tls argument should have been passed as True. Defaults to

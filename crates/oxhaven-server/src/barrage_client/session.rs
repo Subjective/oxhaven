@@ -75,7 +75,8 @@ pub struct ClientConfig {
     pub port: u16,
     /// `dh://` when set, `dh+plain://` otherwise.
     pub use_tls: bool,
-    /// PEM encoded root certificates for a TLS connection; `None` for the system's.
+    /// PEM encoded root certificates for a TLS connection, which then trusts these alone;
+    /// `None` for the system's.
     pub tls_root_certs: Option<Vec<u8>>,
     /// The value of the `Authorization` header of the first call: a type, or a type and
     /// a value separated by a space.
@@ -539,6 +540,45 @@ fn subscription_error(name: &str, problem: &ClientError) -> TableFailure {
     failure(format!("Barrage subscription error for {name}: {problem}"))
 }
 
+/// `problem` and the errors that caused it, outermost first: tonic's own text of a failed
+/// connection is only "transport error".
+fn with_causes(problem: &dyn std::error::Error) -> String {
+    let mut text = problem.to_string();
+    let mut cause = problem.source();
+    while let Some(next) = cause {
+        let next_text = next.to_string();
+        // tonic's wrappers repeat what they wrap
+        if !text.ends_with(&next_text) {
+            text.push_str(": ");
+            text.push_str(&next_text);
+        }
+        cause = next.source();
+    }
+    text
+}
+
+/// A channel over TLS ([`super::tls`]).
+#[cfg(feature = "tls")]
+async fn secure_channel(
+    config: &ClientConfig,
+    endpoint: Endpoint,
+) -> Result<Result<Channel, tonic::transport::Error>, ClientError> {
+    super::tls::connect(config, endpoint).await
+}
+
+/// A build without the `tls` feature does not link OpenSSL, so it refuses TLS by name.
+#[cfg(not(feature = "tls"))]
+async fn secure_channel(
+    _: &ClientConfig,
+    _: Endpoint,
+) -> Result<Result<Channel, tonic::transport::Error>, ClientError> {
+    Err(ClientError::Config(
+        "TLS connections need the `tls` feature of oxhaven-server (on with `python`), \
+         which this build does not have"
+            .to_string(),
+    ))
+}
+
 /// The messages of one `DoExchange` call.
 struct Exchange {
     /// Open for as long as the call should stay open: the server ends a subscription
@@ -594,21 +634,23 @@ impl BarrageSession {
                 "tls_root_certs is provided but use_tls is False".to_string(),
             ));
         }
-        if config.use_tls {
-            return Err(ClientError::TlsNotAvailable);
-        }
         let extra_headers = config
             .extra_headers
             .iter()
             .map(|(name, value)| header(name, value))
             .collect::<Result<Vec<_>, _>>()?;
         let target = format!("{}:{}", config.host, config.port);
-        let endpoint = Endpoint::from_shared(format!("http://{target}"))
+        let scheme = if config.use_tls { "https" } else { "http" };
+        let endpoint = Endpoint::from_shared(format!("{scheme}://{target}"))
             .map_err(|problem| ClientError::Config(format!("'{target}': {problem}")))?;
-        let channel = endpoint
-            .connect()
-            .await
-            .map_err(|problem| ClientError::Connect(format!("{target}: {problem}")))?;
+        let connected = if config.use_tls {
+            secure_channel(&config, endpoint).await?
+        } else {
+            endpoint.connect().await
+        };
+        let channel = connected.map_err(|problem| {
+            ClientError::Connect(format!("{target}: {}", with_causes(&problem)))
+        })?;
         let (closed, _) = watch::channel(false);
         let inner = Arc::new(Inner {
             channel,

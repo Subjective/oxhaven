@@ -1,0 +1,26 @@
+{
+  "format": 2,
+  "scenario": "remote_unread_host",
+  "scenario_sha256": "b7a654fa211e8a343bc63990254d961cf7220fd2ca0776da17838827e00ad02a",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "local_t",
+      "file": "step000.local_t.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "local_t",
+      "file": "step001.local_t.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "local_t",
+      "file": "step002.local_t.arrow",
+      "rows": 3
+    }
+  ]
+}

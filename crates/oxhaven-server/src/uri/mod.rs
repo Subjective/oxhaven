@@ -198,18 +198,6 @@ pub fn resolver_for(uri: &Uri) -> Result<Resolver, ResolveError> {
     }
 }
 
-/// Owner question 7.23: whether a URI whose authority Java cannot read as a host
-/// (`dh://host_name/scope/t`, `dh://é.com/scope/t`, `dh://host:99999999999/scope/t`) is
-/// resolved here, with its authority dropped, as Java resolves it. Such an authority is
-/// registry-based for `java.net.URI` and has no host, so `UriHelper#isLocalPath` takes the
-/// URI as local: the query scope variable `t` of this server, not a table of the server the
-/// user named. The same holds for `parquet://` and for the CSV schemes, whose resolvers
-/// drop that authority too.
-///
-/// `true` matches Java. This is the one place to change it: with `false`, such a URI is
-/// refused by [`check_unread_host`].
-const UNREAD_HOST_IS_LOCAL: bool = true;
-
 /// The authority of `uri` that a resolver drops because it has no host Java can read.
 ///
 /// Behavior: io.deephaven.uri.UriHelper#isLocalPath, which asks for no host and not for no
@@ -218,14 +206,20 @@ fn unread_authority(uri: &Uri) -> Option<&str> {
     uri.raw_authority().filter(|_| uri.host().is_none())
 }
 
-/// Refuses a URI whose authority would be dropped, unless [`UNREAD_HOST_IS_LOCAL`].
+/// Refuses a URI whose authority a resolver would drop. Java's `java.net.URI` reads an
+/// authority it cannot read as a host (`dh://host_name/scope/t`, `dh://é.com/scope/t`,
+/// `dh://host:99999999999/scope/t`) as registry-based, without a host, so
+/// `UriHelper#isLocalPath` takes the URI as local and Java resolves it on this server: the
+/// query scope variable `t`, not a table of the server the user named. The CSV and Parquet
+/// resolvers drop that authority too. Oxhaven refuses such a URI instead, by the owner's
+/// answer to item 7.23 (`PARITY.md` A26).
 fn check_unread_host(uri: &Uri) -> Result<(), ResolveError> {
     match unread_authority(uri) {
-        Some(authority) if !UNREAD_HOST_IS_LOCAL => Err(ResolveError::IllegalArgument(format!(
+        Some(authority) => Err(ResolveError::IllegalArgument(format!(
             "'{authority}' in '{uri}' is no host name, address or port that can be read; \
              the URI would resolve on this server"
         ))),
-        _ => Ok(()),
+        None => Ok(()),
     }
 }
 
@@ -255,9 +249,9 @@ pub fn remote_ticket(remote: &RemoteUri) -> Result<Vec<u8>, ResolveError> {
     }
 }
 
-/// The client configuration of a target: TLS for `dh`, which the client refuses
-/// (`ClientError::TlsNotAvailable`, owner question 7.24), and the default port of the
-/// scheme when the target names none.
+/// The client configuration of a target: TLS with the system's root certificates for `dh`,
+/// as Java's resolver connects with `TrustJdk`, and the default port of the scheme when the
+/// target names none.
 ///
 /// Behavior: `io.deephaven.client.impl.ClientConfig` with `target`, and
 /// `io.deephaven.client.impl.ChannelHelper` (the default ports)
