@@ -579,3 +579,182 @@ def test_a_table_that_has_not_failed_is_compared_by_its_contents():
     assert (live.probes, static.probes) == (1, 0)  # a static table cannot fail in a cycle
     other = _snapshot(live=_Served(_ints(6)), static=static)
     assert kinds(rules.compare(result, other)) == [rules.ROW_COUNT]
+
+
+# ---------------------------------------------------------------- typed vectors (A27)
+
+_TIMESTAMPS = pa.timestamp("ns", tz="UTC")
+
+
+def _column(name: str, values: list, arrow_type: pa.DataType, **metadata: str) -> pa.Table:
+    field = pa.field(name, arrow_type,
+                     metadata={f"deephaven:{key}": value for key, value in metadata.items()})
+    return pa.Table.from_arrays([pa.array(values, arrow_type)], schema=pa.schema([field]))
+
+
+def _java_vector(values: list) -> pa.Table:
+    """A vector column as Java sends a vector of `Object` (observed on 42.9)."""
+    return _column("V", values, pa.list_(pa.string()), type="io.deephaven.vector.ObjectVector",
+                   componentType="java.lang.String")
+
+
+def _typed_vector(values: list, arrow_type: pa.DataType, vector: str, component: str,
+                  ) -> pa.Table:
+    return _column("V", values, pa.list_(arrow_type), type=vector, componentType=component)
+
+
+_BOOLEANS = _typed_vector([[None, False], [True], [], None], pa.bool_(),
+                          "io.deephaven.vector.ObjectVector", "java.lang.Boolean")
+_JAVA_BOOLEANS = _java_vector([[None, "false"], ["true"], [], None])
+_INSTANTS = _typed_vector(
+    [[1_700_000_001_500_000_000, 1_700_000_006_000_123_004, 0, -1, None]], _TIMESTAMPS,
+    "io.deephaven.vector.ObjectVector", "java.time.Instant")
+_JAVA_INSTANTS = _java_vector([["2023-11-14T22:13:21.500Z", "2023-11-14T22:13:26.000123004Z",
+                                "1970-01-01T00:00:00Z", "1969-12-31T23:59:59.999999999Z",
+                                None]])
+
+
+def typed_diff(expected: pa.Table, actual: pa.Table, taken_apart: bool = False,
+               typed: bool = True) -> list[rules.Mismatch]:
+    return rules.compare_tables("s", "t", 3, expected, actual,
+                                typed={"V": taken_apart} if typed else None)
+
+
+def test_a27_accepts_typed_vectors_whose_elements_are_javas_text():
+    assert typed_diff(_JAVA_BOOLEANS, _BOOLEANS) == []
+    assert typed_diff(_JAVA_INSTANTS, _INSTANTS) == []
+    # Without A27 for the column, the schemas differ.
+    assert kinds(typed_diff(_JAVA_BOOLEANS, _BOOLEANS, typed=False)) == [rules.COLUMN_TYPE]
+    assert kinds(diff(_JAVA_INSTANTS, _INSTANTS)) == [rules.COLUMN_TYPE]
+
+
+def test_a27_still_compares_each_element():
+    for other in ([[None, True], [True], [], None],    # an element
+                  [[False, None], [True], [], None],   # the order of the elements
+                  [[None, False], [True], None, None],  # null against empty
+                  [[None, False], [True], [], []]):    # empty against null
+        typed = _typed_vector(other, pa.bool_(), "io.deephaven.vector.ObjectVector",
+                              "java.lang.Boolean")
+        assert kinds(typed_diff(_JAVA_BOOLEANS, typed)) == [rules.VALUE], other
+    shifted = _typed_vector([[1_700_000_001_500_000_001, 1_700_000_006_000_123_004, 0, -1,
+                              None]], _TIMESTAMPS, "io.deephaven.vector.ObjectVector",
+                            "java.time.Instant")
+    assert kinds(typed_diff(_JAVA_INSTANTS, shifted)) == [rules.VALUE]
+    # A string that is not how Java writes the instant.
+    padded = _java_vector([["2023-11-14T22:13:21.500000Z", "2023-11-14T22:13:26.000123004Z",
+                            "1970-01-01T00:00:00Z", "1969-12-31T23:59:59.999999999Z", None]])
+    assert kinds(typed_diff(padded, _INSTANTS)) == [rules.VALUE]
+
+
+def test_a27_needs_every_other_field_metadata_key_to_match():
+    wrong_component = _typed_vector([[None, False], [True], [], None], pa.bool_(),
+                                    "io.deephaven.vector.ObjectVector", "java.time.Instant")
+    assert kinds(typed_diff(_JAVA_BOOLEANS, wrong_component)) == [rules.COLUMN_TYPE]
+    wrong_vector = _typed_vector([[None, False], [True], [], None], pa.bool_(),
+                                 "io.deephaven.vector.BooleanVector", "java.lang.Boolean")
+    assert kinds(typed_diff(_JAVA_BOOLEANS, wrong_vector)) == [rules.COLUMN_TYPE]
+    sortable = _column("V", [[None, False], [True], [], None], pa.list_(pa.bool_()),
+                       type="io.deephaven.vector.ObjectVector",
+                       componentType="java.lang.Boolean", isSortable="true")
+    assert kinds(typed_diff(_JAVA_BOOLEANS, sortable)) == [rules.COLUMN_TYPE]
+    # Java's side must be the vector of strings that A27 describes.
+    of_strings = _column("V", [[None, "false"], ["true"], [], None], pa.list_(pa.string()),
+                         type="java.lang.String[]", componentType="java.lang.String")
+    assert kinds(typed_diff(of_strings, _BOOLEANS)) == [rules.COLUMN_TYPE]
+
+
+def test_a27_covers_only_booleans_and_instants_inside_vectors():
+    dates = _typed_vector([[19675]], pa.date32(), "io.deephaven.vector.ObjectVector",
+                          "java.time.LocalDate")
+    assert kinds(typed_diff(_java_vector([["2023-11-14"]]), dates)) == [rules.COLUMN_TYPE]
+    strings = _typed_vector([["a"]], pa.string(), "io.deephaven.vector.ObjectVector",
+                            "java.lang.String")
+    assert typed_diff(_java_vector([["a"]]), strings) == []
+    assert kinds(typed_diff(_java_vector([["a"]]), _typed_vector(
+        [["b"]], pa.string(), "io.deephaven.vector.ObjectVector",
+        "java.lang.String"))) == [rules.VALUE]
+
+
+def test_a27_accepts_a_typed_column_that_ungroup_took_apart():
+    java = _column("V", ["true", None], pa.string(),
+                   type="java.lang.Object")
+    oxhaven = _column("V", [True, None], pa.bool_(), type="java.lang.Boolean",
+                      isSortable="true")
+    assert typed_diff(java, oxhaven, taken_apart=True) == []
+    # Not a column that an ungroup took apart: a scalar of Object is compared as usual.
+    assert kinds(typed_diff(java, oxhaven)) == [rules.COLUMN_TYPE]
+    instants = _column("V", [1_700_000_001_500_000_000], _TIMESTAMPS,
+                       type="java.time.Instant", isSortable="true")
+    java_instant = _column("V", ["2023-11-14T22:13:21.500Z"], pa.string(),
+                           type="java.lang.Object")
+    assert typed_diff(java_instant, instants, taken_apart=True) == []
+    strings = _column("V", ["a"], pa.string(), type="java.lang.String", isSortable="true")
+    assert typed_diff(_column("V", ["a"], pa.string(), type="java.lang.Object"), strings,
+                      taken_apart=True) == []
+    # Java's column must be the unsortable Object column, and Oxhaven's sortable.
+    sortable_java = _column("V", ["a"], pa.string(), type="java.lang.Object",
+                            isSortable="true")
+    assert kinds(typed_diff(sortable_java, strings, taken_apart=True)) == [
+        rules.COLUMN_METADATA]
+    unsortable = _column("V", ["a"], pa.string(), type="java.lang.String")
+    assert kinds(typed_diff(_column("V", ["a"], pa.string(), type="java.lang.Object"),
+                            unsortable, taken_apart=True)) == [rules.COLUMN_METADATA]
+    assert kinds(typed_diff(java, _column("V", [False, None], pa.bool_(),
+                                          type="java.lang.Boolean", isSortable="true"),
+                            taken_apart=True)) == [rules.VALUE]
+
+
+def test_java_instant_text_writes_as_instant_to_string():
+    assert rules.java_instant_text(0) == "1970-01-01T00:00:00Z"
+    assert rules.java_instant_text(1_500_000_000) == "1970-01-01T00:00:01.500Z"
+    assert rules.java_instant_text(1_000_001_000) == "1970-01-01T00:00:01.000001Z"
+    assert rules.java_instant_text(1_000_000_001) == "1970-01-01T00:00:01.000000001Z"
+    assert rules.java_instant_text(-1) == "1969-12-31T23:59:59.999999999Z"
+    assert rules.java_instant_text(-(2**63) + 1) == "1677-09-21T00:12:43.145224193Z"
+    assert rules.java_instant_text(2**63 - 1) == "2262-04-11T23:47:16.854775807Z"
+
+
+def test_typed_vector_columns_follow_the_operations_of_a27():
+    ops = [
+        {"name": "g", "op": "group_by", "source": "t", "by": ["H"]},
+        {"name": "a", "op": "agg_by", "source": "g", "by": ["H"], "aggs": [
+            {"agg": "min", "columns": ["MinB=B"]},
+            {"agg": "first", "columns": ["FirstB=B"]},
+            {"agg": "count_distinct", "columns": ["N=B"]},
+            {"agg": "distinct", "columns": ["DisT=T"]}]},
+        {"name": "u", "op": "update_by", "source": "g", "by": ["H"], "ops": [
+            {"op": "cum_max", "columns": ["CMaxT=T"]},
+            {"op": "rolling_min_tick", "columns": ["RMinB=B"]},
+            {"op": "cum_sum", "columns": ["Sum=K"]}]},
+        {"name": "s", "op": "sort", "source": "a", "columns": ["MinB"]},
+        {"name": "v", "op": "view", "source": "s", "formulas": ["M=MinB", "X=MinB_[0]"]},
+        {"name": "f", "op": "agg_by", "source": "a", "by": [], "aggs": [
+            {"agg": "first", "columns": ["MinB"]}, {"agg": "last", "columns": ["L=N"]}]},
+        {"name": "x", "op": "ungroup", "source": "a", "columns": ["DisT"]},
+        {"name": "y", "op": "ungroup", "source": "u"},
+        {"name": "d", "op": "drop_columns", "source": "y", "columns": ["CMaxT"]},
+    ]
+    found = rules.typed_vector_columns(ops)
+    assert found["g"] == {}
+    assert found["a"] == {"MinB": False, "DisT": False}
+    assert found["u"] == {"CMaxT": False, "RMinB": False}
+    assert found["s"] == found["a"]
+    assert found["v"] == {"M": False}
+    assert found["f"] == {"MinB": False}
+    assert found["x"] == {"MinB": False, "DisT": True}
+    assert found["y"] == {"CMaxT": True, "RMinB": True}
+    assert found["d"] == {"RMinB": True}
+
+
+def test_the_recorded_a27_scenario_names_its_typed_columns():
+    from pathlib import Path
+
+    from harness import scenario as sc
+    path = Path(__file__).resolve().parent.parent / "scenarios/static/agg_typed_vectors.json"
+    found = rules.typed_vector_columns(sc.load(path).operations)
+    assert {"MinB", "MaxT", "MedS", "PctT"} <= set(found["extremes"]) | set(found["middles"])
+    assert set(found["formulas"]) == {"FB", "FT", "FS"}
+    assert found["kept_types"] == {}
+    assert found["sorted"] == found["extremes"]
+    assert found["taken_apart"] == {name: True for name in found["middles"]}
+    assert set(found["nested_apart"]) == {"DisB", "DisT", "DisS", "GrpB", "GrpT", "GrpS"}

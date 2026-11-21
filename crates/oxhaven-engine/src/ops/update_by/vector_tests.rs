@@ -663,19 +663,35 @@ fn a_cumulative_minimum_keeps_the_first_of_equal_vectors() {
 
 /// Seen on Deephaven 42.9: the cumulative minimum and maximum of a vector of `Instant`s or
 /// of `Boolean`s is a column of `ObjectVector` with the component type `String`, which a
-/// client receives as text. Owner question 3.3 of the second batch.
+/// client receives as text. Oxhaven keeps the element type: allowed difference A27 of
+/// `PARITY.md` (owner item 3.3; Java's answers are in `oracle/corpus/agg_typed_vectors`).
+#[test]
+fn a_minimum_of_boolean_vectors_keeps_the_element_type() {
+    let (booleans, column) = vector_column(
+        ColumnType::Boolean,
+        &[Some(1), Some(1), Some(2)],
+        BooleanArray::from(vec![Some(true), Some(false), None, Some(true)]),
+    );
+    let source = static_table(&[("V", booleans.clone(), column)]);
+    let minimum = update_by(&source, &[op(UpdateBySpec::CumMin, &[])], &[] as &[&str]).unwrap();
+    assert_eq!(minimum.definition().columns()[0].column_type, booleans);
+    assert_eq!(cells(&*minimum, 0), ["[true]", "[false]", "[null, true]"]);
+    let maximum = update_by(&source, &[op(UpdateBySpec::CumMax, &[])], &[] as &[&str]).unwrap();
+    assert_eq!(cells(&*maximum, 0), ["[true]", "[true]", "[true]"]);
+}
+
+/// A vector of other objects than strings, Booleans and Instants: Java sends the minimum
+/// as text too, which A27 does not cover.
 #[test]
 #[should_panic(
     expected = "unported: io.deephaven.engine.table.impl.updateby.minmax.ComparableCumMinMaxOperator: \
-                minimum or maximum of vector column V of type Vector(Boolean)"
+                minimum or maximum of vector column V of type Vector(LocalDate)"
 )]
-fn a_minimum_of_boolean_vectors_is_unported() {
-    let (booleans, cells) = vector_column(
-        ColumnType::Boolean,
-        &[Some(1), Some(1)],
-        BooleanArray::from(vec![true, false]),
-    );
-    let source = static_table(&[("V", booleans, cells)]);
+fn a_minimum_of_vectors_of_dates_is_unported() {
+    let elements = arrow::array::new_empty_array(&ColumnType::LocalDate.arrow_type());
+    let column_type = ColumnType::vector(ColumnType::LocalDate);
+    let column = list_of(&column_type, [None::<usize>; 0], elements);
+    let source = static_table(&[("V", column_type, column)]);
     let _ = update_by(&source, &[op(UpdateBySpec::CumMin, &[])], &[] as &[&str]);
 }
 

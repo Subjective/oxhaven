@@ -32,6 +32,14 @@ The rules, in the order they are applied to one result of one step:
    columns these are from the scenario's operations.
 6. A column of a type the rules do not know is reported as `unsupported_type`, never passed.
 
+One allowed difference replaces rules 1 and 4 for one column. Typed vectors (A27): where the
+reference sends as a vector of strings a vector of Booleans or Instants that an aggregation or
+`update_by` operator kept as objects (`typed_vector_columns`), the other side may send it with
+its element type, and then each element written as Java writes it (`java_text`) must be the
+reference's string. The same for such a column taken apart by `ungroup`, which the reference
+sends as `java.lang.Object` text, also for strings. Every other field metadata key must still
+match (`a27_field`).
+
 A script scenario (`scripts.py`) adds one rule, applied to the script of each step before the
 results of that step are compared:
 
@@ -56,6 +64,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass
+from datetime import date, timedelta
 from typing import Any, Iterable, Mapping
 
 import pyarrow as pa
@@ -404,6 +413,160 @@ def computed_columns(operations: Iterable[Mapping[str, Any]]) -> dict[str, froze
     return tables
 
 
+# ---------------------------------------------------------------- typed vectors (A27)
+
+# A27: the aggregations and update_by operators whose result Java keeps as objects, so that
+# the result of a vector of Booleans or Instants is a vector of `Object` that Java sends as
+# strings (observed on 42.9: `oracle/corpus/agg_typed_vectors`). `distinct` and `group` of a
+# vector column hold such vectors inside theirs.
+TYPED_VECTOR_AGGREGATIONS = frozenset({
+    "min", "max", "median", "pct", "unique", "formula", "distinct", "group",
+})
+TYPED_VECTOR_UPDATE_BY = ("cum_min", "cum_max", "rolling_min_", "rolling_max_")
+# Operations that pass the cells of their source's columns on unchanged.
+_PASS_ON = frozenset({"where", "sort", "head", "tail", "slice", "flatten", "reverse", "filter",
+                      "head_by", "tail_by", "snapshot", "ungroup", "where_in"})
+_OBJECT_VECTOR = "io.deephaven.vector.ObjectVector"
+_EPOCH = date(1970, 1, 1)
+# The element classes A27 covers, by the Arrow type the other side sends them as.
+_TYPED_ELEMENTS = {"bool": "java.lang.Boolean", "timestamp[ns, tz=UTC]": "java.time.Instant"}
+
+
+def typed_vector_columns(
+        operations: Iterable[Mapping[str, Any]]) -> dict[str, dict[str, bool]]:
+    """For each table of a scenario, the columns A27 may cover, each with whether an
+    `ungroup` has taken it apart: made by an aggregation or `update_by` operator of
+    `TYPED_VECTOR_AGGREGATIONS` or `TYPED_VECTOR_UPDATE_BY`, and passed on unchanged since
+    (filters, sorts, `ungroup`, plain column references, the aggregations and operators that
+    select a cell). Whether a column is such a vector is decided by its schema
+    (`a27_field`); this only says where one may come from."""
+    tables: dict[str, dict[str, bool]] = {}
+
+    def of(name: str) -> dict[str, bool]:
+        return dict(tables.get(name, {}))
+
+    for op in operations:
+        kind = op["op"]
+        out: dict[str, bool] = {}
+        if kind == "ungroup":
+            # Without columns, `ungroup` takes apart every vector column.
+            out = of(op["source"])
+            columns = op.get("columns") or list(out)
+            for name in columns:
+                if name in out:
+                    out[name] = True
+        elif kind in _PASS_ON:
+            out = of(op["source"] if "source" in op else op["left"])
+        elif kind == "drop_columns":
+            out = {name: apart for name, apart in of(op["source"]).items()
+                   if name not in op["columns"]}
+        elif kind in ("view", "select", "update", "lazy_update", "update_view"):
+            source = of(op["source"])
+            current = dict(source) if kind not in ("view", "select") else {}
+            for formula in op["formulas"]:
+                name, expression = split_pair(formula)
+                current.pop(name, None)
+                if _IDENTIFIER.match(expression) and expression in source:
+                    current[name] = source[expression]
+            out = current
+        elif kind == "merge":
+            for name in op["sources"]:
+                for column, apart in of(name).items():
+                    out[column] = out.get(column, False) or apart
+        elif kind == "agg_by":
+            source = of(op["source"])
+            out = {key: source[key] for key in op["by"] if key in source}
+            for agg in op["aggs"]:
+                for pair in agg.get("columns", ()):
+                    name, column = split_pair(pair)
+                    if agg["agg"] in TYPED_VECTOR_AGGREGATIONS:
+                        out[name] = False
+                    elif agg["agg"] in PASS_THROUGH_AGGREGATIONS and column in source:
+                        out[name] = source[column]
+        elif kind == "update_by":
+            source = of(op["source"])
+            out = dict(source)
+            for ub in op["ops"]:
+                for pair in ub["columns"]:
+                    name, column = split_pair(pair)
+                    out.pop(name, None)
+                    if ub["op"].startswith(TYPED_VECTOR_UPDATE_BY):
+                        out[name] = False
+                    elif ub["op"].startswith(PASS_THROUGH_UPDATE_BY) and column in source:
+                        out[name] = source[column]
+        tables[op["name"]] = out
+    return tables
+
+
+def _depth(arrow_type: pa.DataType) -> tuple[int, pa.DataType]:
+    depth = 0
+    while pat.is_list(arrow_type) or pat.is_large_list(arrow_type):
+        arrow_type, depth = arrow_type.value_type, depth + 1
+    return depth, arrow_type
+
+
+def a27_field(expected: pa.Field, actual: pa.Field, rules: "Rules",
+              taken_apart: bool = False) -> bool:
+    """A27: whether `actual` is the typed form of the column the reference sent as
+    `expected`. A vector that the reference sends with strings for elements and
+    `java.lang.String` for component type, and the other side with Booleans or Instants and
+    their class (vectors of vectors, of `distinct` and `group`, are compared through an
+    `ungroup` of them, which gives such vectors); or, only for a column that an `ungroup`
+    took apart (`taken_apart`), a `java.lang.Object` column of text that the other side sends
+    as a sortable column of Booleans, Instants or strings. Every other compared metadata key
+    is the same."""
+    e_depth, e_leaf = _depth(expected.type)
+    a_depth, a_leaf = _depth(actual.type)
+    if e_depth != a_depth or not pat.is_string(e_leaf) or (e_depth == 0 and not taken_apart):
+        return False
+    e_meta = _metadata(expected.metadata, rules.compared_field_metadata)
+    a_meta = _metadata(actual.metadata, rules.compared_field_metadata)
+    typed = _TYPED_ELEMENTS.get(str(a_leaf))
+    if e_depth == 0:
+        if pat.is_string(a_leaf):
+            typed = "java.lang.String"
+        want = {key: value for key, value in e_meta.items() if key != "deephaven:type"}
+        want.update({"deephaven:type": typed, "deephaven:isSortable": "true"})
+        return (typed is not None and e_meta.get("deephaven:type") == "java.lang.Object"
+                and "deephaven:isSortable" not in e_meta and a_meta == want)
+    want = dict(e_meta)
+    want["deephaven:componentType"] = typed
+    return (e_depth == 1 and typed is not None and e_meta.get("deephaven:type") == _OBJECT_VECTOR
+            and e_meta.get("deephaven:componentType") == "java.lang.String" and a_meta == want)
+
+
+def java_instant_text(nanos: int) -> str:
+    """An instant as `java.time.Instant#toString` writes it (`DateTimeFormatter.ISO_INSTANT`):
+    the date and time in UTC to the second, then a fraction of 3, 6 or 9 digits if the
+    instant has one, then `Z`. For the years 1677 to 2262 that a long of nanoseconds holds."""
+    seconds, fraction = divmod(nanos, 1_000_000_000)
+    days, second = divmod(seconds, 86_400)
+    date = _EPOCH + timedelta(days=days)
+    text = f"{date.isoformat()}T{second // 3600:02}:{second // 60 % 60:02}:{second % 60:02}"
+    if fraction % 1_000_000 == 0 and fraction:
+        text += f".{fraction // 1_000_000:03}"
+    elif fraction % 1000 == 0 and fraction:
+        text += f".{fraction // 1000:06}"
+    elif fraction:
+        text += f".{fraction:09}"
+    return text + "Z"
+
+
+def java_text(arrow_type: pa.DataType, cell: Any) -> Any:
+    """A27: a cell of the typed side (as `_cells` gives it) written as the reference writes
+    its element: `true` or `false`, an instant as `java_instant_text`, a string as itself.
+    Lists element by element; null stays null."""
+    if cell is None:
+        return None
+    if pat.is_list(arrow_type) or pat.is_large_list(arrow_type):
+        return [java_text(arrow_type.value_type, item) for item in cell]
+    if pat.is_boolean(arrow_type):
+        return "true" if cell else "false"
+    if pat.is_timestamp(arrow_type):
+        return java_instant_text(cell)
+    return cell
+
+
 # ---------------------------------------------------------------- comparison
 
 def _cells(column: pa.ChunkedArray) -> list[Any]:
@@ -465,10 +628,13 @@ def compare_tables(
     ordered: bool = True,
     computed: frozenset[str] | set[str] = frozenset(),
     rules: Rules = DEFAULT_RULES,
+    typed: Mapping[str, bool] | None = None,
 ) -> list[Mismatch]:
     """Compares one result table of one step. Returns the differences; empty means equal.
 
-    `computed` names the columns whose float cells are covered by the A1 tolerance.
+    `computed` names the columns whose float cells are covered by the A1 tolerance, `typed`
+    those that A27 may cover, each with whether an `ungroup` took it apart
+    (`typed_vector_columns`).
     """
 
     def mismatch(kind: str, **fields: Any) -> Mismatch:
@@ -481,11 +647,17 @@ def compare_tables(
         return [mismatch(COLUMN_COUNT, expected=expected.column_names,
                          actual=actual.column_names)]
     comparable = True
+    # A27: the columns whose typed cells are compared as the reference's text.
+    as_text: set[int] = set()
     for index, (e_field, a_field) in enumerate(zip(expected.schema, actual.schema)):
         if e_field.name != a_field.name:
             out.append(mismatch(COLUMN_NAME, column=e_field.name, expected=e_field.name,
                                 actual=a_field.name, note=f"column position {index}"))
             comparable = False
+            continue
+        if typed and e_field.name in typed and a27_field(e_field, a_field, rules,
+                                                         typed[e_field.name]):
+            as_text.add(index)
             continue
         if e_field.type != a_field.type:
             out.append(mismatch(COLUMN_TYPE, column=e_field.name, expected=str(e_field.type),
@@ -524,7 +696,11 @@ def compare_tables(
 
     # 3. Row alignment.
     e_columns = [_cells(c) for c in expected.columns]
-    a_columns = [_cells(c) for c in actual.columns]
+    a_columns = [
+        [java_text(column.type, cell) for cell in _cells(column)] if index in as_text
+        else _cells(column)
+        for index, column in enumerate(actual.columns)
+    ]
     if ordered:
         e_order = list(range(expected.num_rows))
         a_order = list(range(actual.num_rows))
@@ -563,16 +739,19 @@ def compare(
     unordered: frozenset[str] | set[str] = frozenset(),
     computed: Mapping[str, frozenset[str]] | None = None,
     rules: Rules = DEFAULT_RULES,
+    typed: Mapping[str, Mapping[str, bool]] | None = None,
 ) -> list[Mismatch]:
     """Compares two result sets of the same scenario; `expected` is the reference side.
 
     `unordered` names the result tables whose row order the scenario declares not guaranteed.
     `computed` maps a table to its computed columns (see `computed_columns`); without it every
     float must match exactly, which is the comparison for two runs of the same server
-    (PARITY.md, Determinism).
+    (PARITY.md, Determinism). `typed` maps a table to the columns A27 may cover (see
+    `typed_vector_columns`); without it no column is.
     """
     scenario = expected.scenario
     computed = computed or {}
+    typed = typed or {}
     out: list[Mismatch] = []
     actual_keys = set(actual.keys())
     for step, table in expected.keys():
@@ -596,7 +775,8 @@ def compare(
             out.extend(
                 compare_tables(scenario, table, step, e_result, a_result,
                                ordered=table not in unordered,
-                               computed=computed.get(table, frozenset()), rules=rules)
+                               computed=computed.get(table, frozenset()), rules=rules,
+                               typed=typed.get(table))
             )
     expected_keys = set(expected.keys())
     for step, table in actual.keys():
@@ -729,7 +909,10 @@ def compare_scenario(scenario: Any, expected: ResultSet, actual: ResultSet,
     """`compare` with the unordered tables and computed columns taken from the scenario.
 
     `exact` drops the A1 tolerance: for comparing two runs of one server with each other.
+    A27 applies either way: two runs of one server send the same schema, and it never
+    covers a column whose field is the same on both sides.
     """
     unordered = frozenset(r.table for r in scenario.results if not r.ordered)
     computed = None if exact else computed_columns(scenario.operations)
-    return compare(expected, actual, unordered, computed, rules)
+    return compare(expected, actual, unordered, computed, rules,
+                   typed_vector_columns(scenario.operations))

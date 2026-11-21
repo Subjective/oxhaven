@@ -908,6 +908,15 @@ cites the section of `PARITY.md` behind each rule. In short:
 - An array cell (the result of `group`, `distinct`, `rolling_group_*`, `group_by` and
   `range_join`) is compared element by element under the rule of its element type; a null
   array differs from an empty one. Arrays of structs and other nested types are not known.
+- The exception is A27: a vector of Booleans or Instants that `min`, `max`, `median`, `pct`,
+  `unique`, `formula`, `distinct` or `group`, or `cum_min`, `cum_max`, `rolling_min_*` or
+  `rolling_max_*`, made, which Java sends as a list of strings with component type
+  `java.lang.String`, may come with its element type and class; each element, written as
+  Java writes it (`true`, an instant as `Instant#toString`), must be Java's string. After an
+  `ungroup` of such a column (also of strings), Java's `java.lang.Object` text may come as a
+  sortable typed column. Every other field metadata key is compared as usual.
+  `rules.typed_vector_columns` says which columns may be such vectors, `rules.a27_field`
+  which schemas qualify.
 - A result that the scenario marks unordered is compared as a multiset. Everything else is
   compared in order.
 - A column type the rules do not know is reported, never passed.

@@ -1,0 +1,543 @@
+{
+ "format": 1,
+ "name": "agg_typed_vectors",
+ "description": "Aggregations and update_by operators whose result is a vector of Booleans or Instants, of a table whose columns are vectors (group_by): min, max, median, percentile, unique, the formula aggregation's group, cumulative and rolling minimum and maximum, and the vectors inside a distinct or group of them (through an ungroup). Java's result column has the element type Object, which it sends as vectors of strings; Oxhaven sends the elements typed (PARITY.md A27). Also the same of vectors of strings and ints, the aggregations that keep the element type, and a sort and an ungroup of such results, which Java sends as java.lang.Object.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "H",
+     "type": "int32"
+    },
+    {
+     "name": "G",
+     "type": "int32"
+    },
+    {
+     "name": "B",
+     "type": "bool"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    }
+   ],
+   "rows": [
+    [
+     0,
+     0,
+     0,
+     null,
+     1700000000000000000,
+     "s0"
+    ],
+    [
+     1,
+     0,
+     1,
+     true,
+     1700000001500123001,
+     "s1"
+    ],
+    [
+     2,
+     0,
+     2,
+     false,
+     1700000003000246002,
+     "s2"
+    ],
+    [
+     3,
+     0,
+     3,
+     true,
+     1700000004500000003,
+     "s3"
+    ],
+    [
+     4,
+     0,
+     0,
+     false,
+     1700000006000123004,
+     "s4"
+    ],
+    [
+     5,
+     0,
+     1,
+     null,
+     null,
+     "s0"
+    ],
+    [
+     6,
+     0,
+     2,
+     true,
+     1700000009000000001,
+     "s1"
+    ],
+    [
+     7,
+     0,
+     3,
+     true,
+     1700000000000123002,
+     "s2"
+    ],
+    [
+     8,
+     1,
+     0,
+     false,
+     1700000001500246003,
+     "s3"
+    ],
+    [
+     9,
+     1,
+     1,
+     false,
+     1700000003000000004,
+     "s4"
+    ],
+    [
+     10,
+     1,
+     2,
+     true,
+     1700000004500123000,
+     "s0"
+    ],
+    [
+     11,
+     1,
+     3,
+     null,
+     1700000006000246001,
+     "s1"
+    ],
+    [
+     12,
+     1,
+     0,
+     null,
+     1700000007500000002,
+     "s2"
+    ],
+    [
+     13,
+     1,
+     1,
+     true,
+     1700000009000123003,
+     "s3"
+    ],
+    [
+     14,
+     1,
+     2,
+     false,
+     1700000000000246004,
+     "s4"
+    ],
+    [
+     15,
+     1,
+     3,
+     true,
+     1700000001500000000,
+     "s0"
+    ],
+    [
+     16,
+     2,
+     0,
+     false,
+     1700000003000123001,
+     "s1"
+    ],
+    [
+     17,
+     2,
+     1,
+     null,
+     null,
+     "s2"
+    ],
+    [
+     18,
+     2,
+     2,
+     true,
+     1700000006000000003,
+     "s3"
+    ],
+    [
+     19,
+     2,
+     3,
+     true,
+     1700000007500123004,
+     "s4"
+    ],
+    [
+     20,
+     2,
+     0,
+     false,
+     1700000009000246000,
+     "s0"
+    ],
+    [
+     21,
+     2,
+     1,
+     false,
+     1700000000000000001,
+     "s1"
+    ],
+    [
+     22,
+     2,
+     2,
+     true,
+     1700000001500123002,
+     "s2"
+    ],
+    [
+     23,
+     2,
+     3,
+     null,
+     1700000003000246003,
+     "s3"
+    ],
+    [
+     24,
+     3,
+     0,
+     null,
+     null,
+     null
+    ],
+    [
+     25,
+     3,
+     1,
+     true,
+     0,
+     "s0"
+    ],
+    [
+     26,
+     3,
+     1,
+     false,
+     -1500000001,
+     "s1"
+    ]
+   ]
+  }
+ ],
+ "operations": [
+  {
+   "name": "g",
+   "op": "group_by",
+   "source": "t",
+   "by": [
+    "H",
+    "G"
+   ]
+  },
+  {
+   "name": "extremes",
+   "op": "agg_by",
+   "source": "g",
+   "by": [
+    "H"
+   ],
+   "aggs": [
+    {
+     "agg": "min",
+     "columns": [
+      "MinB = B",
+      "MinT = T",
+      "MinS = S",
+      "MinK = K"
+     ]
+    },
+    {
+     "agg": "max",
+     "columns": [
+      "MaxB = B",
+      "MaxT = T",
+      "MaxS = S",
+      "MaxK = K"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "middles",
+   "op": "agg_by",
+   "source": "g",
+   "by": [
+    "H"
+   ],
+   "aggs": [
+    {
+     "agg": "median",
+     "columns": [
+      "MedB = B",
+      "MedT = T",
+      "MedS = S",
+      "MedK = K"
+     ]
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "PctB = B",
+      "PctT = T",
+      "PctS = S",
+      "PctK = K"
+     ],
+     "args": {
+      "percentile": 0.25
+     }
+    }
+   ]
+  },
+  {
+   "name": "uniques",
+   "op": "agg_by",
+   "source": "g",
+   "by": [
+    "H",
+    "G"
+   ],
+   "aggs": [
+    {
+     "agg": "unique",
+     "columns": [
+      "UniB = B",
+      "UniT = T",
+      "UniS = S",
+      "UniK = K"
+     ]
+    },
+    {
+     "agg": "unique",
+     "columns": [
+      "UnnB = B",
+      "UnnT = T",
+      "UnnS = S",
+      "UnnK = K"
+     ],
+     "args": {
+      "include_nulls": true
+     }
+    }
+   ]
+  },
+  {
+   "name": "formulas",
+   "op": "agg_by",
+   "source": "t",
+   "by": [
+    "H"
+   ],
+   "aggs": [
+    {
+     "agg": "formula",
+     "columns": [
+      "FB = B",
+      "FT = T",
+      "FS = S"
+     ],
+     "args": {
+      "formula": "each",
+      "formula_param": "each"
+     }
+    }
+   ]
+  },
+  {
+   "name": "kept_types",
+   "op": "agg_by",
+   "source": "g",
+   "by": [
+    "H"
+   ],
+   "aggs": [
+    {
+     "agg": "first",
+     "columns": [
+      "FirstB = B",
+      "FirstT = T",
+      "FirstS = S",
+      "FirstK = K"
+     ]
+    },
+    {
+     "agg": "last",
+     "columns": [
+      "LastB = B",
+      "LastT = T",
+      "LastS = S",
+      "LastK = K"
+     ]
+    },
+    {
+     "agg": "sorted_last",
+     "columns": [
+      "SlB = B",
+      "SlT = T"
+     ],
+     "args": {
+      "order_by": "G"
+     }
+    },
+    {
+     "agg": "count_distinct",
+     "columns": [
+      "CdB = B",
+      "CdT = T"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "cumulative",
+   "op": "update_by",
+   "source": "g",
+   "by": [
+    "H"
+   ],
+   "ops": [
+    {
+     "op": "cum_min",
+     "columns": [
+      "CMinB = B",
+      "CMinT = T"
+     ]
+    },
+    {
+     "op": "cum_max",
+     "columns": [
+      "CMaxB = B",
+      "CMaxT = T"
+     ]
+    },
+    {
+     "op": "rolling_min_tick",
+     "columns": [
+      "RMinB = B",
+      "RMinT = T"
+     ],
+     "args": {
+      "rev_ticks": 2
+     }
+    },
+    {
+     "op": "rolling_max_tick",
+     "columns": [
+      "RMaxB = B",
+      "RMaxT = T"
+     ],
+     "args": {
+      "rev_ticks": 2
+     }
+    }
+   ]
+  },
+  {
+   "name": "sorted",
+   "op": "sort",
+   "source": "extremes",
+   "by": [
+    {
+     "column": "MinT",
+     "direction": "descending"
+    }
+   ]
+  },
+  {
+   "name": "taken_apart",
+   "op": "ungroup",
+   "source": "middles"
+  },
+  {
+   "name": "nested",
+   "op": "agg_by",
+   "source": "g",
+   "by": [
+    "H"
+   ],
+   "aggs": [
+    {
+     "agg": "distinct",
+     "columns": [
+      "DisB = B",
+      "DisT = T",
+      "DisS = S"
+     ]
+    },
+    {
+     "agg": "group",
+     "columns": [
+      "GrpB = B",
+      "GrpT = T",
+      "GrpS = S"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "nested_apart",
+   "op": "ungroup",
+   "source": "nested"
+  }
+ ],
+ "results": [
+  {
+   "table": "extremes"
+  },
+  {
+   "table": "middles"
+  },
+  {
+   "table": "uniques"
+  },
+  {
+   "table": "formulas"
+  },
+  {
+   "table": "kept_types"
+  },
+  {
+   "table": "cumulative"
+  },
+  {
+   "table": "sorted"
+  },
+  {
+   "table": "taken_apart"
+  },
+  {
+   "table": "nested_apart"
+  }
+ ]
+}

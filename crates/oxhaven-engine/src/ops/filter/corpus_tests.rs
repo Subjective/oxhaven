@@ -727,11 +727,14 @@ fn scenarios_match_the_recorded_java_results() {
         }
     }
     paths.sort();
-    assert_eq!(paths.len(), 91);
+    assert_eq!(paths.len(), 93);
     let mut tally = Tally::default();
-    for path in &paths {
-        replay(&json(path), &mut tally);
-    }
+    // `search_dates` was recorded on a server in UTC, the zone a date search spans a day of.
+    search::with_server_zone(chrono_tz::Tz::UTC, || {
+        for path in &paths {
+            replay(&json(path), &mut tally);
+        }
+    });
     assert_eq!(
         tally.differences, KNOWN_DIFFERENCES,
         "differences from Java"
@@ -819,6 +822,23 @@ fn scenarios_match_the_recorded_java_results() {
         "flatten_reverse.big x1",
         "null_sentinel_inputs.nulls x1",
         "pipeline.valid x1",
+        "search_dates.g_et x1",
+        "search_dates.g_fall_utc x1",
+        "search_dates.g_gap_mt x1",
+        "search_dates.g_utc x1",
+        "search_dates.s_date_only x1",
+        "search_dates.s_date_t x1",
+        "search_dates.s_et x1",
+        "search_dates.s_fall_et x1",
+        "search_dates.s_fall_utc x1",
+        "search_dates.s_gap_mt x1",
+        "search_dates.s_jp x1",
+        "search_dates.s_lower_t x1",
+        "search_dates.s_overlap_ct x1",
+        "search_dates.s_region x1",
+        "search_dates.s_spring_et x1",
+        "search_dates.s_upper_t x1",
+        "search_dates.s_utc x1",
         "search_vectors.a_0 x1",
         "search_vectors.a_2 x1",
         "search_vectors.a_3 x1",

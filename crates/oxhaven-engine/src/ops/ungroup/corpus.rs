@@ -64,6 +64,8 @@ fn the_results_of_the_oracle_match_java() {
     assert_eq!(tally.comparisons, 2);
     // Results made from an operation of another test, all of which make the arrays.
     let not_run = [
+        "agg_typed_vectors/taken_apart: agg_by",
+        "agg_typed_vectors/nested_apart: agg_by",
         "group_by_ungroup/back: group_by",
         "group_by_ungroup/back_two: group_by",
         "group_by_ungroup/back_all: group_by",

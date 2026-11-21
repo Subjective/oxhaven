@@ -626,6 +626,39 @@ no authority, or with a host Java reads, resolves as in Java. Recorded in the re
 scenario `remote_unread_host` (`oracle/remote-baseline.json`), whose steps succeed in Java
 and fail here; `crates/oxhaven-server/src/uri/mod.rs` (`check_unread_host`).
 
+### A27. Vectors of Booleans and Instants that Java keeps as objects
+
+Approved by the owner on 2026-11-21 (item 3.3 of the review items of 21 November: "Do
+what's recommended").
+
+In Java the result of these operations on a column of vectors of `Boolean` or `Instant` is
+an `ObjectVector` whose element type is `Object`, not `Boolean` or `Instant`:
+
+- the aggregations `min`, `max`, `median`, `pct` and `unique`, and `formula` when its result
+  is such a vector (`each`);
+- `cum_min`, `cum_max`, `rolling_min_*` and `rolling_max_*`;
+- `distinct` and `group` of such a column, whose cells are vectors of these vectors.
+
+`Object` is not a type Barrage sends natively, so Java sends the column as a list of strings
+with component type `java.lang.String` (`BG/util/BarrageUtil.java:
+BarrageUtil#columnDefinitionsToFields`), each element written by `toString()`: `true` or
+`false`, an instant as `Instant#toString` writes it (`2023-11-14T22:13:21.500Z`), a null as
+null. After `ungroup` of such a column, and of the same results of vectors of strings, Java's
+column is `java.lang.Object`, sent as text and not sortable, as in A23. `first`, `last`,
+`sorted_first` and `sorted_last` keep the element type in Java too.
+
+Rule: Oxhaven keeps the element type. Its column is a list of Booleans or of timestamps,
+with component type `java.lang.Boolean` or `java.time.Instant`, and after `ungroup` a
+sortable `java.lang.Boolean`, `java.time.Instant` or `java.lang.String` column. For a column
+made by one of these operations, and passed on unchanged since, the oracle writes each of
+Oxhaven's elements as Java writes it, and the text must be Java's string, element by
+element; every other field metadata key must match exactly, and a column whose schema is
+not one of these two shapes is compared as usual. Vectors of other objects (`LocalDate`,
+`ZonedDateTime`, `BigDecimal` and the others) are not covered: Oxhaven refuses these
+operations on them. Recorded in `oracle/corpus/agg_typed_vectors`; the oracle applies the
+rule in `rules.typed_vector_columns` (which columns) and `rules.a27_field` (which schemas),
+for every scenario, the fuzzer and the replay gate alike.
+
 ## Determinism
 
 Oxhaven must give the same answer as itself on every run, for the same inputs and the same

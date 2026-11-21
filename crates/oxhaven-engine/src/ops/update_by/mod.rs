@@ -524,19 +524,21 @@ fn kernel_of(spec: &UpdateBySpec) -> Result<(Kernel, Window, Option<String>), Up
 /// `RollingStdSpec`, `RollingWAvgSpec`, `RollingGroupSpec`, `EmaSpec`, `EmsSpec`,
 /// `EmMinMaxSpec` and `EmStdSpec`
 /// Whether the minimum and maximum of a vector of `element`s are ported: vectors of the
-/// primitive types and of `String`, whose result column keeps its type in Java. Java makes
-/// the result of any other vector a column of `ObjectVector` without a component type, which
-/// a client receives as strings (owner question 3.3 of the second batch), and fails to order
-/// a vector of arrays when it compares two of them (2.2).
+/// primitive types, of `String`, `Boolean` and `Instant`. Java makes the result of a vector
+/// of objects a column of `ObjectVector` of `Object`, which a client receives as strings;
+/// for `Boolean` and `Instant` Oxhaven keeps the element type, allowed difference A27 of
+/// `PARITY.md` (owner item 3.3). Vectors of other objects are not ported, and Java fails
+/// to order a vector of arrays when it compares two of them (owner item 2.2).
 ///
 /// Behavior: io.deephaven.engine.table.impl.updateby.internal.BaseObjectUpdateByOperator,
-/// whose result column has the input's class and no component type; observed on Deephaven
-/// 42.9 for vectors of `String`, `Instant` and `Boolean`
+/// whose result column has the input's class and the component type `Object`; observed on
+/// Deephaven 42.9 for vectors of `String`, `Instant`, `Boolean`, `BigDecimal`, `LocalDate`
+/// and `ZonedDateTime`
 fn orderable_vector(element: &ColumnType) -> bool {
     use ColumnType::*;
     matches!(
         element,
-        Byte | Char | Short | Int | Long | Float | Double | String
+        Byte | Char | Short | Int | Long | Float | Double | String | Boolean | Instant
     )
 }
 
@@ -735,8 +737,9 @@ impl Plan {
                         oxhaven_contracts::unported!(
                             "io.deephaven.engine.table.impl.updateby.minmax.ComparableCumMinMaxOperator",
                             "minimum or maximum of vector column {input_name} of type \
-                             {input_type:?}: Java gives the result column no component type \
-                             (a client receives strings), or fails when it compares two arrays"
+                             {input_type:?}: Java gives the result column the element type \
+                             Object (a client receives strings), or fails when it compares \
+                             two arrays"
                         );
                     }
                     // A rolling minimum or maximum of vectors of floats or doubles keeps the
