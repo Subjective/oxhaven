@@ -611,8 +611,11 @@ through an `ungroup` of that column. Since task 14.2 it also draws what `PARITY.
 after the owner's answers of 2026-11-20 (A13 for `raj`, A19, A20, A22 to A24): vectors of
 refreshing groups as keys and buckets and read on after a minimum or maximum, `ungroup` of
 whatever holds vectors, elements of conditions between windows of strings, vectors of
-floats in rolling minimums and maximums, buckets and `distinct`; the known findings that
-name those allowed differences set them apart ("Known findings"). `fuzz_third.RESTRICTIONS`
+floats in rolling minimums and maximums, buckets and `distinct`; since task 14.4 (owner
+items 7.27 and 7.28) also the vectors of `rolling_group` and `distinct` of refreshing tables,
+and their minimums and maximums, as keys, buckets and in `distinct` (A22); the known
+findings that name those allowed differences set them apart ("Known findings"), since task
+14.4 also the vector Java repeats where null fill asks for a null (A24, third row). `fuzz_third.RESTRICTIONS`
 lists what it still steps around, each entry for an open owner item or for a finding of
 `tasks/12.1-fuzzer-coverage.md`.
 Task 4.25 lifted the filters on a `LocalDateTime`, the range comparisons with null and the

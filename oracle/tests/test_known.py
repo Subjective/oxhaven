@@ -582,6 +582,55 @@ def test_the_repository_entries_with_a_shape_fit_their_findings():
         "null-fill-ungroup-of-a-distinct", None]
 
 
+def test_a22_covers_the_windows_and_distincts_of_refreshing_tables_as_keys_only():
+    """Owner item 7.27: the vectors of `rolling_group` and of `distinct` of a refreshing
+    table, and a minimum of a window, held as keys or in `distinct`, are A22's; the window
+    and the minimum themselves, and a count where read from the minimum, are not."""
+    scene = _scene("F11_vectors_of_windows_and_distincts_as_keys.json")
+    for table in ("a", "sd", "u", "am", "sdd", "adv"):
+        assert "refreshing_group_vectors" in _shape(scene, table), table
+    for table in ("w", "m", "rm", "dt"):
+        assert "refreshing_group_vectors" not in _shape(scene, table), table
+    assert {op["name"] for op in scene.by_name.values()
+            if kn.holds_group_vectors(scene, op)} == {"a", "sd", "u", "am", "sdd", "ad"}
+    static = _scene("F11_vectors_of_windows_and_distincts_as_keys.json", static=True)
+    for table in ("a", "sd", "u", "am", "sdd", "adv"):
+        assert "refreshing_group_vectors" not in _shape(static, table), table
+    # A window taken apart is not a vector any more.
+    scene.by_name["sd"] = dict(scene.by_name["sd"], source="wu")
+    scene.by_name["wu"] = {"name": "wu", "op": "ungroup", "source": "w", "columns": ["G"]}
+    assert "refreshing_group_vectors" not in _shape(scene, "sd")
+
+
+def test_a24_covers_the_vector_java_repeats_where_null_fill_asks_for_a_null():
+    """Owner item 7.28 (F15): the cell Oxhaven fills with null, where Java repeats the
+    vector of the `distinct` above it, and no other cell."""
+    found = kn.Known(kn.load(cli.KNOWN))
+    doc = json.loads((FINDINGS / "F15_null_fill_ungroup_repeats_a_distinct.json").read_text())
+    ints, bools = pa.list_(pa.int64()), pa.list_(pa.bool_())
+    actual = ResultSet(doc["name"])
+    actual.put(0, "o2v", pa.table({"K": pa.array([], bools), "A3": pa.array([], ints)}))
+    actual.put(0, "o11", pa.table({"K": [True, False],
+                                   "A3": pa.array([[None, 7], None], ints)}))
+    scene = kn.Scene(sc.parse(doc), actual)
+    operations = list(scene.by_name.values())
+
+    def fit(table="o11", column="A3", row=1, expected=(None, 7), actual_cell=None):
+        expected = list(expected) if isinstance(expected, tuple) else expected
+        mismatch = rules.Mismatch("s", table, 0, "value", column, row, expected, actual_cell)
+        return [f.id if f else None for f in found.classify([mismatch], operations,
+                                                             scene=scene)]
+
+    assert fit() == ["null-fill-ungroup-repeat-of-a-distinct"]
+    assert fit(expected=(7,)) == [None]  # not the vector above
+    assert fit(expected=None, actual_cell=[None, 7]) == [None]  # Oxhaven's value, Java's null
+    assert fit(row=0, expected=(None, 8)) == [None]  # a cell Oxhaven does not fill
+    assert fit(column="K", expected=False) == [None]
+    assert fit(table="o12") == [None]  # without null fill
+    scene.unordered.add("o11")
+    assert fit() == [None]
+
+
 def test_the_remake_pass_makes_again_only_what_it_names_and_what_reads_it():
     """`runner._remade`: the tables `remake` names, and those made from them, are made again
     from their sources as kept (through a new view) or as made again; the others are the

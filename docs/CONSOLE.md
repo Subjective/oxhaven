@@ -1054,7 +1054,7 @@ Refused, each with a text that says why:
 | Case | Java | This server |
 | --- | --- | --- |
 | A URI whose host Java cannot read (`dh://host_name/...`, `parquet://host_name/...`) | resolves it on this server, its authority dropped | refused: no host that can be read (owner question 7.23, `PARITY.md` A26) |
-| A subscription inside an update cycle (a listener) or under a shared lock that Python code took itself | waits for a cycle that cannot run (not tried) | refused: the subscription waits for an update cycle (owner question 7.26) |
+| A subscription inside an update cycle (a listener) or under a shared lock that Python code took itself | waits for a cycle that cannot run (not tried) | refused: the subscription waits for an update cycle (owner question 7.26, `PARITY.md` A29) |
 | `csv+http(s):` | fetches the URL from the server | `not ported yet: io.deephaven.csv.CsvTools#readCsv(URL, CsvSpecs)`, as `deephaven.csv.read` refuses it |
 
 A URI whose host Java cannot read (`dh://host_name/scope/t`, `dh://h:99999999999/...`) is

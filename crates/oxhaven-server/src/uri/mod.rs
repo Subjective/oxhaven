@@ -305,7 +305,7 @@ pub fn block_on<T: Send + 'static>(
 /// would keep from the client, and the table is complete only after a cycle has applied
 /// what arrived. The holds are taken again afterwards, so what the thread read from
 /// refreshing tables before may have changed. Refused inside a cycle, which cannot wait
-/// for another.
+/// for another, where Java would wait for good (`PARITY.md` A29).
 ///
 /// Behavior: io.deephaven.engine.updategraph.UpdateGraphAwareCompletableFuture#get, which
 /// waits on a condition of the exclusive lock when the thread holds that lock
