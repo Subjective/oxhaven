@@ -5,78 +5,249 @@
   "inputs": [
     {
       "name": "t",
-      "columns": [{"name": "Txt", "type": "string"}, {"name": "Txt2", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}],
+      "columns": [
+        {
+          "name": "Txt",
+          "type": "string"
+        },
+        {
+          "name": "Txt2",
+          "type": "string"
+        },
+        {
+          "name": "I",
+          "type": "int32"
+        },
+        {
+          "name": "D",
+          "type": "float64"
+        }
+      ],
       "rows": [
-        ["1.50", "0.10", 3, 0.1],
-        [null, "-7", null, null],
-        ["-2.345", null, -3, -1.5],
-        ["12345678901234567890.123456789", "3", 7, 1e20],
-        ["1E+3", "7.000", 2, 3.0],
-        ["-0.5", "2E+1", -1, -2.5]
+        [
+          "1.50",
+          "0.10",
+          3,
+          0.1
+        ],
+        [
+          null,
+          "-7",
+          null,
+          null
+        ],
+        [
+          "-2.345",
+          null,
+          -3,
+          -1.5
+        ],
+        [
+          "12345678901234567890.123456789",
+          "3",
+          7,
+          1e+20
+        ],
+        [
+          "1E+3",
+          "7.000",
+          2,
+          3.0
+        ],
+        [
+          "-0.5",
+          "2E+1",
+          -1,
+          -2.5
+        ]
       ]
     }
   ],
   "operations": [
-    {"name": "big", "op": "update", "source": "t", "formulas": [
-      "BD = Txt == null ? null : new java.math.BigDecimal(Txt)",
-      "BD2 = Txt2 == null ? null : new java.math.BigDecimal(Txt2)",
-      "BI = Txt == null ? null : new java.math.BigDecimal(Txt).toBigInteger().add(java.math.BigInteger.valueOf(I * 2))",
-      "BI2 = Txt2 == null ? null : new java.math.BigInteger(Txt2.startsWith(`2`) ? `20` : Txt2.replace(`.`, ``))"
-    ]},
-    {"name": "operators", "op": "update", "source": "big", "formulas": [
-      "Sum = BD + BD2", "SumText = `` + (BD + BD2)",
-      "Plus1 = BD + 1", "Plus1Text = `` + (BD + 1)",
-      "TimesD = BD * D", "TimesDText = `` + BD * D",
-      "Neg = -BD", "Quot = BD / 3", "QuotText = `` + BD / 3",
-      "Rem = BD % 2", "RemText = `` + BD % 2",
-      "IntSum = BI + BI2", "IntQuot = BI / 3", "IntQuotText = `` + BI / 3",
-      "IntRem = BI % BI2", "IntTimesI = BI * I", "Mixed = BD + BI", "MixedText = `` + (BD + BI)",
-      "Less = BD < BD2", "Equal = BI == 7", "IsNull = BD + 1 == null"
-    ]},
-    {"name": "casts", "op": "update", "source": "big", "formulas": [
-      "AsInt = (int) BD", "AsLong = (long) BI", "AsDouble = (double) BD", "AsFloat = (float) BI",
-      "AsShort = (short) (BI * 1000)", "AsByte = (byte) BI", "Same = (java.math.BigDecimal) BD"
-    ]},
-    {"name": "nonnull", "op": "where", "source": "big", "filters": ["!isNull(BD)", "!isNull(BD2)", "!isNull(BI2)"]},
-    {"name": "methods", "op": "update", "source": "nonnull", "formulas": [
-      "Scaled = BD.setScale(2, java.math.RoundingMode.HALF_UP).toString()",
-      "Even = BD.setScale(0, java.math.RoundingMode.HALF_EVEN).toPlainString()",
-      "Legacy = BD.setScale(1, java.math.BigDecimal.ROUND_DOWN).toString()",
-      "Divided = BD.divide(BD2, 3, java.math.RoundingMode.CEILING).toString()",
-      "Integral = BD.divideToIntegralValue(BD2).toString()",
-      "Remainder = BD.remainder(BD2).toString()",
-      "Stripped = BD.stripTrailingZeros().toString()",
-      "Scale = BD.scale()", "Precision = BD.precision()", "Signum = BD.signum()",
-      "Unscaled = BD.unscaledValue()", "Integer = BD.toBigInteger()",
-      "Compared = BD.compareTo(BD2)", "Equals = BD.equals(BD2)",
-      "Max = BD.max(BD2).toString()", "Power = BD.pow(2).toString()",
-      "Moved = BD.movePointLeft(2).toString()",
-      "IntPow = BI.pow(3)", "Gcd = BI.gcd(BI2)", "Mod = BI.mod(BI2.abs())",
-      "Shifted = BI.shiftLeft(3)", "Bits = BI.bitLength()", "Hex = BI.toString(16)",
-      "Xor = BI.xor(BI2)", "Not = BI.not()", "LongValue = BI.longValue()"
-    ]},
-    {"name": "functions", "op": "update", "source": "big", "formulas": [
-      "Least = minObj(BD, BD2)", "LeastText = `` + minObj(BD, BD2)",
-      "Most = maxObj(BI, BI2)", "Chosen = ifelseObj(I > 0, BD, BD2)",
-      "Replaced = replaceIfNull(BD, BD2)", "Exact = new java.math.BigDecimal(D).toString()",
-      "Valued = java.math.BigDecimal.valueOf(D).toString()", "FromInt = BI == null ? null : new java.math.BigDecimal(BI, 2).toString()",
-      "Parsed = new java.math.BigInteger(`-0012`)", "Ten = java.math.BigDecimal.TEN.pow(2)"
-    ]},
-    {"name": "remainder_by_zero", "op": "update", "source": "big", "formulas": ["X = BD % 0"]},
-    {"name": "method_of_null", "op": "update", "source": "big", "formulas": ["X = BD.scale()"]},
-    {"name": "no_bitwise", "op": "update", "source": "big", "formulas": ["X = BI & BI2"]},
-    {"name": "no_null_operand", "op": "update", "source": "big", "formulas": ["X = BD + null"]},
-    {"name": "ordered", "op": "where", "source": "big", "filters": ["BD * 2 > BD2"]}
+    {
+      "name": "big",
+      "op": "update",
+      "source": "t",
+      "formulas": [
+        "BD = Txt == null ? null : new java.math.BigDecimal(Txt)",
+        "BD2 = Txt2 == null ? null : new java.math.BigDecimal(Txt2)",
+        "BI = Txt == null ? null : new java.math.BigDecimal(Txt).toBigInteger().add(java.math.BigInteger.valueOf(I * 2))",
+        "BI2 = Txt2 == null ? null : new java.math.BigInteger(Txt2.startsWith(`2`) ? `20` : Txt2.replace(`.`, ``))"
+      ]
+    },
+    {
+      "name": "operators",
+      "op": "view",
+      "source": "big",
+      "formulas": [
+        "Sum = `` + (BD + BD2)",
+        "Plus1 = `` + (BD + 1)",
+        "TimesD = `` + (BD * D)",
+        "Neg = `` + (-BD)",
+        "Quot = `` + (BD / 3)",
+        "Rem = `` + (BD % 2)",
+        "IntSum = `` + (BI + BI2)",
+        "IntQuot = `` + (BI / 3)",
+        "IntRem = `` + (BI % BI2)",
+        "IntTimesI = `` + (BI * I)",
+        "Mixed = `` + (BD + BI)",
+        "Concat = BD + `x`",
+        "Less = BD < BD2",
+        "Equal = BI == 7",
+        "IsNull = BD + 1 == null"
+      ]
+    },
+    {
+      "name": "casts",
+      "op": "view",
+      "source": "big",
+      "formulas": [
+        "AsInt = (int) BD",
+        "AsLong = (long) BI",
+        "AsDouble = (double) BD",
+        "AsFloat = (float) BI",
+        "AsShort = (short) (BI * 1000)",
+        "AsByte = (byte) BI",
+        "Same = `` + ((java.math.BigDecimal) BD)"
+      ]
+    },
+    {
+      "name": "nonnull",
+      "op": "where",
+      "source": "big",
+      "filters": [
+        "!isNull(BD)",
+        "!isNull(BD2)",
+        "!isNull(BI2)"
+      ]
+    },
+    {
+      "name": "methods",
+      "op": "view",
+      "source": "nonnull",
+      "formulas": [
+        "Scaled = BD.setScale(2, java.math.RoundingMode.HALF_UP).toString()",
+        "Even = BD.setScale(0, java.math.RoundingMode.HALF_EVEN).toPlainString()",
+        "Legacy = BD.setScale(1, java.math.BigDecimal.ROUND_DOWN).toString()",
+        "Divided = BD.divide(BD2, 3, java.math.RoundingMode.CEILING).toString()",
+        "Integral = BD.divideToIntegralValue(BD2).toString()",
+        "Remainder = BD.remainder(BD2).toString()",
+        "Stripped = BD.stripTrailingZeros().toString()",
+        "Scale = BD.scale()",
+        "Precision = BD.precision()",
+        "Signum = BD.signum()",
+        "Unscaled = BD.unscaledValue().toString()",
+        "Integer = BD.toBigInteger().toString()",
+        "Compared = BD.compareTo(BD2)",
+        "Equals = BD.equals(BD2)",
+        "Max = BD.max(BD2).toString()",
+        "Power = BD.pow(2).toString()",
+        "Moved = BD.movePointLeft(2).toString()",
+        "IntPow = BI.pow(3).toString()",
+        "Gcd = BI.gcd(BI2).toString()",
+        "Mod = BI.mod(BI2.abs()).toString()",
+        "Shifted = BI.shiftLeft(3).toString()",
+        "Bits = BI.bitLength()",
+        "Hex = BI.toString(16)",
+        "Xor = BI.xor(BI2).toString()",
+        "Not = BI.not().toString()",
+        "LongValue = BI.longValue()"
+      ]
+    },
+    {
+      "name": "functions",
+      "op": "view",
+      "source": "big",
+      "formulas": [
+        "Least = `` + (minObj(BD, BD2))",
+        "Most = `` + (maxObj(BI, BI2))",
+        "Chosen = `` + (ifelseObj(I > 0, BD, BD2))",
+        "Replaced = `` + (replaceIfNull(BD, BD2))",
+        "Exact = new java.math.BigDecimal(D).toString()",
+        "Valued = java.math.BigDecimal.valueOf(D).toString()",
+        "FromInt = BI == null ? null : new java.math.BigDecimal(BI, 2).toString()",
+        "Parsed = `` + (new java.math.BigInteger(`-0012`))",
+        "Ten = `` + (java.math.BigDecimal.TEN.pow(2))"
+      ]
+    },
+    {
+      "name": "remainder_by_zero",
+      "op": "update",
+      "source": "big",
+      "formulas": [
+        "X = BD % 0"
+      ]
+    },
+    {
+      "name": "method_of_null",
+      "op": "update",
+      "source": "big",
+      "formulas": [
+        "X = BD.scale()"
+      ]
+    },
+    {
+      "name": "no_bitwise",
+      "op": "update",
+      "source": "big",
+      "formulas": [
+        "X = BI & BI2"
+      ]
+    },
+    {
+      "name": "no_null_operand",
+      "op": "update",
+      "source": "big",
+      "formulas": [
+        "X = BD + null"
+      ]
+    },
+    {
+      "name": "ordered_rows",
+      "op": "where",
+      "source": "big",
+      "filters": [
+        "BD * 2 > BD2"
+      ]
+    },
+    {
+      "name": "ordered",
+      "op": "view",
+      "source": "ordered_rows",
+      "formulas": [
+        "Txt",
+        "Txt2",
+        "I"
+      ]
+    }
   ],
   "results": [
-    {"table": "operators"},
-    {"table": "casts"},
-    {"table": "methods"},
-    {"table": "functions"},
-    {"table": "remainder_by_zero"},
-    {"table": "method_of_null"},
-    {"table": "no_bitwise"},
-    {"table": "no_null_operand"},
-    {"table": "ordered"}
+    {
+      "table": "operators"
+    },
+    {
+      "table": "casts"
+    },
+    {
+      "table": "methods"
+    },
+    {
+      "table": "functions"
+    },
+    {
+      "table": "remainder_by_zero"
+    },
+    {
+      "table": "method_of_null"
+    },
+    {
+      "table": "no_bitwise"
+    },
+    {
+      "table": "no_null_operand"
+    },
+    {
+      "table": "ordered"
+    }
   ]
 }

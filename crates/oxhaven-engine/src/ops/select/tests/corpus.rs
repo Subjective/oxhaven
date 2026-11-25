@@ -482,7 +482,7 @@ fn replay(name: &str, scenario: &Value, outcome: &mut Outcome) {
 fn results_match_the_ones_recorded_from_java() {
     let mut outcome = Outcome::default();
     let scenarios = scenarios();
-    assert_eq!(scenarios.len(), 94);
+    assert_eq!(scenarios.len(), 95);
     for (name, scenario) in &scenarios {
         replay(name, scenario, &mut outcome);
     }
@@ -524,6 +524,13 @@ fn results_match_the_ones_recorded_from_java() {
             "error_types_and_matches.duplicate_output x1",
             "error_unknown_column.bad_drop x1",
             "error_unknown_column.bad_view x1",
+            "formula_big_numbers.casts x1",
+            "formula_big_numbers.functions x1",
+            "formula_big_numbers.method_of_null x1",
+            "formula_big_numbers.no_bitwise x1",
+            "formula_big_numbers.no_null_operand x1",
+            "formula_big_numbers.operators x1",
+            "formula_big_numbers.remainder_by_zero x1",
             "lazy_update_update_view.lazy x1",
             "lazy_update_update_view.lazy_chain x1",
             "lazy_update_update_view.lazy_empty x1",
@@ -606,6 +613,8 @@ fn results_match_the_ones_recorded_from_java() {
             "column_arrays.fails_index_type: unsupported formula P = X_[D]",
             "error_formula.rem_ok: where",
             "error_unknown_column.after_bad_sort: sort",
+            "formula_big_numbers.methods: where",
+            "formula_big_numbers.ordered: where",
             "pipeline.priced: where",
             "pipeline.slim: natural_join",
             "ticking_column_arrays.blink_before: blink input",

@@ -342,10 +342,10 @@ fn results_match_the_recorded_java_results() {
         ("tail_by", 10),
         ("time_table", 2),
         ("ungroup", 19),
-        ("update", 39),
+        ("update", 43),
         ("update_by", 43),
         ("update_view", 16),
-        ("view", 47),
+        ("view", 52),
         ("where", 53),
         ("where_in", 20),
     ];

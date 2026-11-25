@@ -661,7 +661,7 @@ fn results_match_the_recorded_java_results_of_the_oracle() {
         &[scenarios.join("static"), scenarios.join("ticking")],
         &oracle().join("corpus"),
     );
-    assert_eq!(tally.scenarios, 94);
+    assert_eq!(tally.scenarios, 95);
 
     // Every result table of the corpus that is a natural or exact join of tables that are
     // themselves inputs or such results. Everything else needs another operation.
@@ -737,10 +737,10 @@ fn results_match_the_recorded_java_results_of_the_oracle() {
         ("tail_by", 10),
         ("time_table", 2),
         ("ungroup", 19),
-        ("update", 39),
+        ("update", 43),
         ("update_by", 43),
         ("update_view", 16),
-        ("view", 47),
+        ("view", 52),
         ("where", 53),
         ("where_in", 20),
     ];
