@@ -1,0 +1,23 @@
+# The Python packages of the image's console environment (/opt/venv), for Python 3.13. The
+# versions of numpy, pandas, pyarrow, jedi and docstring_parser, and of what they resolve to,
+# are those of oracle/requirements.txt: what the Java reference's recordings were made with.
+# deephaven-plugin-plotly-express itself is installed without its dependencies (Dockerfile):
+# it asks for deephaven-core and jpy, the Java reference's packages, and this server brings
+# its own `deephaven` and `jpy` modules (docs/FIGURES.md, docs/CONSOLE.md).
+# Direct dependencies:
+numpy==2.5.4
+pandas==3.1.1
+pyarrow==26.0.1
+# Completion in the console (docs/CONSOLE.md, "Completion").
+jedi==0.19.1
+docstring_parser==0.18.0
+# What deephaven-plugin-plotly-express 0.22.0 needs besides deephaven-core and jpy.
+deephaven-plugin==0.8.0
+deephaven-plugin-utilities==0.1.0
+plotly==6.9.0
+# What they resolved to:
+narwhals==2.29.0
+packaging==26.3
+parso==0.8.7
+python-dateutil==4.0.0
+tzdata==2026.6

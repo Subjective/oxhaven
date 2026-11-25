@@ -1,0 +1,13 @@
+# The image is built with the repository root as its context (docker/README.md). The build
+# reads only the Rust workspace, the script that extracts the web IDE's files and docker/;
+# everything else stays out of the context, build output and local environments above all.
+*
+!Cargo.toml
+!Cargo.lock
+!rust-toolchain.toml
+!crates/
+!scripts/extract-web-root.sh
+!docker/
+**/target/
+**/.venv/
+**/__pycache__/
