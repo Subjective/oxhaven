@@ -2,7 +2,9 @@
 //!
 //! Java builds every one of these as a `java.util.regex.Pattern`. The substring forms are
 //! evaluated here directly, and a regular expression is translated to the `regex` crate's
-//! syntax when it uses only constructs whose meaning is the same in both.
+//! syntax when it uses only constructs whose meaning is the same in both, or to that of
+//! `fancy-regex`, a backtracking engine, when it uses lookaround, back references, atomic
+//! groups or possessive quantifiers.
 
 use oxhaven_contracts::unported;
 use regex::Regex;
@@ -23,6 +25,9 @@ pub(super) enum Matcher {
     },
     /// The whole string matches. Java: `Matcher#matches`.
     Full(Regex),
+    /// The whole string matches a pattern that needs a backtracking engine, which is kept for
+    /// the message of a match that takes too many steps. Java: `Matcher#matches`.
+    Backtracking(Box<fancy_regex::Regex>, String),
 }
 
 /// Behavior: `java.util.regex.Pattern#CASE_INSENSITIVE` without `UNICODE_CASE` folds only
@@ -93,6 +98,14 @@ impl Matcher {
                 })
             }
             Matcher::Full(regex) => regex.is_match(value),
+            Matcher::Backtracking(regex, pattern) => regex.is_match(value).unwrap_or_else(|e| {
+                unported!(
+                    "java.util.regex.Matcher#matches",
+                    "{pattern:?} on a value of {} characters, which fancy-regex gives up \
+                         on: {e}",
+                    value.chars().count()
+                )
+            }),
         }
     }
 }
@@ -358,58 +371,111 @@ struct Flags {
     dotall: bool,
 }
 
+/// What a group is, by what follows its `(`.
+#[derive(Clone, Copy, PartialEq)]
+enum GroupKind {
+    /// `(`, `(?<name>`: a group that captures.
+    Capturing,
+    /// `(?:` and `(?is-is:`.
+    NonCapturing,
+    /// `(?=` and `(?!`.
+    Lookahead { negative: bool },
+    /// `(?<=` and `(?<!`.
+    Lookbehind { negative: bool },
+    /// `(?>`.
+    Atomic,
+}
+
+impl GroupKind {
+    /// The group's opening in the translation.
+    fn opening(self) -> &'static str {
+        match self {
+            GroupKind::Capturing => "(",
+            GroupKind::NonCapturing => "(?:",
+            GroupKind::Lookahead { negative: false } => "(?=",
+            GroupKind::Lookahead { negative: true } => "(?!",
+            GroupKind::Lookbehind { negative: false } => "(?<=",
+            GroupKind::Lookbehind { negative: true } => "(?<!",
+            GroupKind::Atomic => "(?>",
+        }
+    }
+
+    fn is_lookaround(self) -> bool {
+        matches!(
+            self,
+            GroupKind::Lookahead { .. } | GroupKind::Lookbehind { .. }
+        )
+    }
+}
+
 /// What follows `(` at `chars[at]`.
 enum GroupStart {
-    /// A group, capturing or not, with the flags inside it; and the index after its opening.
-    Group(Flags, usize),
+    /// A group with the flags inside it; and the index after its opening. A named group
+    /// has its name.
+    Group(GroupKind, Flags, usize, Option<String>),
     /// `(?flags)`: the flags from here to the end of the enclosing group; and the index after
     /// the `)`.
     Flags(Flags, usize),
 }
 
+/// The name of a group, read from `chars[at]` up to the `>` that ends it, which must start
+/// with a US-ASCII letter followed by letters and digits; and the index after the `>`.
+fn group_name(chars: &[char], at: usize) -> Result<(String, usize), String> {
+    let mut i = at;
+    if !chars.get(i).is_some_and(char::is_ascii_alphabetic) {
+        return Err("capturing group name does not start with a Latin letter".into());
+    }
+    while chars.get(i).is_some_and(char::is_ascii_alphanumeric) {
+        i += 1;
+    }
+    if chars.get(i) != Some(&'>') {
+        return Err("named capturing group is missing trailing '>'".into());
+    }
+    Ok((chars[at..i].iter().collect(), i + 1))
+}
+
 /// Reads what follows a `(` at `chars[at]`: a plain group, `(?:`, a named group
-/// `(?<name>`, or inline flags `(?is-is)` and `(?is-is:`. Only `i` and `s` are read;
-/// the other flags Java knows (`d`, `m`, `u`, `x`, `c`, `U`) and lookaround, atomic groups
-/// and the like are not ported. A named group takes a name that starts with a US-ASCII
-/// letter followed by letters and digits, once per pattern.
+/// `(?<name>`, lookahead `(?=` `(?!`, lookbehind `(?<=` `(?<!`, an atomic group `(?>`, or
+/// inline flags `(?is-is)` and `(?is-is:`. Only `i` and `s` are read; the other flags Java
+/// knows (`d`, `m`, `u`, `x`, `c`, `U`) are not ported. A named group takes a name that
+/// starts with a US-ASCII letter followed by letters and digits, once per pattern.
 ///
 /// Behavior: the groups and flags of java.util.regex.Pattern, as its documentation lists
-/// them; what JDK 21 answers and the messages of its errors are in `java_patterns.txt`
-fn group_start(
-    chars: &[char],
-    at: usize,
-    flags: Flags,
-    names: &mut Vec<String>,
-) -> Result<GroupStart, String> {
+/// them; what JDK 21 answers and the messages of its errors are in `java_patterns.txt` and
+/// `java_backtracking.txt`
+fn group_start(chars: &[char], at: usize, flags: Flags) -> Result<GroupStart, String> {
     if chars.get(at) != Some(&'?') {
-        return Ok(GroupStart::Group(flags, at));
+        return Ok(GroupStart::Group(GroupKind::Capturing, flags, at, None));
     }
     let mut i = at + 1;
-    match chars.get(i) {
-        Some(':') => return Ok(GroupStart::Group(flags, i + 1)),
-        Some('<') if matches!(chars.get(i + 1), Some('=' | '!')) => not_ported("lookbehind"),
-        Some('<') => {
-            i += 1;
-            let start = i;
-            if !chars.get(i).is_some_and(char::is_ascii_alphabetic) {
-                return Err("capturing group name does not start with a Latin letter".into());
-            }
-            while chars.get(i).is_some_and(char::is_ascii_alphanumeric) {
+    let kind = match chars.get(i) {
+        Some(':') => Some(GroupKind::NonCapturing),
+        Some('=') => Some(GroupKind::Lookahead { negative: false }),
+        Some('!') => Some(GroupKind::Lookahead { negative: true }),
+        Some('>') => Some(GroupKind::Atomic),
+        Some('<') => match chars.get(i + 1) {
+            Some('=') => {
                 i += 1;
+                Some(GroupKind::Lookbehind { negative: false })
             }
-            if chars.get(i) != Some(&'>') {
-                return Err("named capturing group is missing trailing '>'".into());
+            Some('!') => {
+                i += 1;
+                Some(GroupKind::Lookbehind { negative: true })
             }
-            let name: String = chars[start..i].iter().collect();
-            if names.contains(&name) {
-                return Err(format!("Named capturing group <{name}> is already defined"));
+            _ => {
+                let (name, after) = group_name(chars, i + 1)?;
+                return Ok(GroupStart::Group(
+                    GroupKind::Capturing,
+                    flags,
+                    after,
+                    Some(name),
+                ));
             }
-            names.push(name);
-            return Ok(GroupStart::Group(flags, i + 1));
-        }
-        Some('=' | '!') => not_ported("lookahead"),
-        Some('>') => not_ported("an atomic group"),
-        _ => {}
+        },
+        _ => None,
+    };
+    if let Some(kind) = kind {
+        return Ok(GroupStart::Group(kind, flags, i + 1, None));
     }
     let mut flags = flags;
     let mut on = true;
@@ -421,25 +487,48 @@ fn group_start(
             's' => flags.dotall = on,
             '-' if on => on = false,
             ')' => return Ok(GroupStart::Flags(flags, i)),
-            ':' => return Ok(GroupStart::Group(flags, i)),
+            ':' => return Ok(GroupStart::Group(GroupKind::NonCapturing, flags, i, None)),
             'd' | 'm' | 'u' | 'x' | 'c' | 'U' => not_ported(&format!("the inline flag {c}")),
             _ => return Err("Unknown inline modifier".into()),
         }
     }
 }
 
+/// A group being translated: the flags to restore at its end, where its translation starts,
+/// and what it is.
+struct Open {
+    outer: Flags,
+    start: usize,
+    kind: GroupKind,
+}
+
+/// A regular expression in Java's syntax translated for the `regex` crate, or, when it needs
+/// a backtracking engine, for `fancy-regex`.
+pub(super) struct Translation {
+    pub(super) text: String,
+    /// Lookaround, back references, atomic groups or possessive quantifiers are used.
+    pub(super) backtracks: bool,
+}
+
 /// A regular expression in Java's syntax, compiled with `DOTALL` and optionally
-/// `CASE_INSENSITIVE`, as a `regex` crate expression that matches the same whole strings.
+/// `CASE_INSENSITIVE`, as an expression that matches the same whole strings.
 ///
 /// The accepted subset is literals, `.`, bracket classes of literals and ranges, the
-/// predefined classes `\d \w \s` and their negations, groups (named ones too, which match
-/// as any group does when only the whole string counts), the inline flags `i` and `s`,
-/// alternation, the greedy and lazy quantifiers, `\Q...\E`, escapes by number (`\x`, `\u`,
-/// `\0`), `^` (the start of the input, as without `MULTILINE`) and a trailing `$`. An
-/// invalid pattern is an error; a valid construct outside the subset is `unported!`.
+/// predefined classes `\d \w \s` and their negations, groups (named ones too), the inline
+/// flags `i` and `s`, alternation, the greedy, lazy and possessive quantifiers, `\Q...\E`,
+/// escapes by number (`\x`, `\u`, `\0`), `^` (the start of the input, as without
+/// `MULTILINE`), a trailing `$`, lookahead, lookbehind whose length is bounded, atomic
+/// groups, and back references by number and name where case is not ignored. An invalid
+/// pattern is an error; a valid construct outside the subset is `unported!`.
 ///
-/// Behavior: java.util.regex.Pattern#compile(String, int), java.util.regex.Matcher#matches
-pub(super) fn translate(pattern: &str, ignore_case: bool) -> Result<String, String> {
+/// A back reference reads the number of as many digits as name a group opened before it
+/// (one at least); a reference to a group the pattern does not have never matches. A
+/// possessive quantifier is the atomic group of the quantified atom (`X*+` is `(?>X*)`).
+///
+/// Behavior: java.util.regex.Pattern#compile(String, int), java.util.regex.Matcher#matches,
+/// as the documentation of java.util.regex.Pattern describes them; what JDK 21 answers is in
+/// `java_patterns.txt` and `java_backtracking.txt`
+pub(super) fn translate(pattern: &str, ignore_case: bool) -> Result<Translation, String> {
     let chars: Vec<char> = pattern.chars().collect();
     let mut out = String::new();
     let mut i = 0;
@@ -447,15 +536,33 @@ pub(super) fn translate(pattern: &str, ignore_case: bool) -> Result<String, Stri
         ignore_case,
         dotall: true,
     };
-    // The flags to restore at the end of each open group.
-    let mut outer: Vec<Flags> = Vec::new();
-    let mut names = Vec::new();
-    // Whether the last thing translated is something a quantifier can apply to.
-    let mut atom = false;
+    let mut open: Vec<Open> = Vec::new();
+    // The named groups, with their numbers, and the number of groups that capture.
+    let mut names: Vec<(String, usize)> = Vec::new();
+    let mut groups = 0;
+    // For each group that captures, where its translation starts and whether it is in a
+    // repetition, an atomic group or a lookaround, where Java may keep a value it captured
+    // on a path it then gave up (observed for `(?>(a))*\1`, which matches `a`, and for
+    // `(a*)+\1`, which matches `aaa`); and the numbers back references name.
+    let mut captures: Vec<(usize, bool)> = Vec::new();
+    let mut references: Vec<usize> = Vec::new();
+    let mut backtracks = false;
+    // Where the translation of the last thing a quantifier can apply to starts, if the last
+    // thing translated is one; and whether that is a lookaround.
+    let mut atom: Option<usize> = None;
+    let mut lookaround = false;
     let quantifier = |c: Option<&char>| matches!(c, Some('*' | '+' | '?' | '{'));
+    // Java accepts some repetitions without bound in a lookbehind and refuses others, and
+    // refuses the back references seen there: neither is ported.
+    let in_lookbehind = |open: &[Open]| {
+        open.iter()
+            .any(|group| matches!(group.kind, GroupKind::Lookbehind { .. }))
+    };
     while i < chars.len() {
         let c = chars[i];
+        let start = out.len();
         i += 1;
+        let mut quantified = false;
         match c {
             '\\' => {
                 let escaped = *chars
@@ -482,46 +589,115 @@ pub(super) fn translate(pattern: &str, ignore_case: bool) -> Result<String, Stri
                         .windows(2)
                         .position(|w| w == ['\\', 'E'])
                         .unwrap_or(rest.len());
-                    rest[..end]
-                        .iter()
-                        .for_each(|&c| literal(&mut out, c, flags.ignore_case));
+                    let mut last = start;
+                    rest[..end].iter().for_each(|&c| {
+                        last = out.len();
+                        literal(&mut out, c, flags.ignore_case);
+                    });
                     i = (i + end + 2).min(chars.len());
                     if end == 0 {
                         continue;
                     }
+                    atom = Some(last);
+                    lookaround = false;
+                    continue;
+                } else if escaped.is_ascii_digit() || escaped == 'k' {
+                    let number = if escaped == 'k' {
+                        if chars.get(i) != Some(&'<') {
+                            return Err(
+                                "\\k is not followed by '<' for named capturing group".into()
+                            );
+                        }
+                        let (name, after) = group_name(&chars, i + 1)?;
+                        i = after;
+                        match names.iter().find(|(known, _)| *known == name) {
+                            Some((_, number)) => *number,
+                            None => {
+                                return Err(format!(
+                                    "named capturing group <{name}> does not exist"
+                                ))
+                            }
+                        }
+                    } else {
+                        // `\0` is an octal escape, read above.
+                        let mut number = escaped.to_digit(10).unwrap_or_default() as usize;
+                        while let Some(digit) = chars.get(i).and_then(|c| c.to_digit(10)) {
+                            let longer = number * 10 + digit as usize;
+                            if longer > groups {
+                                break;
+                            }
+                            number = longer;
+                            i += 1;
+                        }
+                        number
+                    };
+                    if in_lookbehind(&open) {
+                        not_ported("a back reference in a lookbehind");
+                    }
+                    if flags.ignore_case {
+                        not_ported("a back reference where case is ignored");
+                    }
+                    out.push_str(&format!("\\{number}"));
+                    references.push(number);
+                    backtracks = true;
                 } else if escaped.is_alphanumeric() {
                     not_ported(&format!("the escape \\{escaped}"));
                 } else {
                     literal(&mut out, escaped, flags.ignore_case);
                 }
-                atom = true;
+                atom = Some(start);
             }
             '[' => {
                 i = class(&chars, i - 1, flags.ignore_case, &mut out)?;
-                atom = true;
+                atom = Some(start);
             }
-            '(' => match group_start(&chars, i, flags, &mut names)? {
-                GroupStart::Group(inner, after) => {
-                    outer.push(flags);
+            '(' => match group_start(&chars, i, flags)? {
+                GroupStart::Group(kind, inner, after, name) => {
+                    if kind == GroupKind::Capturing {
+                        groups += 1;
+                        let kept = open.iter().any(|group| {
+                            group.kind.is_lookaround() || group.kind == GroupKind::Atomic
+                        });
+                        captures.push((start, kept));
+                    }
+                    if let Some(name) = name {
+                        if names.iter().any(|(known, _)| *known == name) {
+                            return Err(format!(
+                                "Named capturing group <{name}> is already defined"
+                            ));
+                        }
+                        names.push((name, groups));
+                    }
+                    if !matches!(kind, GroupKind::Capturing | GroupKind::NonCapturing) {
+                        backtracks = true;
+                    }
+                    open.push(Open {
+                        outer: flags,
+                        start,
+                        kind,
+                    });
                     flags = inner;
                     i = after;
-                    out.push_str("(?:");
-                    atom = false;
+                    out.push_str(kind.opening());
+                    atom = None;
                 }
                 GroupStart::Flags(changed, after) => {
                     flags = changed;
                     i = after;
-                    atom = false;
+                    atom = None;
                 }
             },
             ')' => {
-                flags = outer.pop().ok_or("Unmatched closing ')'")?;
+                let group = open.pop().ok_or("Unmatched closing ')'")?;
+                flags = group.outer;
                 out.push(')');
-                atom = true;
+                atom = Some(group.start);
+                lookaround = group.kind.is_lookaround();
+                continue;
             }
             '|' => {
                 out.push('|');
-                atom = false;
+                atom = None;
             }
             '.' => {
                 out.push_str(if flags.dotall {
@@ -529,53 +705,107 @@ pub(super) fn translate(pattern: &str, ignore_case: bool) -> Result<String, Stri
                 } else {
                     "[^\\n\\r\\x{85}\\x{2028}\\x{2029}]"
                 });
-                atom = true;
+                atom = Some(start);
             }
             '*' | '+' | '?' | '{' => {
-                if !atom {
+                let Some(quantified_start) = atom else {
                     if c == '{' {
                         not_ported("{ where no repetition can apply");
                     }
                     return Err(format!("Dangling meta character '{c}'"));
+                };
+                if lookaround {
+                    not_ported("a quantifier of a lookaround");
                 }
-                if c == '{' {
+                let bounded = if c == '{' {
+                    let before = out.len();
                     i = counted(&chars, i - 1, &mut out)?;
+                    !out[before..].ends_with(",}")
                 } else {
                     out.push(c);
+                    c == '?'
+                };
+                if !bounded && in_lookbehind(&open) {
+                    not_ported("a repetition without bound in a lookbehind");
+                }
+                for (start, kept) in &mut captures {
+                    *kept |= *start >= quantified_start;
                 }
                 match chars.get(i) {
                     Some('?') => {
                         out.push('?');
                         i += 1;
                     }
-                    Some('+') => not_ported("a possessive quantifier"),
+                    Some('+') => {
+                        out.insert_str(quantified_start, "(?>");
+                        for (start, _) in &mut captures {
+                            if *start >= quantified_start {
+                                *start += "(?>".len();
+                            }
+                        }
+                        out.push(')');
+                        backtracks = true;
+                        i += 1;
+                    }
                     _ => {}
                 }
-                atom = false;
+                quantified = true;
             }
             // Without `MULTILINE`, `^` is the start of the input wherever it stands.
             '^' if !quantifier(chars.get(i)) => {
                 out.push_str("\\A");
-                atom = false;
+                atom = None;
             }
             '$' if i == chars.len() => {}
             '^' | '$' => not_ported(&format!("{c} inside the pattern")),
             c => {
                 literal(&mut out, c, flags.ignore_case);
-                atom = true;
+                atom = Some(start);
             }
         }
+        lookaround = false;
+        if quantified {
+            atom = None;
+        }
     }
-    if !outer.is_empty() {
+    if !open.is_empty() {
         return Err("Unclosed group".to_string());
     }
-    Ok(format!("\\A(?:{out})\\z"))
+    if references
+        .iter()
+        .any(|number| captures.get(number - 1).is_some_and(|(_, kept)| *kept))
+    {
+        not_ported("a back reference to a group in a repetition, an atomic group or a lookaround");
+    }
+    // Groups that never take part in a match, for references to groups the pattern does not
+    // have, which never match in Java.
+    let referenced = references.iter().max().copied().unwrap_or_default();
+    let missing = "()".repeat(referenced.saturating_sub(groups));
+    let unmatched = if missing.is_empty() {
+        String::new()
+    } else {
+        format!("(?:(?!){missing})?")
+    };
+    Ok(Translation {
+        text: format!("\\A(?:{out})\\z{unmatched}"),
+        backtracks,
+    })
 }
+
+/// The most steps `fancy-regex` takes to match one value before it gives up.
+const BACKTRACK_LIMIT: usize = 1_000_000;
 
 /// Behavior: java.util.regex.Pattern#compile(String, int) with `DOTALL`
 pub(super) fn full_match(pattern: &str, ignore_case: bool) -> Result<Matcher, String> {
     let translated = translate(pattern, ignore_case)?;
-    match Regex::new(&translated) {
+    if translated.backtracks {
+        let regex = fancy_regex::RegexBuilder::new(&translated.text)
+            .backtrack_limit(BACKTRACK_LIMIT)
+            .build()
+            .unwrap_or_else(|e| not_ported(&format!("fancy-regex refuses {pattern:?}: {e}")));
+        return Ok(Matcher::Backtracking(Box::new(regex), pattern.to_string()));
+    }
+    match Regex::new(&translated.text) {
         Ok(regex) => Ok(Matcher::Full(regex)),
         Err(e) => not_ported(&format!("the regex crate refuses {pattern:?}: {e}")),
     }
@@ -646,10 +876,44 @@ mod tests {
         assert!(full("\\t", false, "\t"));
     }
 
+    /// What JDK 21 answers, from `java_backtracking.txt`.
+    #[test]
+    fn lookaround_back_references_and_atomic_groups_backtrack_as_java_does() {
+        assert!(!full("a*+a", false, "aaa"));
+        assert!(full("a++b", false, "aab"));
+        assert!(!full("(?>a|ab)c", false, "abc"));
+        assert!(full("(?=.*b)a.*", false, "aab") && !full("(?=.*b)a.*", false, "aa"));
+        assert!(full(".(?<=a)", false, "a") && !full(".(?<=a)", false, "b"));
+        assert!(full("aab(?<=(?:a|aa)b)", false, "aab"));
+        assert!(full("(a)\\1", false, "aa") && !full("(a)\\1", false, "ab"));
+        assert!(full("(?<n>a|b)\\k<n>+", false, "bbb"));
+        assert!(!full("(?<n>a|b)\\k<n>+", false, "aab"));
+        // A number reads as many digits as name a group opened before it.
+        assert!(full("(a)\\11", false, "aa1"));
+        assert!(full("(a)\\10", false, "aa0"));
+        // A group the pattern does not have never matches.
+        assert!(!full("(a)\\2", false, "aa") && !full("(a)\\2", false, "a"));
+        // Case is ignored in the group, not in the reference.
+        assert!(full("((?i)a)\\1", false, "aa") && !full("((?i)a)\\1", false, "aA"));
+    }
+
     #[test]
     fn invalid_patterns_are_errors() {
         for bad in [
-            "*a", "a**", "(a", "a)", "[a", "a{2", "a{3,2}", "a\\", "[b-a]",
+            "*a",
+            "a**",
+            "(a",
+            "a)",
+            "[a",
+            "a{2",
+            "a{3,2}",
+            "a\\",
+            "[b-a]",
+            "a**+",
+            "a*+?",
+            "(a)\\k<n>",
+            "\\k<n>(?<n>a)",
+            "(a)\\k<1>",
         ] {
             assert!(full_match(bad, false).is_err(), "{bad}");
         }
@@ -658,18 +922,11 @@ mod tests {
     #[test]
     fn constructs_outside_the_subset_are_unported() {
         for pattern in [
-            "(?=a)",
             "a\\b",
-            "a*+",
-            "\\1",
             "a$b",
             "[a[b]]",
             "[a&&b]",
             "\\p{L}",
-            "(?<=a)b",
-            "(?<!a)b",
-            "(?!a)",
-            "(?>a)",
             "(?x)a",
             "(?m)a",
             "(?d)a",
@@ -677,11 +934,17 @@ mod tests {
             "(?U)a",
             "(?c)a",
             "(?-m)a",
-            "(?<n>a)\\k<n>",
             "\\uD83D",
             "\\x{DC00}",
             "^*",
             "(?i)(a)\\1",
+            "(a)(?i:\\1)",
+            "(?=a)*a",
+            "a(?<=a*)b",
+            "ab(?<=\\1)",
+            "(a)?\\1",
+            "(?>(a))*\\1",
+            "(?=(a))\\1",
         ] {
             let result = std::panic::catch_unwind(|| full_match(pattern, false).is_ok());
             assert!(result.is_err(), "{pattern} must be unported");
@@ -756,5 +1019,60 @@ mod tests {
             checked += 1;
         }
         assert_eq!(checked, 14152);
+    }
+
+    /// Whether `full_match` gives a matcher, an error, or is `unported!`.
+    fn compiled(pattern: &str, ignore_case: bool) -> Option<Result<Matcher, String>> {
+        std::panic::catch_unwind(|| full_match(pattern, ignore_case)).ok()
+    }
+
+    /// `java_backtracking.txt` holds, in the format of `java_patterns.txt`, what a JDK 21
+    /// `java.util.regex` answers for patterns with lookaround, back references, atomic groups
+    /// and possessive quantifiers, picked and drawn at random, on short strings. A pattern
+    /// Java compiles is matched as Java matches it or is `unported!`; one Java refuses is an
+    /// error or is `unported!`.
+    #[test]
+    fn backtracking_patterns_answer_as_java_regular_expressions_answer() {
+        let mut patterns: Vec<(String, bool, Option<bool>, Vec<(String, bool)>)> = Vec::new();
+        for line in include_str!("java_backtracking.txt").lines() {
+            let fields: Vec<&str> = line.split(' ').collect();
+            let (ignore_case, pattern) = (fields[1] == "1", unhex(fields[2]));
+            let known = patterns
+                .last()
+                .is_some_and(|(p, i, _, _)| *p == pattern && *i == ignore_case);
+            if !known {
+                patterns.push((pattern, ignore_case, Some(fields[0] == "M"), Vec::new()));
+            }
+            if fields[0] == "M" {
+                let value = (unhex(fields[3]), fields[4] == "1");
+                patterns.last_mut().unwrap().3.push(value);
+            }
+        }
+        let (mut matched, mut refused, mut errors) = (0, Vec::new(), 0);
+        for (pattern, ignore_case, compiles, values) in &patterns {
+            match compiled(pattern, *ignore_case) {
+                None => refused.push(pattern.as_str()),
+                Some(Err(error)) => {
+                    assert_eq!(*compiles, Some(false), "{pattern:?}: {error}");
+                    errors += 1;
+                }
+                Some(Ok(matcher)) => {
+                    assert_eq!(*compiles, Some(true), "{pattern:?} compiles");
+                    for (value, answer) in values {
+                        assert_eq!(
+                            matcher.test(value),
+                            *answer,
+                            "{pattern:?} (ignore case {ignore_case}) on {value:?}"
+                        );
+                        matched += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(
+            (matched, refused.len(), errors),
+            (10780, 192, 13),
+            "{refused:#?}"
+        );
     }
 }

@@ -320,7 +320,7 @@ fn results_match_the_recorded_java_results() {
         ("drop_columns", 24),
         ("empty_table", 2),
         ("exact_join", 5),
-        ("filter", 130),
+        ("filter", 147),
         ("group_by", 13),
         ("head_by", 14),
         ("join", 7),

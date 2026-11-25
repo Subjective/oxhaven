@@ -22,6 +22,9 @@ bytes = "1"
 chrono = { version = "0.4", default-features = false }
 # The time zone rules of the IANA database, compiled in: Java carries its own copy too.
 chrono-tz = { version = "0.10", default-features = false }
+# Backtracking regular expressions (MIT), for the `matches` filters whose patterns use
+# lookaround, back references or atomic groups; built on `regex`.
+fancy-regex = "0.20.2"
 flatbuffers = "25.12.19"
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 h2 = "0.4"

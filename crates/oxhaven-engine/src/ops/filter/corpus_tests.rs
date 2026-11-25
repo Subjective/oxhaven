@@ -727,7 +727,7 @@ fn scenarios_match_the_recorded_java_results() {
         }
     }
     paths.sort();
-    assert_eq!(paths.len(), 97);
+    assert_eq!(paths.len(), 98);
     let mut tally = Tally::default();
     // `search_dates` was recorded on a server in UTC, the zone a date search spans a day of.
     search::with_server_zone(chrono_tz::Tz::UTC, || {
@@ -756,6 +756,23 @@ fn scenarios_match_the_recorded_java_results() {
         "error_formula.syntax_filter x1",
         "error_unknown_column.bad_where x1",
         "error_unknown_column.good x1",
+        "filter_regex_backtracking.after_a x1",
+        "filter_regex_backtracking.atomic x1",
+        "filter_regex_backtracking.atomic_long x1",
+        "filter_regex_backtracking.doubled x1",
+        "filter_regex_backtracking.doubled_not x1",
+        "filter_regex_backtracking.group_case x1",
+        "filter_regex_backtracking.has_digit x1",
+        "filter_regex_backtracking.line x1",
+        "filter_regex_backtracking.lookahead_case x1",
+        "filter_regex_backtracking.lookbehind_case x1",
+        "filter_regex_backtracking.missing_group x1",
+        "filter_regex_backtracking.named_year x1",
+        "filter_regex_backtracking.not_bar_end x1",
+        "filter_regex_backtracking.not_foo x1",
+        "filter_regex_backtracking.palindrome4 x1",
+        "filter_regex_backtracking.possessive x1",
+        "filter_regex_backtracking.possessive_none x1",
         "filter_structured.and_ x1",
         "filter_structured.bad_regex x1",
         "filter_structured.bool_equal x1",
