@@ -1,0 +1,137 @@
+{
+  "format": 2,
+  "scenario": "nested_vectors",
+  "scenario_sha256": "483c20dea4762f94f61f74c2794eea1fd52420339c006e7a76ebac0b58732487",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "indexed",
+      "file": "step000.indexed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "viewed",
+      "file": "step000.viewed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "selected",
+      "file": "step000.selected.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "outside_fails",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "with_nulls",
+      "file": "step000.with_nulls.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "null_fails",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "null_size_fails",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "ungrouped",
+      "file": "step000.ungrouped.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "ungrouped_all",
+      "file": "step000.ungrouped_all.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "ungrouped_twice",
+      "file": "step000.ungrouped_twice.arrow",
+      "rows": 20
+    },
+    {
+      "step": 0,
+      "table": "kept",
+      "file": "step000.kept.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "kept_by",
+      "file": "step000.kept_by.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "grouped",
+      "file": "step000.grouped.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "rolled",
+      "file": "step000.rolled.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "bucketed",
+      "file": "step000.bucketed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "w_null",
+      "file": "step000.w_null.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "w_not_null",
+      "file": "step000.w_not_null.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "w_len",
+      "file": "step000.w_len.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "w_is_null",
+      "file": "step000.w_is_null.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "distinct",
+      "file": "step000.distinct.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "searched",
+      "file": "step000.searched.arrow",
+      "rows": 2
+    }
+  ]
+}

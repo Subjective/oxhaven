@@ -1,0 +1,260 @@
+{
+  "format": 2,
+  "scenario": "ticking_nested_vectors",
+  "scenario_sha256": "c5b5c5b166ab5d8d4fe258054473fa34cb64934a07ba21a62fa9d34480f0a17b",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "n",
+      "file": "step000.n.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "indexed",
+      "file": "step000.indexed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "ungrouped",
+      "file": "step000.ungrouped.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "m",
+      "file": "step000.m.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "kept",
+      "file": "step000.kept.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "rolled",
+      "file": "step000.rolled.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "w_len",
+      "file": "step000.w_len.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "n",
+      "file": "step001.n.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "indexed",
+      "file": "step001.indexed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "ungrouped",
+      "file": "step001.ungrouped.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "m",
+      "file": "step001.m.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "kept",
+      "file": "step001.kept.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "rolled",
+      "file": "step001.rolled.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "w_len",
+      "file": "step001.w_len.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "n",
+      "file": "step002.n.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "indexed",
+      "file": "step002.indexed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "ungrouped",
+      "file": "step002.ungrouped.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "m",
+      "file": "step002.m.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "kept",
+      "file": "step002.kept.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "rolled",
+      "file": "step002.rolled.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "w_len",
+      "file": "step002.w_len.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "n",
+      "file": "step003.n.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "indexed",
+      "file": "step003.indexed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "ungrouped",
+      "file": "step003.ungrouped.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "m",
+      "file": "step003.m.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "kept",
+      "file": "step003.kept.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "rolled",
+      "file": "step003.rolled.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "w_len",
+      "file": "step003.w_len.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "n",
+      "file": "step004.n.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "indexed",
+      "file": "step004.indexed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "ungrouped",
+      "file": "step004.ungrouped.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "m",
+      "file": "step004.m.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "kept",
+      "file": "step004.kept.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "rolled",
+      "file": "step004.rolled.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "w_len",
+      "file": "step004.w_len.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "n",
+      "file": "step005.n.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "indexed",
+      "file": "step005.indexed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "ungrouped",
+      "file": "step005.ungrouped.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "m",
+      "file": "step005.m.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "kept",
+      "file": "step005.kept.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "rolled",
+      "file": "step005.rolled.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "w_len",
+      "file": "step005.w_len.arrow",
+      "rows": 1
+    }
+  ]
+}

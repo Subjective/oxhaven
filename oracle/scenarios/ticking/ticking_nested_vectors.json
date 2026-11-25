@@ -1,0 +1,385 @@
+{
+ "format": 1,
+ "name": "ticking_nested_vectors",
+ "description": "Vectors of vectors of a keyed input table, grouped twice and kept up to date as rows are added, replaced and deleted: formulas that index them, ungroup of one level, first and last, a rolling count and a cumulative count where.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "A",
+     "type": "int32"
+    },
+    {
+     "name": "B",
+     "type": "int32"
+    },
+    {
+     "name": "X",
+     "type": "int32"
+    }
+   ],
+   "rows": [
+    [
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     1,
+     1,
+     1,
+     10
+    ],
+    [
+     2,
+     0,
+     2,
+     20
+    ],
+    [
+     3,
+     1,
+     0,
+     30
+    ],
+    [
+     4,
+     0,
+     1,
+     40
+    ],
+    [
+     5,
+     1,
+     2,
+     50
+    ],
+    [
+     6,
+     0,
+     0,
+     60
+    ],
+    [
+     7,
+     1,
+     1,
+     70
+    ]
+   ],
+   "ticking": {
+    "key_columns": [
+     "K"
+    ]
+   }
+  }
+ ],
+ "operations": [
+  {
+   "name": "v",
+   "op": "group_by",
+   "source": "t",
+   "by": [
+    "A",
+    "B"
+   ]
+  },
+  {
+   "name": "n_nested",
+   "op": "group_by",
+   "source": "v",
+   "by": [
+    "A"
+   ]
+  },
+  {
+   "name": "n",
+   "op": "drop_columns",
+   "source": "n_nested",
+   "columns": [
+    "K",
+    "X"
+   ]
+  },
+  {
+   "name": "indexed_nested",
+   "op": "update",
+   "source": "n_nested",
+   "formulas": [
+    "First = X[0]",
+    "Inner = X[0][0]",
+    "Size = X.size()",
+    "Last = lastObj(X)",
+    "Count = countObj(X)",
+    "Sum = sum(X[1])"
+   ]
+  },
+  {
+   "name": "indexed",
+   "op": "drop_columns",
+   "source": "indexed_nested",
+   "columns": [
+    "K",
+    "X"
+   ]
+  },
+  {
+   "name": "ungrouped",
+   "op": "ungroup",
+   "source": "n_nested",
+   "columns": [
+    "X",
+    "K"
+   ]
+  },
+  {
+   "name": "m_nested",
+   "op": "group_by",
+   "source": "v",
+   "by": [
+    "B"
+   ]
+  },
+  {
+   "name": "m",
+   "op": "drop_columns",
+   "source": "m_nested",
+   "columns": [
+    "K",
+    "X"
+   ]
+  },
+  {
+   "name": "kept_nested",
+   "op": "agg_by",
+   "source": "m_nested",
+   "by": [],
+   "aggs": [
+    {
+     "agg": "first",
+     "columns": [
+      "FirstX = X"
+     ]
+    },
+    {
+     "agg": "last",
+     "columns": [
+      "LastX = X"
+     ]
+    },
+    {
+     "agg": "count",
+     "column": "C"
+    }
+   ]
+  },
+  {
+   "name": "kept",
+   "op": "ungroup",
+   "source": "kept_nested",
+   "columns": [
+    "FirstX",
+    "LastX"
+   ]
+  },
+  {
+   "name": "rolled_nested",
+   "op": "update_by",
+   "source": "m_nested",
+   "by": [],
+   "ops": [
+    {
+     "op": "rolling_count_tick",
+     "columns": [
+      "CX = X"
+     ],
+     "args": {
+      "rev_ticks": 2
+     }
+    },
+    {
+     "op": "cum_count_where",
+     "columns": [
+      "CW"
+     ],
+     "args": {
+      "filters": "len(X) > 1"
+     }
+    }
+   ]
+  },
+  {
+   "name": "rolled",
+   "op": "drop_columns",
+   "source": "rolled_nested",
+   "columns": [
+    "K",
+    "X"
+   ]
+  },
+  {
+   "name": "w_len_nested",
+   "op": "where",
+   "source": "m_nested",
+   "filters": [
+    "len(X) > 1"
+   ]
+  },
+  {
+   "name": "w_len",
+   "op": "drop_columns",
+   "source": "w_len_nested",
+   "columns": [
+    "K",
+    "X"
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "n"
+  },
+  {
+   "table": "indexed"
+  },
+  {
+   "table": "ungrouped"
+  },
+  {
+   "table": "m"
+  },
+  {
+   "table": "kept"
+  },
+  {
+   "table": "rolled"
+  },
+  {
+   "table": "w_len"
+  }
+ ],
+ "steps": [
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       8,
+       0,
+       2,
+       80
+      ],
+      [
+       9,
+       1,
+       0,
+       90
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       0,
+       0,
+       0,
+       5
+      ],
+      [
+       3,
+       1,
+       1,
+       35
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       4
+      ],
+      [
+       1
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       2,
+       1,
+       2,
+       22
+      ],
+      [
+       10,
+       0,
+       1,
+       100
+      ]
+     ]
+    },
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       6
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       0
+      ],
+      [
+       3
+      ],
+      [
+       5
+      ],
+      [
+       7
+      ],
+      [
+       9
+      ]
+     ]
+    }
+   ]
+  }
+ ]
+}
