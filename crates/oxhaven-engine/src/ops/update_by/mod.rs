@@ -35,6 +35,7 @@
 //! columns. A row whose bucket columns changed leaves its bucket and joins another, as a
 //! removed and an added row.
 
+mod big;
 mod count_where;
 mod cumulative;
 mod em;
@@ -44,6 +45,8 @@ mod rolling;
 mod values;
 mod window;
 
+#[cfg(test)]
+mod big_tests;
 #[cfg(test)]
 mod corpus;
 #[cfg(test)]
@@ -72,6 +75,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 use std::sync::{Arc, Mutex, PoisonError};
 use values::Values;
+
+pub use big::MathContext;
+pub use oxhaven_column::decimal::Rounding;
 
 fn failure(message: impl Into<String>) -> TableFailure {
     TableFailure {
@@ -275,14 +281,59 @@ pub fn update_by_with<S: AsRef<str>>(
     update_by_inner(parent, operations, by, Some(compiler))
 }
 
+/// The options of an `update_by` that change its results: the math context of the
+/// cumulative sum and product and of the rolling sum, average, product, standard deviation
+/// and weighted average of `BigDecimal`s, and of the averages, standard deviations and
+/// weighted averages of `BigInteger`s.
+///
+/// Behavior: io.deephaven.api.updateby.UpdateByControl#mathContextOrDefault, whose default
+/// is `DECIMAL64` (UpdateByControl#mathContextDefault, without the system property)
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct UpdateByControl {
+    pub math_context: MathContext,
+}
+
+impl Default for UpdateByControl {
+    fn default() -> Self {
+        UpdateByControl {
+            math_context: MathContext::DECIMAL64,
+        }
+    }
+}
+
+/// [`update_by`] with the options of `control`, and the compiler of the formulas if there
+/// is one.
+pub fn update_by_controlled<S: AsRef<str>>(
+    parent: &Arc<dyn Table>,
+    operations: &[UpdateByOperation],
+    by: &[S],
+    compiler: Option<&dyn FormulaCompiler>,
+    control: &UpdateByControl,
+) -> Result<Arc<dyn Table>, UpdateByError> {
+    let by: Vec<&str> = by.iter().map(AsRef::as_ref).collect();
+    let plan = Arc::new(Plan::new(parent, operations, &by, compiler, control)?);
+    update_by_planned(parent, plan)
+}
+
 fn update_by_inner<S: AsRef<str>>(
     parent: &Arc<dyn Table>,
     operations: &[UpdateByOperation],
     by: &[S],
     compiler: Option<&dyn FormulaCompiler>,
 ) -> Result<Arc<dyn Table>, UpdateByError> {
-    let by: Vec<&str> = by.iter().map(AsRef::as_ref).collect();
-    let plan = Arc::new(Plan::new(parent, operations, &by, compiler)?);
+    update_by_controlled(
+        parent,
+        operations,
+        by,
+        compiler,
+        &UpdateByControl::default(),
+    )
+}
+
+fn update_by_planned(
+    parent: &Arc<dyn Table>,
+    plan: Arc<Plan>,
+) -> Result<Arc<dyn Table>, UpdateByError> {
     let table = QueryTable::derive(parent, || {
         let rows = parent.row_set();
         let state = plan.initialize(&rows)?;
@@ -358,6 +409,8 @@ struct Plan {
     timestamp: Option<usize>,
     /// Parent columns to the result columns that pass them through.
     transformer: ModifiedColumnTransformer,
+    /// The math context of the operators of `BigDecimal`s.
+    math: MathContext,
 }
 
 /// The rows of each bucket. Without bucket columns there is one bucket and no index.
@@ -562,7 +615,11 @@ fn orderable_vector(element: &ColumnType) -> bool {
 
 fn applicable(kernel: Kernel, input: &ColumnType) -> bool {
     use ColumnType::*;
-    let numeric = matches!(input, Byte | Short | Int | Long | Float | Double);
+    // `BigDecimal` and `BigInteger` are `Number`s, and `Comparable`.
+    let numeric = matches!(
+        input,
+        Byte | Short | Int | Long | Float | Double | BigDecimal | BigInteger
+    );
     let character = *input == Char;
     let boolean = *input == Boolean;
     // `String`, `Instant` and every vector are `Comparable`; so is `Boolean`, which Java
@@ -599,6 +656,7 @@ impl Plan {
         operations: &[UpdateByOperation],
         by: &[&str],
         compiler: Option<&dyn FormulaCompiler>,
+        control: &UpdateByControl,
     ) -> Result<Plan, UpdateByError> {
         let declared = parent.definition().columns();
         if operations.is_empty() {
@@ -793,16 +851,57 @@ impl Plan {
                         use ColumnType::*;
                         if !matches!(
                             weight_type,
-                            Byte | Char | Short | Int | Long | Float | Double
+                            Byte | Char
+                                | Short
+                                | Int
+                                | Long
+                                | Float
+                                | Double
+                                | BigDecimal
+                                | BigInteger
                         ) {
                             return Err(invalid(format!(
                                 "Can not perform RollingWAvg on weight column type {weight_type:?}"
                             )));
                         }
+                        // With big number weights Java casts the values to `BigDecimal`
+                        // whatever their type, and fails or reads a reinterpreted column
+                        // for those it has no plain cast of.
+                        if big::is_big(&weight_type)
+                            && !matches!(
+                                input_type,
+                                Byte | Char
+                                    | Short
+                                    | Int
+                                    | Long
+                                    | Float
+                                    | Double
+                                    | BigDecimal
+                                    | BigInteger
+                            )
+                        {
+                            oxhaven_contracts::unported!(
+                                "io.deephaven.engine.table.impl.util.cast.ToBigDecimalCast#makeToBigDecimalCast",
+                                "a rolling weighted average of column {input_name} of type \
+                                 {input_type:?} with weights of type {weight_type:?}"
+                            );
+                        }
                         Some((index, weight_type))
                     }
                     _ => None,
                 };
+                // Behavior: io.deephaven.engine.table.impl.updateby.em.BaseBigNumberEMOperator
+                // #computeAlpha and emstd.BaseBigNumberEmStdOperator#computeAlpha, which make
+                // the decay `BigDecimal.valueOf(Math.exp(..))`
+                if matches!(kernel, Kernel::Em(_)) && big::is_big(&input_type) {
+                    oxhaven_contracts::unported!(
+                        "io.deephaven.engine.table.impl.updateby.em.BaseBigNumberEMOperator#computeAlpha",
+                        "an exponential moving operator of column {input_name} of type \
+                         {input_type:?}: Java's decay is the decimal of `Math.exp`, whose \
+                         HotSpot intrinsic differs from a correctly rounded exponential in \
+                         the last bit for some decays (owner item 8.3)"
+                    );
+                }
                 let formula = match &operation.spec {
                     UpdateBySpec::RollingFormula {
                         formula,
@@ -822,7 +921,10 @@ impl Plan {
                         .as_ref()
                         .map(|formula| formula.result_type().clone()),
                     Kernel::Cumulative(kernel) => kernel.output_type(&input_type),
-                    Kernel::Rolling(kernel) => kernel.output_type(&input_type),
+                    Kernel::Rolling(kernel) => {
+                        big::rolling_output(kernel, &input_type, weight.as_ref().map(|(_, t)| t))
+                            .or_else(|| kernel.output_type(&input_type))
+                    }
                     Kernel::Group => Some(group::output_type(&input_type)),
                     Kernel::Em(_) => Em::output_type(&input_type),
                     Kernel::CountWhere => Some(ColumnType::Long),
@@ -956,6 +1058,7 @@ impl Plan {
             by,
             timestamp,
             transformer,
+            math: control.math_context,
         })
     }
 
@@ -1217,7 +1320,12 @@ impl Plan {
                                 }
                                 Some(before) => Some(column.output.chunk(before)?),
                             };
-                            kernel.accumulate(&column.input_type, &values, seed.as_ref())?
+                            kernel.accumulate(
+                                &column.input_type,
+                                &values,
+                                seed.as_ref(),
+                                &self.math,
+                            )?
                         }
                         Kernel::Em(em) if em.kind == EmKind::Std => {
                             let [averages, variances] =
@@ -1339,7 +1447,13 @@ impl Plan {
                         None => None,
                     };
                     let weights = column.weight.as_ref().map(|(_, t)| t).zip(weights.as_ref());
-                    let results = kernel.evaluate(&column.input_type, &values, weights, &slides)?;
+                    let results = kernel.evaluate(
+                        &column.input_type,
+                        &values,
+                        weights,
+                        &slides,
+                        &self.math,
+                    )?;
                     column.output.fill(affected, &results)?;
                 }
             }
@@ -1384,7 +1498,13 @@ impl Plan {
                             };
                             let weights =
                                 column.weight.as_ref().map(|(_, t)| t).zip(weights.as_ref());
-                            kernel.evaluate(&column.input_type, &values, weights, &slides)?
+                            kernel.evaluate(
+                                &column.input_type,
+                                &values,
+                                weights,
+                                &slides,
+                                &self.math,
+                            )?
                         }
                         // A row without a timestamp gets a null here too, not an empty
                         // vector: RollingGroupOperator.Context#accumulateRolling writes a

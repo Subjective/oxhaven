@@ -26,12 +26,14 @@ pub(super) enum Values {
     /// `float` and `double`, widened.
     Float(Vec<Option<f64>>),
     Text(Vec<Option<String>>),
-    /// The cells of a vector or array column, as they are: the operators that take such a
-    /// column (forward fill, rolling count, rolling group) read only which cells are null,
-    /// and a bucket key reads the elements through [`push_list_keys`].
+    /// The cells of a vector, array, `BigDecimal` or `BigInteger` column, as they are: the
+    /// operators that read such a column without computing with it (forward fill, rolling
+    /// count, rolling group) read only which cells are null, and a bucket key reads the
+    /// elements of a vector through [`push_list_keys`].
     Lists(ArrayRef),
-    /// The cells of a vector column read for an operator that orders them (minimum and
-    /// maximum), each a [`Scalar::List`] or a null.
+    /// The cells of a vector or big number column read for an operator that orders them
+    /// (minimum and maximum), each a [`Scalar::List`], [`Scalar::Decimal`],
+    /// [`Scalar::Integer`] or a null.
     Ordered(Vec<Scalar>),
 }
 
@@ -79,8 +81,11 @@ impl Values {
                     .map(|v| v.map(str::to_owned))
                     .collect(),
             ),
-            // Java reads a vector or an array column as a column of objects.
-            ColumnType::Vector(_) | ColumnType::Array(_) => Values::Lists(array.clone()),
+            // Java reads a vector, an array or a big number column as a column of objects.
+            ColumnType::Vector(_)
+            | ColumnType::Array(_)
+            | ColumnType::BigDecimal
+            | ColumnType::BigInteger => Values::Lists(array.clone()),
             other => {
                 return Err(failure(format!(
                     "update_by cannot read a column of type {other:?}"
@@ -94,7 +99,10 @@ impl Values {
         array: &ArrayRef,
         column_type: &ColumnType,
     ) -> Result<Values, TableFailure> {
-        if !matches!(column_type, ColumnType::Vector(_)) {
+        if !matches!(
+            column_type,
+            ColumnType::Vector(_) | ColumnType::BigDecimal | ColumnType::BigInteger
+        ) {
             return Values::read(array, column_type);
         }
         match Decoded::decode(column_type, array)? {

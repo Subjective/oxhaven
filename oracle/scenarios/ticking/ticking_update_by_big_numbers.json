@@ -1,0 +1,605 @@
+{
+ "format": 1,
+ "name": "ticking_update_by_big_numbers",
+ "description": "Cumulative and rolling update_by operators of BigDecimal and BigInteger columns made from text, by key and in time, through replaced rows, adds, deletes, rows that change key and values of more digits than DECIMAL64 holds. A client receives a BigDecimal without the zeros at the end of its digits, so the results are compared as text, which shows the scale: Java's running sums keep the largest scale of the pass that computed them, and a rolling minimum of equal values of two scales shows the one its ring buffer finds.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "Id",
+     "type": "int32"
+    },
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "Txt",
+     "type": "string"
+    },
+    {
+     "name": "N",
+     "type": "int32"
+    },
+    {
+     "name": "Wd",
+     "type": "float64"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     "1.000",
+     1,
+     1.0,
+     1700000000000000000
+    ],
+    [
+     2,
+     "a",
+     "2",
+     2,
+     2.0,
+     1700000001000000000
+    ],
+    [
+     3,
+     "b",
+     "2.0",
+     3,
+     0.5,
+     1700000001000000000
+    ],
+    [
+     4,
+     "a",
+     null,
+     null,
+     null,
+     1700000002000000000
+    ],
+    [
+     5,
+     "a",
+     "2.00",
+     4,
+     1.5,
+     1700000003000000000
+    ],
+    [
+     6,
+     "b",
+     "0",
+     5,
+     1.0,
+     1700000004000000000
+    ],
+    [
+     7,
+     "a",
+     "-3.5",
+     6,
+     2.5,
+     1700000005000000000
+    ],
+    [
+     8,
+     "b",
+     "7.25",
+     7,
+     1.0,
+     1700000005000000000
+    ],
+    [
+     9,
+     "a",
+     "2.0",
+     8,
+     1.0,
+     1700000007000000000
+    ],
+    [
+     10,
+     "b",
+     "0.0",
+     9,
+     3.0,
+     1700000009000000000
+    ]
+   ],
+   "ticking": {
+    "key_columns": [
+     "Id"
+    ]
+   }
+  }
+ ],
+ "operations": [
+  {
+   "name": "big",
+   "op": "update",
+   "source": "t",
+   "formulas": [
+    "B = Txt == null ? null : new java.math.BigDecimal(Txt)",
+    "BI = Txt == null ? null : new java.math.BigDecimal(Txt).toBigInteger()",
+    "WB = N == null ? null : new java.math.BigDecimal(`` + N + `.5`)"
+   ]
+  },
+  {
+   "name": "cumulative",
+   "op": "update_by",
+   "source": "big",
+   "by": [
+    "G"
+   ],
+   "ops": [
+    {
+     "op": "cum_sum",
+     "columns": [
+      "CS = B",
+      "CSI = BI"
+     ]
+    },
+    {
+     "op": "cum_prod",
+     "columns": [
+      "CP = B",
+      "CPI = BI"
+     ]
+    },
+    {
+     "op": "cum_min",
+     "columns": [
+      "Mn = B",
+      "MnI = BI"
+     ]
+    },
+    {
+     "op": "cum_max",
+     "columns": [
+      "Mx = B"
+     ]
+    },
+    {
+     "op": "forward_fill",
+     "columns": [
+      "FF = B"
+     ]
+    },
+    {
+     "op": "delta",
+     "columns": [
+      "D = B",
+      "DI = BI"
+     ]
+    },
+    {
+     "op": "delta",
+     "columns": [
+      "DV = B"
+     ],
+     "args": {
+      "delta_control": "VALUE_DOMINATES"
+     }
+    },
+    {
+     "op": "delta",
+     "columns": [
+      "DZ = B"
+     ],
+     "args": {
+      "delta_control": "ZERO_DOMINATES"
+     }
+    }
+   ]
+  },
+  {
+   "name": "rolling",
+   "op": "update_by",
+   "source": "big",
+   "by": [
+    "G"
+   ],
+   "ops": [
+    {
+     "op": "rolling_sum_tick",
+     "columns": [
+      "RS = B",
+      "RSI = BI"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 1
+     }
+    },
+    {
+     "op": "rolling_avg_tick",
+     "columns": [
+      "RA = B",
+      "RAI = BI"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_prod_tick",
+     "columns": [
+      "RP = B",
+      "RPI = BI"
+     ],
+     "args": {
+      "rev_ticks": 2,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_std_tick",
+     "columns": [
+      "RSD = B",
+      "RSDI = BI"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_min_tick",
+     "columns": [
+      "RMn = B"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_max_tick",
+     "columns": [
+      "RMx = B",
+      "RMxI = BI"
+     ],
+     "args": {
+      "rev_ticks": 2,
+      "fwd_ticks": 1
+     }
+    },
+    {
+     "op": "rolling_wavg_tick",
+     "columns": [
+      "RW = B"
+     ],
+     "args": {
+      "wcol": "Wd",
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_wavg_tick",
+     "columns": [
+      "RWB = N"
+     ],
+     "args": {
+      "wcol": "WB",
+      "rev_ticks": 2,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_count_tick",
+     "columns": [
+      "RC = B"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    }
+   ]
+  },
+  {
+   "name": "timed",
+   "op": "update_by",
+   "source": "big",
+   "by": [],
+   "ops": [
+    {
+     "op": "rolling_sum_time",
+     "columns": [
+      "TS = B"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_avg_time",
+     "columns": [
+      "TA = BI"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT3S",
+      "fwd_time": "PT1S"
+     }
+    },
+    {
+     "op": "rolling_min_time",
+     "columns": [
+      "TMn = B"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT4S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_prod_time",
+     "columns": [
+      "TP = B"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    }
+   ]
+  },
+  {
+   "name": "cumulative_text",
+   "op": "view",
+   "source": "cumulative",
+   "formulas": [
+    "Id",
+    "G",
+    "CS = `` + CS",
+    "CSI = `` + CSI",
+    "CP = `` + CP",
+    "CPI = `` + CPI",
+    "Mn = `` + Mn",
+    "Mx = `` + Mx",
+    "MnI = `` + MnI",
+    "FF = `` + FF",
+    "D = `` + D",
+    "DI = `` + DI",
+    "DV = `` + DV",
+    "DZ = `` + DZ"
+   ]
+  },
+  {
+   "name": "rolling_text",
+   "op": "view",
+   "source": "rolling",
+   "formulas": [
+    "Id",
+    "G",
+    "RS = `` + RS",
+    "RSI = `` + RSI",
+    "RA = `` + RA",
+    "RAI = `` + RAI",
+    "RP = `` + RP",
+    "RPI = `` + RPI",
+    "RSD = `` + RSD",
+    "RSDI = `` + RSDI",
+    "RMn = `` + RMn",
+    "RMx = `` + RMx",
+    "RMxI = `` + RMxI",
+    "RW = `` + RW",
+    "RWB = `` + RWB",
+    "RC = `` + RC"
+   ]
+  },
+  {
+   "name": "timed_text",
+   "op": "view",
+   "source": "timed",
+   "formulas": [
+    "Id",
+    "G",
+    "TS = `` + TS",
+    "TA = `` + TA",
+    "TMn = `` + TMn",
+    "TP = `` + TP"
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "cumulative_text"
+  },
+  {
+   "table": "rolling_text"
+  },
+  {
+   "table": "timed_text"
+  }
+ ],
+ "steps": [
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       5,
+       "a",
+       "2.5000",
+       4,
+       1.5,
+       1700000003000000000
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       5,
+       "a",
+       "3",
+       4,
+       1.5,
+       1700000003000000000
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       11,
+       "a",
+       "12345678901234567.89",
+       10,
+       1.0,
+       1700000010000000000
+      ],
+      [
+       12,
+       "a",
+       "0.000000000000000123456789",
+       11,
+       2.0,
+       1700000010000000000
+      ],
+      [
+       13,
+       "b",
+       "98765432109876543210",
+       12,
+       1.0,
+       1700000011000000000
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       2
+      ]
+     ]
+    },
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       7,
+       "b",
+       "-3.50",
+       6,
+       2.5,
+       1700000005000000000
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       14,
+       "a",
+       "2.000",
+       13,
+       1.0,
+       1700000012000000000
+      ],
+      [
+       15,
+       "b",
+       "0",
+       14,
+       1.0,
+       1700000012000000000
+      ],
+      [
+       9,
+       "a",
+       "2",
+       8,
+       1.0,
+       1700000007000000000
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       1
+      ],
+      [
+       11
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       16,
+       "a",
+       "1E+3",
+       15,
+       4.0,
+       1700000013000000000
+      ],
+      [
+       3,
+       "b",
+       null,
+       3,
+       0.5,
+       1700000001000000000
+      ]
+     ]
+    }
+   ]
+  }
+ ]
+}

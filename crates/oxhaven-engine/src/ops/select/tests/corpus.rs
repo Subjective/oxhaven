@@ -482,7 +482,7 @@ fn replay(name: &str, scenario: &Value, outcome: &mut Outcome) {
 fn results_match_the_ones_recorded_from_java() {
     let mut outcome = Outcome::default();
     let scenarios = scenarios();
-    assert_eq!(scenarios.len(), 98);
+    assert_eq!(scenarios.len(), 99);
     for (name, scenario) in &scenarios {
         replay(name, scenario, &mut outcome);
     }
@@ -642,6 +642,9 @@ fn results_match_the_ones_recorded_from_java() {
             "ticking_nested_vectors.rolled: update_by",
             "ticking_nested_vectors.w_len: where",
             "ticking_time_table.numbered: head",
+            "ticking_update_by_big_numbers.cumulative_text: update_by",
+            "ticking_update_by_big_numbers.rolling_text: update_by",
+            "ticking_update_by_big_numbers.timed_text: update_by",
             "time_types.base: column D of type LocalDate, sent in another form",
             "time_types.sort_d: sort",
             "time_types.sort_lt: sort",

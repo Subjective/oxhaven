@@ -1,0 +1,152 @@
+{
+  "format": 2,
+  "scenario": "ticking_update_by_big_numbers",
+  "scenario_sha256": "354fadfaa40a346c981831de3e4a5556c735c1d7d3bb89406eb56bbfd35c4504",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "cumulative_text",
+      "file": "step000.cumulative_text.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "rolling_text",
+      "file": "step000.rolling_text.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "timed_text",
+      "file": "step000.timed_text.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "cumulative_text",
+      "file": "step001.cumulative_text.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "rolling_text",
+      "file": "step001.rolling_text.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "timed_text",
+      "file": "step001.timed_text.arrow",
+      "rows": 10
+    },
+    {
+      "step": 2,
+      "table": "cumulative_text",
+      "file": "step002.cumulative_text.arrow",
+      "rows": 10
+    },
+    {
+      "step": 2,
+      "table": "rolling_text",
+      "file": "step002.rolling_text.arrow",
+      "rows": 10
+    },
+    {
+      "step": 2,
+      "table": "timed_text",
+      "file": "step002.timed_text.arrow",
+      "rows": 10
+    },
+    {
+      "step": 3,
+      "table": "cumulative_text",
+      "file": "step003.cumulative_text.arrow",
+      "rows": 13
+    },
+    {
+      "step": 3,
+      "table": "rolling_text",
+      "file": "step003.rolling_text.arrow",
+      "rows": 13
+    },
+    {
+      "step": 3,
+      "table": "timed_text",
+      "file": "step003.timed_text.arrow",
+      "rows": 13
+    },
+    {
+      "step": 4,
+      "table": "cumulative_text",
+      "file": "step004.cumulative_text.arrow",
+      "rows": 12
+    },
+    {
+      "step": 4,
+      "table": "rolling_text",
+      "file": "step004.rolling_text.arrow",
+      "rows": 12
+    },
+    {
+      "step": 4,
+      "table": "timed_text",
+      "file": "step004.timed_text.arrow",
+      "rows": 12
+    },
+    {
+      "step": 5,
+      "table": "cumulative_text",
+      "file": "step005.cumulative_text.arrow",
+      "rows": 14
+    },
+    {
+      "step": 5,
+      "table": "rolling_text",
+      "file": "step005.rolling_text.arrow",
+      "rows": 14
+    },
+    {
+      "step": 5,
+      "table": "timed_text",
+      "file": "step005.timed_text.arrow",
+      "rows": 14
+    },
+    {
+      "step": 6,
+      "table": "cumulative_text",
+      "file": "step006.cumulative_text.arrow",
+      "rows": 12
+    },
+    {
+      "step": 6,
+      "table": "rolling_text",
+      "file": "step006.rolling_text.arrow",
+      "rows": 12
+    },
+    {
+      "step": 6,
+      "table": "timed_text",
+      "file": "step006.timed_text.arrow",
+      "rows": 12
+    },
+    {
+      "step": 7,
+      "table": "cumulative_text",
+      "file": "step007.cumulative_text.arrow",
+      "rows": 13
+    },
+    {
+      "step": 7,
+      "table": "rolling_text",
+      "file": "step007.rolling_text.arrow",
+      "rows": 13
+    },
+    {
+      "step": 7,
+      "table": "timed_text",
+      "file": "step007.timed_text.arrow",
+      "rows": 13
+    }
+  ]
+}
