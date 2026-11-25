@@ -10,6 +10,7 @@ use oxhaven_column::parallel;
 use oxhaven_server::console::logs::{self, LogBuffer};
 use oxhaven_server::session::{random_psk, AuthHandler, AuthHandlers, DEFAULT_TOKEN_EXPIRE_MS};
 use oxhaven_server::storage::StorageRoot;
+use oxhaven_server::transport::{serve_tls, ClientAuth, TlsAcceptor, TlsConfig};
 use oxhaven_server::update_graph::DEFAULT_TARGET_CYCLE_DURATION;
 use oxhaven_server::web::WebRoot;
 use oxhaven_server::{app, serve, ServerConfig, ServerState};
@@ -22,7 +23,7 @@ const USAGE: &str = "\
 Usage: oxhaven-server [options]
 
   --host <address>          address to listen on (default 0.0.0.0)
-  --port <port>             port to listen on (default 10000)
+  --port <port>             port to listen on (default 10000, or 443 with --tls-cert)
   --auth <handlers>         comma-separated list of psk and anonymous (default psk)
   --psk <key>               pre-shared key; also read from OXHAVEN_PSK; random if absent
   --token-expire-ms <ms>    session token lifetime (default 300000)
@@ -48,11 +49,22 @@ Usage: oxhaven-server [options]
                             scripts/extract-web-root.sh makes the directory (default: none)
   --storage-root <directory>  where the web IDE's layouts and notebooks are kept; created
                             if missing (default: none, and the IDE can save nothing)
+  --tls-cert <file>         serve TLS with the PEM certificates of the file, the server's
+                            first and then those that chain it to a root (Java's
+                            ssl.identity.certChainPath); needs --tls-key and a server built
+                            with the tls feature (docs/TLS.md)
+  --tls-key <file>          the PEM private key of the first certificate, without a
+                            password (ssl.identity.privateKeyPath)
+  --tls-trust <file>        PEM certificates that a client's certificate must chain to
+                            (ssl.trust.path)
+  --tls-client-auth <mode>  NONE, WANTED or NEEDED: whether clients are asked for a
+                            certificate (ssl.clientAuthentication; default NONE)
 ";
 
 struct Args {
     host: String,
-    port: u16,
+    /// `None`: Java's default, which depends on TLS ([`Args::port`]).
+    port: Option<u16>,
     auth: String,
     psk: Option<String>,
     token_expire_ms: i64,
@@ -65,6 +77,49 @@ struct Args {
     python_path: Vec<PathBuf>,
     web_root: Option<PathBuf>,
     storage_root: Option<PathBuf>,
+    tls_cert: Option<PathBuf>,
+    tls_key: Option<PathBuf>,
+    tls_trust: Option<PathBuf>,
+    tls_client_auth: Option<ClientAuth>,
+}
+
+impl Args {
+    /// The port: the one given, otherwise 443 with TLS and 10000 without.
+    ///
+    /// Behavior: `io.deephaven.server.jetty.JettyConfig#port` (`DEFAULT_SSL_PORT`,
+    /// `DEFAULT_PLAINTEXT_PORT`)
+    fn port(&self) -> u16 {
+        self.port
+            .unwrap_or(if self.tls_cert.is_some() { 443 } else { 10000 })
+    }
+
+    /// The TLS the server serves, if `--tls-cert` asks for it. Half an identity is refused,
+    /// and so are the trust options without one.
+    ///
+    /// Behavior: `io.deephaven.server.runner.MainHelper#parseSSLConfig`
+    fn tls(&self) -> Result<Option<TlsConfig>, String> {
+        let (cert_chain, private_key) = match (&self.tls_cert, &self.tls_key) {
+            (Some(cert_chain), Some(private_key)) => (cert_chain.clone(), private_key.clone()),
+            (None, None) => {
+                if self.tls_trust.is_some() || self.tls_client_auth.is_some() {
+                    return Err(
+                        "--tls-trust and --tls-client-auth need --tls-cert and --tls-key"
+                            .to_string(),
+                    );
+                }
+                return Ok(None);
+            }
+            _ => return Err("Must specify `--tls-cert` and `--tls-key`".to_string()),
+        };
+        let config = TlsConfig {
+            cert_chain,
+            private_key,
+            trust: self.tls_trust.clone(),
+            client_auth: self.tls_client_auth.unwrap_or_default(),
+        };
+        config.check()?;
+        Ok(Some(config))
+    }
 }
 
 /// The process's allocator when built with the `mimalloc` feature (on by default). It reuses
@@ -78,7 +133,7 @@ static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut parsed = Args {
         host: "0.0.0.0".to_string(),
-        port: 10000,
+        port: None,
         auth: "psk".to_string(),
         psk: std::env::var("OXHAVEN_PSK").ok(),
         token_expire_ms: DEFAULT_TOKEN_EXPIRE_MS,
@@ -91,6 +146,10 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
         python_path: Vec::new(),
         web_root: None,
         storage_root: None,
+        tls_cert: None,
+        tls_key: None,
+        tls_trust: None,
+        tls_client_auth: None,
     };
     while let Some(flag) = args.next() {
         let mut value = || {
@@ -99,7 +158,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
         };
         match flag.as_str() {
             "--host" => parsed.host = value()?,
-            "--port" => parsed.port = value()?.parse().map_err(|e| format!("--port: {e}"))?,
+            "--port" => parsed.port = Some(value()?.parse().map_err(|e| format!("--port: {e}"))?),
             "--auth" => parsed.auth = value()?,
             "--psk" => parsed.psk = Some(value()?),
             "--token-expire-ms" => {
@@ -127,6 +186,14 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
             }
             "--web-root" => parsed.web_root = Some(PathBuf::from(value()?)),
             "--storage-root" => parsed.storage_root = Some(PathBuf::from(value()?)),
+            "--tls-cert" => parsed.tls_cert = Some(PathBuf::from(value()?)),
+            "--tls-key" => parsed.tls_key = Some(PathBuf::from(value()?)),
+            "--tls-trust" => parsed.tls_trust = Some(PathBuf::from(value()?)),
+            "--tls-client-auth" => {
+                let mode =
+                    ClientAuth::parse(&value()?).map_err(|e| format!("--tls-client-auth: {e}"))?;
+                parsed.tls_client_auth = Some(mode)
+            }
             "-h" | "--help" => return Err(USAGE.to_string()),
             other => return Err(format!("unknown option {other}\n\n{USAGE}")),
         }
@@ -213,6 +280,11 @@ fn start_console(args: &Args, state: &mut ServerState) -> Result<(), String> {
 }
 
 async fn run(args: Args, logs: Arc<LogBuffer>) -> Result<(), String> {
+    // the certificate and key are read before anything starts
+    let tls = match args.tls()? {
+        Some(config) => Some(Arc::new(TlsAcceptor::new(&config)?)),
+        None => None,
+    };
     let web_root = match &args.web_root {
         Some(dir) => Some(Arc::new(WebRoot::open(dir)?)),
         None => None,
@@ -248,18 +320,22 @@ async fn run(args: Args, logs: Arc<LogBuffer>) -> Result<(), String> {
         .map_err(|e| format!("the applications could not be started: {e}"))??;
     }
     state.web_root = web_root;
-    let listener = TcpListener::bind((args.host.as_str(), args.port))
+    let port = args.port();
+    let listener = TcpListener::bind((args.host.as_str(), port))
         .await
-        .map_err(|e| format!("cannot listen on {}:{}: {e}", args.host, args.port))?;
+        .map_err(|e| format!("cannot listen on {}:{port}: {e}", args.host))?;
     let address = listener.local_addr().map_err(|e| e.to_string())?;
-    tracing::info!("Listening on {address}");
+    let scheme = if tls.is_some() { "https" } else { "http" };
+    tracing::info!("Listening on {address} ({scheme})");
     let shutdown = async {
         let _ = tokio::signal::ctrl_c().await;
         tracing::info!("Shutting down");
     };
-    serve(state, listener, shutdown)
-        .await
-        .map_err(|e| format!("server failed: {e}"))
+    match tls {
+        None => serve(state, listener, shutdown).await,
+        Some(tls) => serve_tls(state, listener, tls, shutdown).await,
+    }
+    .map_err(|e| format!("server failed: {e}"))
 }
 
 #[tokio::main]
@@ -299,7 +375,7 @@ mod tests {
         assert_eq!(parse(&[]).ok().and_then(|args| args.threads), None);
         let args = parse(&["--port", "10888", "--threads", "3"]).ok().unwrap();
         assert_eq!(
-            (args.port, args.threads.map(NonZeroUsize::get)),
+            (args.port(), args.threads.map(NonZeroUsize::get)),
             (10888, Some(3))
         );
         for (bad, message) in [
@@ -321,6 +397,62 @@ mod tests {
         let missing = parse(&["--threads"]).err().unwrap();
         assert!(missing.starts_with("--threads needs a value"), "{missing}");
         assert!(USAGE.contains("--threads <count>"));
+    }
+
+    #[test]
+    fn tls_options_name_a_whole_identity_and_move_the_default_port() {
+        let plain = parse(&[]).ok().unwrap();
+        assert_eq!((plain.port(), plain.tls()), (10000, Ok(None)));
+        let tls = parse(&["--tls-cert", "chain.pem", "--tls-key", "key.pem"])
+            .ok()
+            .unwrap();
+        assert_eq!(tls.port(), 443);
+        let config = tls.tls().unwrap().unwrap();
+        assert_eq!(
+            (config.cert_chain, config.private_key, config.trust),
+            ("chain.pem".into(), "key.pem".into(), None)
+        );
+        assert_eq!(config.client_auth, ClientAuth::None);
+        let given = parse(&["--tls-cert", "c", "--tls-key", "k", "--port", "8443"]);
+        assert_eq!(given.ok().unwrap().port(), 8443);
+        for half in [&["--tls-cert", "c"][..], &["--tls-key", "k"][..]] {
+            let refused = parse(half).ok().unwrap().tls().unwrap_err();
+            assert_eq!(refused, "Must specify `--tls-cert` and `--tls-key`");
+        }
+        let alone = parse(&["--tls-trust", "roots.pem"]).ok().unwrap().tls();
+        assert!(alone.unwrap_err().contains("need --tls-cert"));
+        let mutual = parse(&[
+            "--tls-cert",
+            "c",
+            "--tls-key",
+            "k",
+            "--tls-client-auth",
+            "NEEDED",
+        ]);
+        assert_eq!(
+            mutual.ok().unwrap().tls().unwrap_err(),
+            "Trust material must be present when requesting mutual TLS"
+        );
+        let mutual = parse(&[
+            "--tls-cert",
+            "c",
+            "--tls-key",
+            "k",
+            "--tls-trust",
+            "t",
+            "--tls-client-auth",
+            "WANTED",
+        ]);
+        let config = mutual.ok().unwrap().tls().unwrap().unwrap();
+        assert_eq!(
+            (config.trust, config.client_auth),
+            (Some("t".into()), ClientAuth::Wanted)
+        );
+        let bad = parse(&["--tls-client-auth", "maybe"]).err().unwrap();
+        assert!(
+            bad.starts_with("--tls-client-auth: No enum constant"),
+            "{bad}"
+        );
     }
 
     /// The count reaches the engine: a table operation asks `parallel::threads`.

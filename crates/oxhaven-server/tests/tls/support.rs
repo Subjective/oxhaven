@@ -1,6 +1,6 @@
 //! Certificates made for a test run, with keys that exist only in memory, and a TLS relay
-//! that presents them. Shared by the TLS tests of the Barrage client (`src/barrage_client/
-//! tls_tests.rs`) and `tests/tls_system_roots.rs`.
+//! that presents them. Shared by the TLS tests of the library (`crate::test_support::tls`:
+//! the Barrage client's and the server's) and `tests/tls_system_roots.rs`.
 
 use std::net::SocketAddr;
 use std::pin::Pin;
@@ -69,18 +69,20 @@ fn certificate(
         }
         Some((issuer, issuer_key)) => {
             builder.set_issuer_name(issuer.subject_name()).unwrap();
-            let mut alternatives = SubjectAlternativeName::new();
-            for name in names {
-                if name.parse::<std::net::IpAddr>().is_ok() {
-                    alternatives.ip(name);
-                } else {
-                    alternatives.dns(name);
+            if !names.is_empty() {
+                let mut alternatives = SubjectAlternativeName::new();
+                for name in names {
+                    if name.parse::<std::net::IpAddr>().is_ok() {
+                        alternatives.ip(name);
+                    } else {
+                        alternatives.dns(name);
+                    }
                 }
+                let alternatives = alternatives
+                    .build(&builder.x509v3_context(Some(issuer), None))
+                    .unwrap();
+                builder.append_extension(alternatives).unwrap();
             }
-            let alternatives = alternatives
-                .build(&builder.x509v3_context(Some(issuer), None))
-                .unwrap();
-            builder.append_extension(alternatives).unwrap();
             builder.sign(issuer_key, MessageDigest::sha256()).unwrap();
         }
     }
@@ -93,10 +95,23 @@ pub struct Authority {
     pub pem: Vec<u8>,
     pub server: X509,
     pub server_key: PKey<Private>,
+    ca: X509,
+    ca_key: PKey<Private>,
 }
 
 impl Authority {
     pub fn new(names: &[&str]) -> Self {
+        Self::with_server_key(names, key())
+    }
+
+    /// As [`Authority::new`], with a server key on RSA (2048 bits) in place of P-256.
+    #[allow(dead_code)]
+    pub fn new_rsa(names: &[&str]) -> Self {
+        let rsa = openssl::rsa::Rsa::generate(2048).unwrap();
+        Self::with_server_key(names, PKey::from_rsa(rsa).unwrap())
+    }
+
+    fn with_server_key(names: &[&str], server_key: PKey<Private>) -> Self {
         let ca_key = key();
         // a name of its own: OpenSSL looks an issuer up by its name
         static COUNT: AtomicU32 = AtomicU32::new(0);
@@ -107,7 +122,6 @@ impl Authority {
             None,
             &[],
         );
-        let server_key = key();
         let server = certificate(
             "oxhaven test server",
             &server_key,
@@ -118,7 +132,18 @@ impl Authority {
             pem: ca.to_pem().unwrap(),
             server,
             server_key,
+            ca,
+            ca_key,
         }
+    }
+
+    /// A certificate and key the authority signed for `name`, with no other names: what a
+    /// client presents.
+    #[allow(dead_code)]
+    pub fn client(&self, name: &str) -> (X509, PKey<Private>) {
+        let client_key = key();
+        let client = certificate(name, &client_key, Some((&self.ca, &self.ca_key)), &[]);
+        (client, client_key)
     }
 }
 

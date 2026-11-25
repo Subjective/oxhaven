@@ -11,6 +11,11 @@ use tonic::Request;
 
 pub(crate) const PSK: &str = "test-key";
 
+/// Certificates made for a test run and a TLS relay, shared with `tests/tls_system_roots.rs`.
+#[cfg(feature = "tls")]
+#[path = "../tests/tls/support.rs"]
+pub(crate) mod tls;
+
 /// A running server with pre-shared key and anonymous authentication. Its update graph
 /// runs a cycle only when a test asks: `server.state.graph.run_cycle()`.
 pub(crate) struct TestServer {
