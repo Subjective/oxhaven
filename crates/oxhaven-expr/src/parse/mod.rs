@@ -398,6 +398,10 @@ impl Parser {
             "Period" | "java.time.Period" => ColumnType::Period,
             "ZoneId" | "java.time.ZoneId" => ColumnType::ZoneId,
             "ZonedDateTime" | "java.time.ZonedDateTime" => ColumnType::ZonedDateTime,
+            // `java.math` is no import: seen on Java 42.9, `(BigDecimal) BD` does not
+            // compile.
+            "java.math.BigDecimal" => ColumnType::BigDecimal,
+            "java.math.BigInteger" => ColumnType::BigInteger,
             // The class of the cells is the operand's, which the type checker knows.
             "Object" | "java.lang.Object" => ColumnType::object(None),
             other => return Err(unsupported(format!("cast to {other}"))),
@@ -1168,7 +1172,7 @@ mod tests {
     fn constructs_outside_the_subset_are_named() {
         let cases = [
             ("(Integer) A", "cast to Integer"),
-            ("(java.math.BigDecimal) A", "cast to java.math.BigDecimal"),
+            ("(BigDecimal) A", "cast to BigDecimal"),
             ("(Integer[]) A", "cast to Integer[]"),
             ("(Double).NaN", "field access .NaN"),
             ("(A + B).x", "field access .x"),

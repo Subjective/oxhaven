@@ -12,6 +12,9 @@ workspace = true
 arrow.workspace = true
 chrono.workspace = true
 chrono-tz.workspace = true
+num-bigint.workspace = true
+num-integer.workspace = true
+num-traits.workspace = true
 oxhaven-column = { path = "../oxhaven-column" }
 oxhaven-contracts = { path = "../oxhaven-contracts" }
 roxmltree.workspace = true

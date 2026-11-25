@@ -195,6 +195,7 @@ fn same_in_every_row(expr: &Typed) -> bool {
             Node::Call { kernel, arguments } => {
                 !kernel.is_volatile() && arguments.iter().all(|part| walk(part, arrays))
             }
+            Node::Big { arguments, .. } => arguments.iter().all(|part| walk(part, arrays)),
             Node::StringMethod {
                 receiver,
                 arguments,

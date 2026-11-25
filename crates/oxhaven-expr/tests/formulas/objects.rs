@@ -196,14 +196,11 @@ fn bytes_become_text_and_have_a_length() {
 #[test]
 fn nothing_else_is_done_with_an_object_column() {
     let table = objects();
+    // `Dec` and `Big` are values now: `big_numbers.rs`.
     for formula in [
-        "Dec",
-        "Dec + 1",
         "Date + 1",
         "Time.getHour()",
-        "Dec.toString(1)",
         "Local.toString().length() > 0 ? Local : Local",
-        "min(Big, Big)",
     ] {
         let Err(FormulaError::Unsupported(message)) = compile(&table, formula).map(|_| ()) else {
             panic!("{formula} compiled, or failed otherwise than as unsupported");

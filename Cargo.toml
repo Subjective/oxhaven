@@ -37,6 +37,11 @@ libc = "0.2"
 # The server binary's allocator (MIT), built from its bundled C source; only the `mimalloc`
 # feature of oxhaven-server uses it (docs/BENCHMARK.md, "After task 9.13").
 mimalloc = { version = "0.1.52", default-features = false }
+# The integers of any size under BigDecimal and BigInteger in formulas (MIT OR Apache-2.0);
+# arrow already brings all three.
+num-bigint = "0.5.1"
+num-integer = "0.1.47"
+num-traits = "0.2.19"
 # TLS of the Barrage client, through the system's OpenSSL 3 (Apache-2.0), the library the
 # Kafka client links (PORTING.md, "Dependencies"; owner item 7.24): `openssl` is Apache-2.0,
 # `tokio-openssl` MIT OR Apache-2.0. Only the `tls` feature of oxhaven-server uses them.

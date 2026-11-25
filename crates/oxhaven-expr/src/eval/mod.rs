@@ -28,7 +28,7 @@ use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{Table, TableFailure};
 use std::sync::Arc;
-pub(crate) use text::{java_strings, new_string_of};
+pub(crate) use text::{double_to_string, java_strings, new_string_of};
 
 fn failure(message: impl Into<String>) -> TableFailure {
     TableFailure {
@@ -152,6 +152,7 @@ fn row_by_row(expr: &Typed) -> bool {
             if_true,
             if_false,
         } => row_by_row(condition) && row_by_row(if_true) && row_by_row(if_false),
+        Node::Big { arguments, .. } => arguments.iter().all(row_by_row),
         _ => false,
     }
 }
@@ -868,6 +869,16 @@ fn evaluate(expr: &Typed, batch: &Batch) -> Result<ArrayRef, TableFailure> {
         Node::DayOfWeek { number, method } => {
             let numbers = evaluate(number, batch)?;
             objects::days_of_week(&numbers, *method)
+        }
+        Node::Big {
+            function,
+            arguments,
+        } => {
+            let values = arguments
+                .iter()
+                .map(|argument| evaluate(argument, batch))
+                .collect::<Result<Vec<_>, _>>()?;
+            big::evaluate(function, &expr.column_type, arguments, &values, batch.rows)
         }
         // `io.deephaven.function.Basic#isNull`.
         Node::IsNull(operand) => {

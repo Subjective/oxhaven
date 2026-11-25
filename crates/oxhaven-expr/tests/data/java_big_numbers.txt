@@ -1,0 +1,787 @@
+# Formulas over BigDecimal (BD, BD2) and BigInteger (BI, BI2) columns and numbers, which
+# record_java_big_numbers.py runs on Java. A line after `nonnull ` runs over the rows
+# without null.
+# arithmetic
+BD + BD2
+BD2 + BD
+BD + BI2
+BI2 + BD
+BD + I
+I + BD
+BD + L
+L + BD
+BD + D
+D + BD
+BD + F
+F + BD
+BD + C
+C + BD
+BD + B
+B + BD
+BD + S
+S + BD
+BD + BD
+BD + BI
+BI + BD
+BD - BD2
+BD2 - BD
+BD - BI2
+BI2 - BD
+BD - I
+I - BD
+BD - L
+L - BD
+BD - D
+D - BD
+BD - F
+F - BD
+BD - C
+C - BD
+BD - B
+B - BD
+BD - S
+S - BD
+BD - BD
+BD - BI
+BI - BD
+BD * BD2
+BD2 * BD
+BD * BI2
+BI2 * BD
+BD * I
+I * BD
+BD * L
+L * BD
+BD * D
+D * BD
+BD * F
+F * BD
+BD * C
+C * BD
+BD * B
+B * BD
+BD * S
+S * BD
+BD * BD
+BD * BI
+BI * BD
+BD / BD2
+BD2 / BD
+BD / BI2
+BI2 / BD
+BD / I
+I / BD
+BD / L
+L / BD
+BD / D
+D / BD
+BD / F
+F / BD
+BD / C
+C / BD
+BD / B
+B / BD
+BD / S
+S / BD
+BD / BD
+BD / BI
+BI / BD
+BD % BD2
+BD2 % BD
+BD % BI2
+BI2 % BD
+BD % I
+I % BD
+BD % L
+L % BD
+BD % D
+D % BD
+BD % F
+F % BD
+BD % C
+C % BD
+BD % B
+B % BD
+BD % S
+S % BD
+BD % BD
+BD % BI
+BI % BD
+BI + BD2
+BD2 + BI
+BI + BI2
+BI2 + BI
+BI + I
+I + BI
+BI + L
+L + BI
+BI + D
+D + BI
+BI + F
+F + BI
+BI + C
+C + BI
+BI + B
+B + BI
+BI + S
+S + BI
+BI + BI
+BI - BD2
+BD2 - BI
+BI - BI2
+BI2 - BI
+BI - I
+I - BI
+BI - L
+L - BI
+BI - D
+D - BI
+BI - F
+F - BI
+BI - C
+C - BI
+BI - B
+B - BI
+BI - S
+S - BI
+BI - BI
+BI * BD2
+BD2 * BI
+BI * BI2
+BI2 * BI
+BI * I
+I * BI
+BI * L
+L * BI
+BI * D
+D * BI
+BI * F
+F * BI
+BI * C
+C * BI
+BI * B
+B * BI
+BI * S
+S * BI
+BI * BI
+BI / BD2
+BD2 / BI
+BI / BI2
+BI2 / BI
+BI / I
+I / BI
+BI / L
+L / BI
+BI / D
+D / BI
+BI / F
+F / BI
+BI / C
+C / BI
+BI / B
+B / BI
+BI / S
+S / BI
+BI / BI
+BI % BD2
+BD2 % BI
+BI % BI2
+BI2 % BI
+BI % I
+I % BI
+BI % L
+L % BI
+BI % D
+D % BI
+BI % F
+F % BI
+BI % C
+C % BI
+BI % B
+B % BI
+BI % S
+S % BI
+BI % BI
+# literals
+BD + 1
+BD + 1L
+BD * 2.5
+BD - 0.1
+BD / 3
+BD % 2
+1 / BD2
+BI + 1
+BI * 2
+BI / 3
+BI % 2
+BI - 0.5
+BI * 1.5f
+BD + 'a'
+BI + 'a'
+BD + "s"
+"s" + BD
+BI + "s"
+BD + Z
+BI + Z
+BD + Str
+BD + null
+null + BD
+BI + null
+BD * null
+BD / null
+BD + (byte) 1
+BD + (short) 1
+BD + 1.5f
+BD + NULL_INT
+BD + NULL_DOUBLE
+BI + NULL_LONG
+BI / NULL_INT
+# unary
+-BD
+-BI
+-(BD + 1)
++BD
+~BI
+!BD
+# casts
+(int) BD
+(long) BD
+(double) BD
+(float) BD
+(short) BD
+(byte) BD
+(char) BD
+(int) BI
+(long) BI
+(double) BI
+(float) BI
+(short) BI
+(byte) BI
+(char) BI
+(Object) BD
+(String) BD
+(Number) BD
+(Comparable) BD
+(BigDecimal) BD
+(java.math.BigDecimal) BD
+(java.math.BigInteger) BI
+(java.math.BigDecimal) BI
+(java.math.BigInteger) BD
+(java.math.BigDecimal) I
+(boolean) BD
+(Boolean) BD
+(int) (BD + 1)
+(double) (BI * 2)
+# compare
+BD + 1 > 2
+BD * 2 == BD2
+BI + 1 == 8
+BD / 2 < 0
+BD + BI >= 0
+BD % 2 != 1
+# ternary
+Z ? BD : BD2
+I > 2 ? BD : null
+I > 2 ? null : BI
+I > 2 ? BD : BI
+I > 2 ? BD : 1
+I > 2 ? BD : D
+I > 2 ? BI : 1
+# null checks
+isNull(BD + 1)
+BD + 1 == null
+BD * BD2 != null
+# division zero/nan
+BD / 0
+BD % 0
+BI / 0
+BI % 0
+BD + (0.0 / 0)
+BD + (1.0 / 0)
+BD * NAN_DOUBLE
+BI + NAN_FLOAT
+BD / 0.0
+# where
+# methods, statics, constructors and functions
+BD.add(BD2)
+BD.subtract(BD2)
+BD.multiply(BD2)
+BD.divide(BD2)
+BD.divide(BD2, 3, java.math.RoundingMode.HALF_UP)
+BD.divide(BD2, 3, java.math.RoundingMode.HALF_EVEN)
+BD.divide(BD2, 3, java.math.RoundingMode.DOWN)
+BD.divide(BD2, java.math.RoundingMode.HALF_UP)
+BD.divide(BD2, java.math.MathContext.DECIMAL64)
+BD.divideToIntegralValue(BD2)
+BD.remainder(BD2)
+BD.setScale(2)
+BD.setScale(2, java.math.RoundingMode.HALF_UP)
+BD.setScale(1, java.math.RoundingMode.HALF_UP)
+BD.setScale(0, java.math.RoundingMode.HALF_EVEN)
+BD.setScale(-1, java.math.RoundingMode.CEILING)
+BD.setScale(3, java.math.RoundingMode.FLOOR)
+BD.setScale(1, java.math.RoundingMode.UP)
+BD.setScale(1, java.math.RoundingMode.HALF_DOWN)
+BD.setScale(2, java.math.RoundingMode.UNNECESSARY)
+BD.setScale(I, java.math.RoundingMode.HALF_UP)
+BD.setScale(2, 4)
+BD.compareTo(BD2)
+BD.equals(BD2)
+BD.equals(BD)
+BD.scale()
+BD.precision()
+BD.signum()
+BD.abs()
+BD.negate()
+BD.plus()
+BD.doubleValue()
+BD.floatValue()
+BD.intValue()
+BD.longValue()
+BD.shortValue()
+BD.byteValue()
+BD.intValueExact()
+BD.toBigInteger()
+BD.toBigIntegerExact()
+BD.unscaledValue()
+BD.stripTrailingZeros()
+BD.toPlainString()
+BD.toEngineeringString()
+BD.toString()
+BD.hashCode()
+BD.max(BD2)
+BD.min(BD2)
+BD.pow(2)
+BD.pow(I)
+BD.movePointLeft(2)
+BD.movePointRight(2)
+BD.scaleByPowerOfTen(3)
+BD.ulp()
+BD.round(java.math.MathContext.DECIMAL32)
+BD.sqrt(java.math.MathContext.DECIMAL64)
+BD.add(BD2).multiply(BD2)
+BD.add(1)
+BD.add(BI)
+BD.add(null)
+BD.compareTo(null)
+BD.equals(null)
+BD.equals(1)
+BD.add(BD2, java.math.MathContext.DECIMAL32)
+BD.signum() > 0
+BD.scale() + 1
+BI.add(BI2)
+BI.subtract(BI2)
+BI.multiply(BI2)
+BI.divide(BI2)
+BI.mod(BI2)
+BI.remainder(BI2)
+BI.pow(2)
+BI.gcd(BI2)
+BI.abs()
+BI.negate()
+BI.signum()
+BI.compareTo(BI2)
+BI.equals(BI2)
+BI.max(BI2)
+BI.min(BI2)
+BI.intValue()
+BI.longValue()
+BI.doubleValue()
+BI.floatValue()
+BI.shortValue()
+BI.byteValue()
+BI.longValueExact()
+BI.toString()
+BI.toString(16)
+BI.bitLength()
+BI.bitCount()
+BI.testBit(1)
+BI.shiftLeft(2)
+BI.shiftRight(1)
+BI.and(BI2)
+BI.or(BI2)
+BI.not()
+BI.sqrt()
+BI.modPow(BI2, BI)
+BI.isProbablePrime(10)
+BI.hashCode()
+BI.add(1)
+BI.divideAndRemainder(BI2)
+java.math.BigDecimal.valueOf(I)
+java.math.BigDecimal.valueOf(L)
+java.math.BigDecimal.valueOf(D)
+java.math.BigDecimal.valueOf(F)
+java.math.BigDecimal.valueOf(L, 2)
+java.math.BigDecimal.valueOf(C)
+java.math.BigInteger.valueOf(L)
+java.math.BigInteger.valueOf(I)
+java.math.BigDecimal.ONE
+java.math.BigDecimal.ZERO
+java.math.BigDecimal.TEN
+java.math.BigInteger.ONE
+java.math.BigInteger.TWO
+java.math.BigInteger.ZERO
+java.math.BigInteger.TEN
+java.math.BigDecimal.ROUND_HALF_UP
+new java.math.BigDecimal("1.5")
+new java.math.BigDecimal(Str)
+new java.math.BigDecimal(I)
+new java.math.BigDecimal(D)
+new java.math.BigDecimal(L)
+new java.math.BigDecimal(BI)
+new java.math.BigDecimal(BI, 2)
+new java.math.BigInteger("12")
+new java.math.BigInteger(Str)
+BigDecimal.ONE
+java.math.RoundingMode.HALF_UP
+BD + java.math.BigDecimal.ONE
+isNull(BD)
+nullToValue(BD, BD2)
+nullToValue(BD, java.math.BigDecimal.ONE)
+minObj(BD, BD2)
+maxObj(BD, BD2)
+ifelseObj(Z, BD, BD2)
+inObj(BD, BD2)
+in(BD, BD2, BD)
+inRange(BD, BD2, BD2)
+abs(BD)
+sign(BD)
+replaceIfNull(BD, BD2)
+compare(BD, BD2)
+isNull(BI)
+nullToValue(BI, BI2)
+minObj(BI, BI2)
+maxObj(BI, BI2, BI)
+ifelseObj(I > 2, BI, BI2)
+countObj(BD, BD2)
+firstObj(BD, BD2)
+sortObj(BD, BD2)
+countDistinctObj(BD, BD2)
+distinctObj(BD, BD2)
+vecObj(BD, BD2)
+array(BD)
+sum(BD)
+min(BD, BD2)
+max(BD, BD2)
+isNaN(BD)
+isInf(BD)
+isFinite(BD)
+round(BD)
+floor(BD)
+doubleCast(BD)
+intCast(BD)
+longCast(BI)
+plus(BD, BD2)
+negate(BD)
+divide(BD, 3)
+eq(BD, BD2)
+String.valueOf(BD)
+java.util.Objects.equals(BD, BD2)
+Objects.equals(BD, BD2)
+BD == BD2
+BD == BD
+BD != BD2
+BD == 1.5
+BD.compareTo(BD2) == 0
+Z ? BD : null
+Z == null ? null : Z ? BD : BD2
+I > 2 ? BD : BD2
+I > 2 ? BI : BI2
+I > 2 ? BD + 1 : BD2 * 2
+I > 2 ? BD : (java.math.BigDecimal) null
+I > 2 ? BD : java.math.BigDecimal.ONE
+(java.math.BigDecimal) null
+(Object) BI
+BD + "" + BI
+`x` + BD
+BD + 1 + "s"
+"s" + (BD + 1)
+BD + BD2 + BI
+BD * 2 / 3
+(BD + BD2) / 2
+-BD * 2
+BD / 7
+BD / -7
+BD2 / 7
+BD2 / -0.3
+BD / 3.0
+BD / 1e20
+BD / 1e-20
+1e-20 / BD2
+BD * 1e-10
+BD + 1e300
+BD + 4.9e-324
+BD + MAX_DOUBLE
+BD + MIN_LONG
+BD - 1e-7
+BD + 100.0
+BD + 1e7
+BD + 1.0e-3
+BD + 123456789.0
+BI / 7
+BI / -7
+BI / 3.0
+BI2 / BI2
+(double) (BD * 1e300)
+(double) (BD * 1e310)
+(float) (BD * 1e40)
+(float) (BD / 1e40)
+(double) (BD / 1e320)
+(double) (BI * BI * BI * BI * BI * BI * BI * BI * BI * BI * BI * BI)
+(int) (BD * 1e10)
+(long) (BD * 1e30)
+(long) BI * 2
+(float) BD2
+(double) BD2
+(float) (BD + 0.1)
+(int) BD2
+(short) (BI * 1000)
+(byte) (BI * 100)
+(int) -BD
+(long) (BD - 0.5)
+BD2.toString()
+"s" + (BD + 1) + BD2
+BD + BD2 + "x"
+new java.math.BigDecimal("abc")
+new java.math.BigDecimal("1e5")
+new java.math.BigDecimal("-.5")
+new java.math.BigInteger("-0012")
+new java.math.BigDecimal(F)
+new java.math.BigDecimal(C)
+new java.math.BigDecimal(BI2, I)
+java.math.BigDecimal.valueOf(B)
+java.math.BigInteger.valueOf(C)
+BD == null
+BI != null
+BD > BD2
+BI <= BI2
+BD + 1 < BI
+BD < null
+BD - null
+BI * 1L
+BD2 + L
+BI2 * L
+BI2 * D
+BI2 % F
+BD2 % C
+(int) (BI2 * 1000000000000L)
+(long) (BD2 * 1e19)
+I > 2 ? BD + 1 : null
+minObj(BD, BD2, java.math.BigDecimal.ONE)
+maxObj(BI2, BI)
+ifelseObj(Z, BD + 1, BD2)
+isNull(BD.add(BD2))
+BD2.equals(BD2)
+BD2.equals(java.math.BigDecimal.valueOf(15, 1))
+java.math.BigDecimal.ONE.add(java.math.BigDecimal.TEN)
+java.math.BigInteger.TEN.pow(30)
+java.math.BigDecimal.TEN.pow(3).toString()
+# methods over the rows without null
+nonnull BD.add(BD2)
+nonnull BD.subtract(BD2)
+nonnull BD.multiply(BD2)
+nonnull BD.divide(BD2)
+nonnull BD.divide(BD2, 3, java.math.RoundingMode.HALF_UP)
+nonnull BD.divide(BD2, 3, java.math.RoundingMode.HALF_EVEN)
+nonnull BD.divide(BD2, 3, java.math.RoundingMode.DOWN)
+nonnull BD.divide(BD2, java.math.RoundingMode.HALF_UP)
+nonnull BD.divide(BD2, java.math.MathContext.DECIMAL64)
+nonnull BD.divideToIntegralValue(BD2)
+nonnull BD.remainder(BD2)
+nonnull BD.setScale(2)
+nonnull BD.setScale(2, java.math.RoundingMode.HALF_UP)
+nonnull BD.setScale(1, java.math.RoundingMode.HALF_UP)
+nonnull BD.setScale(0, java.math.RoundingMode.HALF_EVEN)
+nonnull BD.setScale(-1, java.math.RoundingMode.CEILING)
+nonnull BD.setScale(3, java.math.RoundingMode.FLOOR)
+nonnull BD.setScale(1, java.math.RoundingMode.UP)
+nonnull BD.setScale(1, java.math.RoundingMode.HALF_DOWN)
+nonnull BD.setScale(2, java.math.RoundingMode.UNNECESSARY)
+nonnull BD.setScale(I, java.math.RoundingMode.HALF_UP)
+nonnull BD.setScale(2, 4)
+nonnull BD.compareTo(BD2)
+nonnull BD.equals(BD2)
+nonnull BD.equals(BD)
+nonnull BD.scale()
+nonnull BD.precision()
+nonnull BD.signum()
+nonnull BD.abs()
+nonnull BD.negate()
+nonnull BD.plus()
+nonnull BD.doubleValue()
+nonnull BD.floatValue()
+nonnull BD.intValue()
+nonnull BD.longValue()
+nonnull BD.shortValue()
+nonnull BD.byteValue()
+nonnull BD.intValueExact()
+nonnull BD.toBigInteger()
+nonnull BD.toBigIntegerExact()
+nonnull BD.unscaledValue()
+nonnull BD.stripTrailingZeros()
+nonnull BD.toPlainString()
+nonnull BD.toEngineeringString()
+nonnull BD.toString()
+nonnull BD.hashCode()
+nonnull BD.max(BD2)
+nonnull BD.min(BD2)
+nonnull BD.pow(2)
+nonnull BD.pow(I)
+nonnull BD.movePointLeft(2)
+nonnull BD.movePointRight(2)
+nonnull BD.scaleByPowerOfTen(3)
+nonnull BD.ulp()
+nonnull BD.round(java.math.MathContext.DECIMAL32)
+nonnull BD.sqrt(java.math.MathContext.DECIMAL64)
+nonnull BD.add(BD2).multiply(BD2)
+nonnull BD.add(1)
+nonnull BD.add(BI)
+nonnull BD.add(null)
+nonnull BD.compareTo(null)
+nonnull BD.equals(null)
+nonnull BD.equals(1)
+nonnull BD.add(BD2, java.math.MathContext.DECIMAL32)
+nonnull BD.signum() > 0
+nonnull BD.scale() + 1
+nonnull BI.add(BI2)
+nonnull BI.subtract(BI2)
+nonnull BI.multiply(BI2)
+nonnull BI.divide(BI2)
+nonnull BI.mod(BI2)
+nonnull BI.remainder(BI2)
+nonnull BI.pow(2)
+nonnull BI.gcd(BI2)
+nonnull BI.abs()
+nonnull BI.negate()
+nonnull BI.signum()
+nonnull BI.compareTo(BI2)
+nonnull BI.equals(BI2)
+nonnull BI.max(BI2)
+nonnull BI.min(BI2)
+nonnull BI.intValue()
+nonnull BI.longValue()
+nonnull BI.doubleValue()
+nonnull BI.floatValue()
+nonnull BI.shortValue()
+nonnull BI.byteValue()
+nonnull BI.longValueExact()
+nonnull BI.toString()
+nonnull BI.toString(16)
+nonnull BI.bitLength()
+nonnull BI.bitCount()
+nonnull BI.testBit(1)
+nonnull BI.shiftLeft(2)
+nonnull BI.shiftRight(1)
+nonnull BI.and(BI2)
+nonnull BI.or(BI2)
+nonnull BI.not()
+nonnull BI.sqrt()
+nonnull BI.modPow(BI2, BI)
+nonnull BI.isProbablePrime(10)
+nonnull BI.hashCode()
+nonnull BI.add(1)
+nonnull BI.divideAndRemainder(BI2)
+nonnull BD.add(BD2).toString()
+nonnull BD.setScale(3, java.math.RoundingMode.HALF_UP).toPlainString()
+nonnull BD.compareTo(BD2) > 0
+nonnull BD.toBigInteger().add(BI)
+nonnull BI.add(BD.toBigInteger())
+nonnull BD.add(BD2) + 1
+nonnull BD.signum() * 2
+nonnull BD.setScale(BI2.intValue(), java.math.RoundingMode.HALF_UP)
+nonnull BD.setScale(-2, java.math.RoundingMode.HALF_UP)
+nonnull BD.setScale(C, java.math.RoundingMode.HALF_UP)
+nonnull BD.setScale(L, java.math.RoundingMode.HALF_UP)
+nonnull BD.setScale(B, java.math.RoundingMode.HALF_UP)
+nonnull BD.divide(BD2, 2, java.math.RoundingMode.HALF_UP)
+nonnull BD.divide(BD2, I, java.math.RoundingMode.CEILING)
+nonnull BD.divide(BD2, 0, java.math.RoundingMode.FLOOR)
+nonnull BD.divide(BD2, 4, java.math.RoundingMode.UP)
+nonnull BD.divide(BD2, 4, java.math.RoundingMode.HALF_DOWN)
+nonnull BD.divide(BD2, 4, java.math.RoundingMode.UNNECESSARY)
+nonnull BD.divide(BD2, java.math.RoundingMode.HALF_EVEN)
+nonnull BD.divide(BD2, java.math.RoundingMode.DOWN)
+nonnull BD.divide(BD2, 2, 4)
+nonnull BD.divide(BD2, 4)
+nonnull BD.setScale(2, java.math.BigDecimal.ROUND_HALF_UP)
+nonnull BD.setScale(2, 9)
+nonnull BD.max(BD2).min(BD)
+nonnull BD.equals(BD2.add(BD).subtract(BD2))
+nonnull BD.getClass()
+nonnull BD.add(BD2).scale()
+nonnull BD & BD2
+nonnull BI & BI2
+nonnull BI | 1
+nonnull BI ^ BI2
+nonnull BD > BD2 ? BD : BD2
+nonnull BD.multiply(BD).precision()
+nonnull BD.unscaledValue().add(BI)
+nonnull BD.toBigInteger().longValue()
+nonnull BD.longValue() + 1
+nonnull BD.intValue() + I
+nonnull BD.doubleValue() + D
+nonnull BI.longValue() * 2
+nonnull BI.intValue() + I
+nonnull BI.doubleValue() / 2
+nonnull BI.divide(BI2).add(BI)
+nonnull BI.mod(BI2.abs())
+nonnull BI.remainder(BI2).negate()
+nonnull BI.compareTo(BI2) == 0
+nonnull BI.signum() > 0
+nonnull BI.max(BI2).toString()
+nonnull java.math.BigInteger.valueOf(L).add(BI)
+nonnull java.math.BigDecimal.valueOf(D).add(BD)
+nonnull java.math.BigDecimal.valueOf(L, I)
+nonnull java.math.BigDecimal.valueOf(L).setScale(2)
+nonnull java.math.BigDecimal.valueOf(I, 3)
+nonnull java.math.BigDecimal.ONE.add(BD)
+nonnull java.math.BigDecimal.valueOf(1.5)
+nonnull java.math.BigDecimal.valueOf(1)
+nonnull java.math.BigDecimal.valueOf(100, -2)
+nonnull java.math.BigInteger.valueOf(7)
+nonnull java.math.BigDecimal.valueOf(NULL_DOUBLE)
+nonnull java.math.BigDecimal.valueOf(0.0 / 0)
+nonnull BI.xor(BI2)
+nonnull BI.andNot(BI2)
+nonnull BI.toString(2)
+nonnull BI.toString(1)
+nonnull BI.toString(37)
+nonnull BI.toString(36)
+nonnull BI.testBit(-1)
+nonnull BI.testBit(200)
+nonnull BI.testBit(0)
+nonnull BI.shiftLeft(-2)
+nonnull BI.shiftRight(-3)
+nonnull BI.shiftRight(200)
+nonnull BD.divide(new java.math.BigDecimal("0.08"))
+nonnull BD.divide(new java.math.BigDecimal("2E+3"))
+nonnull BD.divide(new java.math.BigDecimal("-1.25"))
+nonnull BD.divide(new java.math.BigDecimal("4E-2"))
+nonnull BD.divide(java.math.BigDecimal.TEN)
+nonnull BD.divide(new java.math.BigDecimal("3"))
+nonnull java.math.BigDecimal.ZERO.divide(BD2)
+nonnull new java.math.BigDecimal("0.000").divide(new java.math.BigDecimal("1E+5"))
+nonnull new java.math.BigDecimal("1E+5").divide(new java.math.BigDecimal("1E-3"))
+nonnull BD.multiply(BD).divide(BD)
+nonnull BD.movePointLeft(-3)
+nonnull BD.movePointRight(-2)
+nonnull BD.scaleByPowerOfTen(-2)
+nonnull BD.setScale(-2, java.math.RoundingMode.HALF_EVEN)
+nonnull BD.setScale(3, 7)
+nonnull BD.setScale(3, 8)
+nonnull BD.setScale(3, -1)
+nonnull BD.divide(BD2, 3, 2)
+nonnull BD.divide(BD2, 0)
+nonnull BD.divide(BD2, 7)
+nonnull BD2.remainder(BD)
+nonnull BD.pow(3)
+nonnull BD.pow(-1)
+nonnull BD.pow(0)
+nonnull BD.compareTo(BD2) + BI.compareTo(BI2)
+nonnull BI.pow(I)
+nonnull BI.signum() + BD.signum()
+nonnull (byte) BI
+nonnull (short) BD
+nonnull (float) BI
+nonnull -BD
+nonnull -BI
