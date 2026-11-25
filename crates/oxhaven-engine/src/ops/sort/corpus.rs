@@ -345,7 +345,7 @@ fn results_match_the_recorded_java_results() {
         ("update", 46),
         ("update_by", 43),
         ("update_view", 16),
-        ("view", 54),
+        ("view", 57),
         ("where", 53),
         ("where_in", 20),
     ];
