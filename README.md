@@ -9,7 +9,18 @@ not ready for data anyone depends on.
 
 ## Run it with the web IDE
 
-Needs Rust, a Python 3 with its shared library (the console embeds it, see
+The quickest way is the Docker image, which has the IDE, a Python console with numpy, pandas,
+pyarrow and `deephaven-plugin-plotly-express`, and notebooks in the volume `/data`:
+
+```bash
+docker build -f docker/Dockerfile -t oxhaven .
+docker run --rm -p 10000:10000 -e START_OPTS=-Dauthentication.psk=mykey oxhaven
+```
+
+Then open <http://localhost:10000/ide/?psk=mykey>. Without `START_OPTS` the server makes a
+key and prints it to the log. `docker/README.md` has the options, HTTPS among them.
+
+To build and run it without Docker: this needs Rust, a Python 3 with its shared library (the console embeds it, see
 `docs/CONSOLE.md`), and the `deephaven-server` wheel, which the IDE's files come from. The
 oracle's Python environment has the wheel (`oracle/README.md`):
 

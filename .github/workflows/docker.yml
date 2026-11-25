@@ -1,0 +1,49 @@
+name: docker
+# Builds the image of docker/Dockerfile (a release build of the server with its console, the
+# web IDE's files from the deephaven-server wheel, the console's environment) and starts it
+# once with docker/smoke.sh. The image is not pushed: no registry, no login, no secret. See
+# docker/README.md.
+#
+# It is not part of ci.yml: the build takes 10 to 20 minutes and pulls the base image from
+# Docker Hub without a login, whose anonymous pull limit can fail it. So it runs when what
+# makes the image changes, every week (for changes of the server it builds), and on demand.
+on:
+  pull_request:
+    paths:
+      - "docker/**"
+      - ".dockerignore"
+      - "scripts/extract-web-root.sh"
+      - "rust-toolchain.toml"
+      - ".github/workflows/docker.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docker/**"
+      - ".dockerignore"
+      - "scripts/extract-web-root.sh"
+      - "rust-toolchain.toml"
+      - ".github/workflows/docker.yml"
+  schedule:
+    # Mondays at 04:41 UTC, on main.
+    - cron: "41 4 * * 1"
+  workflow_dispatch:
+
+# The repository is public, so anyone can open a pull request from a fork. No job needs to
+# write, and no job uses a secret: the token is read-only.
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        run: docker build -f docker/Dockerfile -t oxhaven .
+      - name: Start it and check that it serves
+        run: docker/smoke.sh oxhaven
