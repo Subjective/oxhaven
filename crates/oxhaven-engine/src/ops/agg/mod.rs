@@ -13,6 +13,7 @@
 //! | [`Run`], [`Values`], [`Scalar`] | Column values as an operator sees them, whatever the column type |
 //! | `sum`, `min_max`, `first_last` | The operators: count, sum, abs sum, avg; min, max; first, last |
 //! | `var` | Variance and standard deviation |
+//! | `big` | Sum, abs sum, avg, variance and standard deviation of `BigDecimal` and `BigInteger` |
 //! | `distinct` | Count distinct, distinct, unique, median and percentile, over a sorted multiset per group |
 //! | `count_where` | Count where: the rows of each group that pass filters |
 //! | `weighted` | Weighted average and weighted sum, which read a weight column too |
@@ -47,6 +48,7 @@
 //! sorted first or last. The gRPC handler refuses each of them by name.
 
 mod aggregator;
+mod big;
 mod count_where;
 mod distinct;
 mod first_last;
@@ -66,6 +68,7 @@ mod weighted;
 #[cfg(test)]
 mod tests;
 
+pub use big::{BigAvg, BigSum, BigVar};
 pub use count_where::CountWhere;
 pub use distinct::{SetMode, SortedValues};
 pub use first_last::{FirstLast, FirstLastCell, FirstLastMode, ShownRows};
@@ -825,39 +828,23 @@ fn make_operator(
         }
         _ => {}
     }
-    // Java computes these of a `BigDecimal` or `BigInteger` column with arbitrary precision
-    // (observed: the sum of `1.0`, `1.00` and `2.5` is `4.50`, their average `1.50`), and
-    // orders or compares the values by `compareTo` in some operators and by `equals` in
-    // others (observed: the distinct values of `3` and `3.000` are both, their minimum the
-    // first seen). None of this is ported; first, last, group and the formulas are.
+    // Java computes the sums, averages and variances of a `BigDecimal` or `BigInteger`
+    // column with arbitrary precision (`big`), and orders the values by `compareTo`; its
+    // sorted sets tell them apart by `equals`, which for `1.0` and `1.00` disagree, and
+    // the operators refuse a group where that leaves the answer to their layout
+    // (`distinct`, `min_max`, `sorted`).
     let big = |column_type: &ColumnType| {
         matches!(column_type, ColumnType::BigDecimal | ColumnType::BigInteger)
     };
-    let sort_columns: &[String] = match spec {
-        AggSpec::SortedFirst { columns } | AggSpec::SortedLast { columns } => columns,
-        _ => &[],
-    };
-    let big_sort = sort_columns.iter().find_map(|name| {
-        let sort_type = &definition.columns()[definition.index_of(name)?].column_type;
-        big(sort_type).then_some(sort_type)
-    });
-    let reads_big = big(input_type)
-        && !matches!(
-            spec,
-            AggSpec::First
-                | AggSpec::Last
-                | AggSpec::Group
-                | AggSpec::Formula { .. }
-                | AggSpec::SortedFirst { .. }
-                | AggSpec::SortedLast { .. }
-                | AggSpec::WeightedAvg { .. }
-                | AggSpec::WeightedSum { .. }
-        );
-    if let Some(column_type) = big_sort.or(reads_big.then_some(input_type)) {
-        unported!(
-            "io.deephaven.engine.table.impl.by.AggregationProcessor",
-            "{spec:?} of a column of type {column_type:?}"
-        );
+    // A non-unique sentinel for such a column is converted to the column's class by
+    // `AggregationProcessor#maybeConvertType`, which is not ported.
+    if let AggSpec::Unique { non_unique, .. } = spec {
+        if big(input_type) && *non_unique != Sentinel::Null {
+            unported!(
+                "io.deephaven.engine.table.impl.by.AggregationProcessor#maybeConvertType",
+                "a non-unique sentinel for a column of type {input_type:?}"
+            );
+        }
     }
     let op: Box<dyn AggOperator> = match spec {
         AggSpec::Formula { .. } => unreachable!("a formula is planned by each_formula"),
@@ -876,6 +863,8 @@ fn make_operator(
             let absolute = *spec == AggSpec::AbsSum;
             match input_type {
                 ColumnType::Boolean => Box::<BooleanSum>::default(),
+                ColumnType::BigDecimal => Box::new(BigSum::new(absolute, false)),
+                ColumnType::BigInteger => Box::new(BigSum::new(absolute, true)),
                 ColumnType::Float => Box::new(FloatSum::new(true, absolute)),
                 ColumnType::Double => Box::new(FloatSum::new(false, absolute)),
                 _ if integer => Box::new(LongSum::new(absolute)),
@@ -883,6 +872,7 @@ fn make_operator(
             }
         }
         AggSpec::Avg => match input_type {
+            ColumnType::BigDecimal | ColumnType::BigInteger => Box::<BigAvg>::default(),
             _ if floating => Box::<FloatAvg>::default(),
             _ if integer => Box::<LongAvg>::default(),
             _ => return Ok(None),
@@ -937,6 +927,9 @@ fn make_operator(
         }
         AggSpec::Var | AggSpec::Std if integer || floating => {
             Box::new(Var::new(*spec == AggSpec::Std, floating))
+        }
+        AggSpec::Var | AggSpec::Std if big(input_type) => {
+            Box::new(BigVar::new(*spec == AggSpec::Std))
         }
         AggSpec::Var | AggSpec::Std => return Ok(None),
         AggSpec::Median {
@@ -1033,13 +1026,17 @@ fn make_operator(
                 reads.push(index);
             }
             reads.push(input);
-            let op = Box::new(SortedFirstLast::new(
+            let mut op = SortedFirstLast::new(
                 matches!(spec, AggSpec::SortedFirst { .. }),
                 kind == ParentKind::Blink,
                 sort,
                 parent.column(input),
                 input_type.clone(),
-            ));
+            );
+            if kind == ParentKind::General {
+                op = op.of_refreshing();
+            }
+            let op = Box::new(op);
             return Ok(Some(Planned {
                 reads,
                 ..Planned::new(op, None)

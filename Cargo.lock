@@ -1383,6 +1383,8 @@ dependencies = [
  "arrow",
  "chrono",
  "chrono-tz",
+ "num-bigint",
+ "num-traits",
  "oxhaven-column",
  "oxhaven-contracts",
  "oxhaven-expr",

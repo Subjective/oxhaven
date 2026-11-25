@@ -1,5 +1,5 @@
 //! First, last, sorted first and sorted last of `BigDecimal` and `BigInteger` columns, and
-//! the aggregations of them that are not ported. Every expected value was seen on
+//! what of their aggregations is not ported. Every expected value was seen on
 //! Deephaven 42.9 (`BigDecimal#toString` of the result cells).
 
 use super::incremental::Fixture;
@@ -20,7 +20,7 @@ use std::sync::{Mutex, Weak};
 
 /// The cell of `text`, a decimal as Java's `new BigDecimal(String)` reads it: digits with
 /// an optional point and an optional exponent (`1.20`, `2E+3`).
-fn decimal(text: &str) -> Vec<u8> {
+pub(super) fn decimal(text: &str) -> Vec<u8> {
     let (mantissa, exponent) = match text.split_once('E') {
         Some((mantissa, exponent)) => (mantissa, exponent.parse::<i32>().expect("an exponent")),
         None => (text, 0),
@@ -33,18 +33,18 @@ fn decimal(text: &str) -> Vec<u8> {
     )
 }
 
-fn decimals(values: &[Option<&str>]) -> ArrayRef {
+pub(super) fn decimals(values: &[Option<&str>]) -> ArrayRef {
     let cells: Vec<Option<Vec<u8>>> = values.iter().map(|v| v.map(decimal)).collect();
     Arc::new(cells.iter().map(|c| c.as_deref()).collect::<BinaryArray>())
 }
 
-fn integers(values: &[Option<i128>]) -> ArrayRef {
+pub(super) fn integers(values: &[Option<i128>]) -> ArrayRef {
     let cells: Vec<Option<Vec<u8>>> = values.iter().map(|v| v.map(big_integer_cell)).collect();
     Arc::new(cells.iter().map(|c| c.as_deref()).collect::<BinaryArray>())
 }
 
 /// The rows of `table` as text, a big number as Java's `toString` writes it.
-fn texts(table: &dyn Table) -> Vec<String> {
+pub(super) fn texts(table: &dyn Table) -> Vec<String> {
     let columns = read(table);
     let types: Vec<ColumnType> = table
         .definition()
@@ -69,6 +69,29 @@ fn texts(table: &dyn Table) -> Vec<String> {
                             big_decimal_text(scale, unscaled)
                         }
                         ColumnType::BigInteger => big_integer_text(bytes()),
+                        ColumnType::Vector(element)
+                            if matches!(
+                                **element,
+                                ColumnType::BigDecimal | ColumnType::BigInteger
+                            ) =>
+                        {
+                            let list = column.as_list::<i32>().value(row);
+                            let cells = list.as_binary::<i32>();
+                            let items: Vec<String> = (0..cells.len())
+                                .map(|at| {
+                                    if cells.is_null(at) {
+                                        "null".to_string()
+                                    } else if **element == ColumnType::BigDecimal {
+                                        let (scale, unscaled) =
+                                            big_decimal_parts(cells.value(at)).expect("a cell");
+                                        big_decimal_text(scale, unscaled)
+                                    } else {
+                                        big_integer_text(cells.value(at))
+                                    }
+                                })
+                                .collect();
+                            format!("[{}]", items.join(", "))
+                        }
                         _ => cell(column, row),
                     }
                 })
@@ -79,7 +102,7 @@ fn texts(table: &dyn Table) -> Vec<String> {
 }
 
 /// `K`, `O`, `B` and `G`: a key, an order, a decimal and an integer.
-fn columns(
+pub(super) fn columns(
     keys: &[i32],
     order: &[i32],
     big: &[Option<&str>],
@@ -361,11 +384,11 @@ fn first_and_last_of_a_ticking_table_follow_its_rows() {
     );
 }
 
-/// Java serves these, with arbitrary precision arithmetic and orderings that are not
-/// ported (seen: the sum of `1.0`, `1.00` and `2.5` is `4.50`; the minimum of `1.0` and
-/// `1.00` is the first).
+/// A non-unique sentinel for a big number column, which Java converts to the column's
+/// class (`AggregationProcessor#maybeConvertType`), is not ported; the other aggregations
+/// of these columns are served (`big_aggregations`).
 #[test]
-fn computed_and_ordered_aggregations_of_big_numbers_are_unported() {
+fn a_non_unique_sentinel_of_big_numbers_is_unported() {
     let table = || {
         static_table(&columns(
             &[0, 0],
@@ -374,52 +397,24 @@ fn computed_and_ordered_aggregations_of_big_numbers_are_unported() {
             &[Some(1), Some(1)],
         ))
     };
-    let order = |column: &str| vec![column.to_string()];
-    for (spec, input) in [
-        (AggSpec::Sum, "B"),
-        (AggSpec::AbsSum, "G"),
-        (AggSpec::Avg, "B"),
-        (AggSpec::Std, "G"),
-        (AggSpec::Min, "B"),
-        (AggSpec::Max, "G"),
-        (
-            AggSpec::Median {
-                average_evenly_divided: false,
-            },
-            "B",
-        ),
-        (AggSpec::CountDistinct { count_nulls: false }, "B"),
-        (
-            AggSpec::Distinct {
-                include_nulls: false,
-            },
-            "G",
-        ),
-        (
-            AggSpec::SortedFirst {
-                columns: order("B"),
-            },
-            "O",
-        ),
-        (
-            AggSpec::SortedLast {
-                columns: order("G"),
-            },
-            "O",
-        ),
-    ] {
-        let described = format!("{spec:?} of {input}");
+    for input in ["B", "G"] {
         let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let spec = AggSpec::Unique {
+                include_nulls: false,
+                non_unique: Sentinel::Int(7),
+            };
             let aggregation = agg(spec, &[&format!("R = {input}")]);
             let _ = aggregate(&table(), &[aggregation], false, &["K"]);
         }));
         let message = refused
             .err()
             .and_then(|panic| panic.downcast::<String>().ok())
-            .unwrap_or_else(|| panic!("{described} was not refused"));
+            .unwrap_or_else(|| panic!("the sentinel of {input} was not refused"));
         assert!(
-            message.starts_with("unported: io.deephaven.engine.table.impl.by.AggregationProcessor"),
-            "{described}: {message}"
+            message.starts_with(
+                "unported: io.deephaven.engine.table.impl.by.AggregationProcessor#maybeConvertType"
+            ),
+            "{input}: {message}"
         );
     }
     // Java refuses the weighted ones too: an `UnsupportedOperationException`.

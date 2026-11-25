@@ -10,6 +10,8 @@ use arrow::array::{
 };
 use arrow::buffer::{NullBuffer, OffsetBuffer};
 use arrow::datatypes::{DataType, Float64Type, Int32Type, Int64Type};
+use num_bigint::BigInt;
+use oxhaven_column::decimal::{self, Decimal};
 use oxhaven_contracts::rowset::RowKey;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::TableFailure;
@@ -63,8 +65,8 @@ pub enum Values {
     Bools(BooleanArray),
     Strings(StringArray),
     /// The cells of a vector, array, `ZonedDateTime`, `Period`, `BigDecimal` or `BigInteger`
-    /// column: a [`Scalar::List`], [`Scalar::Zoned`], [`Scalar::Period`] or [`Scalar::Big`]
-    /// each, or a null.
+    /// column: a [`Scalar::List`], [`Scalar::Zoned`], [`Scalar::Period`], [`Scalar::Decimal`] or
+    /// [`Scalar::Integer`] each, or a null.
     Cells(Vec<Scalar>),
 }
 
@@ -124,7 +126,10 @@ impl Values {
             Shape::Cells if *column_type == ColumnType::ZonedDateTime => {
                 Values::Cells(zoned_cells(array)?)
             }
-            Shape::Cells if *column_type != ColumnType::Period => Values::Cells(big_cells(array)?),
+            Shape::Cells if *column_type != ColumnType::Period => Values::Cells(big_cells(
+                array,
+                *column_type == ColumnType::BigDecimal,
+            )?),
             Shape::Cells => Values::Cells(period_cells(array)?),
         })
     }
@@ -415,11 +420,12 @@ pub enum Scalar {
         months: i32,
         days: i32,
     },
-    /// A `BigDecimal` or a `BigInteger`, as its column holds it
-    /// (`oxhaven_contracts::schema::ColumnType::BigDecimal`). It is only carried from a row
-    /// to a result: no operator that orders, compares or computes with values is made for
-    /// these columns, so [`Scalar::compare`] never meets one.
-    Big(Arc<[u8]>),
+    /// A `BigDecimal`: its unscaled value and its scale. Two of one value and different
+    /// scales are different values (`BigDecimal#equals`) that Java's ordering calls equal
+    /// (`BigDecimal#compareTo`).
+    Decimal(Arc<Decimal>),
+    /// A `BigInteger`.
+    Integer(Arc<BigInt>),
 }
 
 /// Java's ordering of two values of one type of which either may be null: a null is less
@@ -470,7 +476,8 @@ impl Scalar {
             ) => a == b && x == y,
             (Scalar::Period { .. }, Scalar::Period { .. }) => self.period() == other.period(),
             // The scale is part of the value: `1.0` and `1.00` read differently.
-            (Scalar::Big(a), Scalar::Big(b)) => a == b,
+            (Scalar::Decimal(a), Scalar::Decimal(b)) => a == b,
+            (Scalar::Integer(a), Scalar::Integer(b)) => a == b,
             _ => false,
         }
     }
@@ -482,11 +489,13 @@ impl Scalar {
     /// ordered element by element, a null element first, and a vector that is the start of
     /// another before it. A `ZonedDateTime` orders by its instant, then by its offset (for
     /// one instant, the order of the local dates and times), then by its zone's id. Values
-    /// of different shapes, nulls and periods compare equal; callers never pass them.
+    /// of different shapes, nulls and periods compare equal; callers never pass them. A
+    /// `BigDecimal` orders by its value whatever its scale, and a `BigInteger` by its value.
     ///
     /// Behavior: io.deephaven.util.compare.DoubleComparisons#compare,
     /// io.deephaven.util.compare.CharComparisons#compare,
-    /// io.deephaven.util.compare.ObjectComparisons#compare, the `compareTo` of the
+    /// io.deephaven.util.compare.ObjectComparisons#compare, java.math.BigDecimal#compareTo,
+    /// java.math.BigInteger#compareTo, the `compareTo` of the
     /// vectors under io.deephaven.vector (`ShortVector#compareTo`, `ObjectVector#compareTo`
     /// and the others), and java.time.chrono.ChronoZonedDateTime#compareTo
     pub fn compare(&self, other: &Scalar) -> Ordering {
@@ -524,9 +533,8 @@ impl Scalar {
             // Java has no order of periods; this one keeps two that differ apart in a
             // multiset until the operator fails (`periods::PeriodGuard`).
             (Scalar::Period { .. }, Scalar::Period { .. }) => self.period().cmp(&other.period()),
-            (Scalar::Big(_), _) | (_, Scalar::Big(_)) => {
-                unreachable!("no operator that orders values is made for BigDecimal or BigInteger")
-            }
+            (Scalar::Decimal(a), Scalar::Decimal(b)) => a.compare(b),
+            (Scalar::Integer(a), Scalar::Integer(b)) => a.cmp(b),
             _ => Ordering::Equal,
         }
     }
@@ -580,15 +588,22 @@ fn zoned_cells(array: &ArrayRef) -> Result<Vec<Scalar>, TableFailure> {
         .collect()
 }
 
-/// The cells of a chunk of a `BigDecimal` or `BigInteger` column, as they are stored.
-fn big_cells(array: &ArrayRef) -> Result<Vec<Scalar>, TableFailure> {
+/// The values of a chunk of a `BigDecimal` or `BigInteger` column (`decimal`), as their
+/// cells hold them.
+fn big_cells(array: &ArrayRef, decimal: bool) -> Result<Vec<Scalar>, TableFailure> {
     let cells = array
         .as_binary_opt::<i32>()
         .ok_or_else(|| failure("a BigDecimal or BigInteger column must hold a binary array"))?;
-    Ok(cells
+    cells
         .iter()
-        .map(|cell| cell.map_or(Scalar::Null, |bytes| Scalar::Big(bytes.into())))
-        .collect())
+        .map(|cell| match cell {
+            None => Ok(Scalar::Null),
+            Some(bytes) if decimal => Decimal::of_cell(bytes)
+                .map(|value| Scalar::Decimal(Arc::new(value)))
+                .ok_or_else(|| failure("a BigDecimal cell without a scale")),
+            Some(bytes) => Ok(Scalar::Integer(Arc::new(decimal::integer_of_cell(bytes)))),
+        })
+        .collect()
 }
 
 /// The cells of a chunk of a `Period` column.
@@ -778,7 +793,8 @@ pub fn build<'a>(column_type: &ColumnType, values: impl Iterator<Item = &'a Scal
         ColumnType::BigDecimal | ColumnType::BigInteger => Arc::new(
             values
                 .map(|s| match s {
-                    Scalar::Big(cell) => Some(&**cell),
+                    Scalar::Decimal(value) => Some(value.cell()),
+                    Scalar::Integer(value) => Some(decimal::integer_bytes(value)),
                     _ => None,
                 })
                 .collect::<BinaryArray>(),

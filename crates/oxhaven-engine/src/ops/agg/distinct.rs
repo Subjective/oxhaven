@@ -5,6 +5,15 @@
 //! to its count. Each entry also keeps the value it was created with: values that Java's
 //! comparisons call equal (`0.0` and `-0.0`) share an entry, and the entry shows the bits of
 //! the value that created it, as Java's multiset does.
+//!
+//! A `BigDecimal` is the exception. Java's multiset of objects orders them by `compareTo`
+//! and tells them apart by `equals`, which for `1.0` and `1.00` disagree: they are two
+//! entries side by side, in the order they were sorted. Rows given to an empty multiset at
+//! once are laid out in that order (an entry's `tie` says where it stands among its equals),
+//! which is all a static group of one chunk needs. Once a group holds two such values,
+//! where Java's searches of its sorted set land decides what it holds (seen on Deephaven
+//! 42.9: removing `1.00` from `1.0, 1.00, 2.5` removes the `1.0`), and that is not ported:
+//! the result fails.
 
 use super::operator::{AggOperator, Effect};
 use super::values::{build, Run, Scalar};
@@ -12,14 +21,17 @@ use arrow::array::{ArrayRef, ListArray};
 use arrow::buffer::{NullBuffer, OffsetBuffer};
 use arrow::datatypes::DataType;
 use oxhaven_contracts::schema::ColumnType;
+use oxhaven_contracts::table::TableFailure;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
 /// A value as a multiset key: null first, then Java's ordering ([`Scalar::compare`]), in
-/// which `0.0` equals `-0.0` and NaN equals NaN.
+/// which `0.0` equals `-0.0` and NaN equals NaN, then the place among its equals of a
+/// `BigDecimal` entry laid out with others of its value and other scales (0 for every other
+/// entry).
 #[derive(Clone, Debug)]
-struct Key(Scalar);
+struct Key(Scalar, u32);
 
 impl PartialEq for Key {
     fn eq(&self, other: &Key) -> bool {
@@ -43,6 +55,19 @@ impl Ord for Key {
             (false, true) => Ordering::Greater,
             (false, false) => self.0.compare(&other.0),
         }
+        .then(self.1.cmp(&other.1))
+    }
+}
+
+/// Whether Java's multiset folds `a` into an entry of `b`: `ObjectComparisons#eq`, which
+/// is `equals` for a `BigDecimal` and agrees with the ordering for every other type here.
+///
+/// Behavior: io.deephaven.util.compare.ObjectComparisons#eq, and the `eq` of the
+/// primitive comparisons
+fn folds(a: &Scalar, b: &Scalar) -> bool {
+    match (a, b) {
+        (Scalar::Decimal(_), Scalar::Decimal(_)) => a.same(b),
+        _ => Key(a.clone(), 0) == Key(b.clone(), 0),
     }
 }
 
@@ -51,8 +76,8 @@ impl Ord for Key {
 ///
 /// Behavior: io.deephaven.function.ArraySort#sort(double[], int, int)
 fn chunk_order(a: &Scalar, b: &Scalar) -> Ordering {
-    Key(a.clone())
-        .cmp(&Key(b.clone()))
+    Key(a.clone(), 0)
+        .cmp(&Key(b.clone(), 0))
         .then_with(|| match (a, b) {
             (Scalar::Double(x), Scalar::Double(y)) if *x == 0.0 && *y == 0.0 => {
                 y.is_sign_negative().cmp(&x.is_sign_negative())
@@ -63,7 +88,8 @@ fn chunk_order(a: &Scalar, b: &Scalar) -> Ordering {
 
 /// The distinct values of a run and how often each occurs, sorted, each shown as the first
 /// of its equal values in sorted order. Nulls are dropped unless `nulls`, NaNs unless
-/// `nans`.
+/// `nans`. Only neighbours that Java [folds] are one value: `BigDecimal`s of one value and
+/// different scales stay apart, in the order of the run, which the sort keeps.
 ///
 /// Behavior: io.deephaven.engine.table.impl.util.compact.DoubleCompactKernel#compactAndCount
 /// (and its per-type copies)
@@ -75,7 +101,7 @@ fn compact(values: impl Iterator<Item = Scalar>, nulls: bool, nans: bool) -> Vec
     let mut runs: Vec<(Scalar, u64)> = Vec::new();
     for value in sorted {
         match runs.last_mut() {
-            Some((last, count)) if Key(last.clone()) == Key(value.clone()) => *count += 1,
+            Some((last, count)) if folds(&value, last) => *count += 1,
             _ => runs.push((value, 1)),
         }
     }
@@ -92,17 +118,65 @@ struct Multiset {
 impl Multiset {
     /// Behavior: io.deephaven.engine.table.impl.ssms.DoubleSegmentedSortedMultiset#insert;
     /// a value already present keeps the bits it was first inserted with. Returns whether
-    /// a value was inserted that the group did not have.
+    /// a value was inserted that the group did not have. Runs given to an empty multiset
+    /// are laid out as they come: neighbours that compare equal are entries side by side
+    /// (`makeLeavesInitial` of ObjectSegmentedSortedMultiset).
     fn insert(&mut self, runs: &[(Scalar, u64)]) -> bool {
         let distinct = self.entries.len();
+        let empty = self.entries.is_empty();
+        let mut previous: Option<&Scalar> = None;
+        let mut tie = 0;
         for (value, count) in runs {
+            tie = match previous {
+                Some(previous) if empty && Key(previous.clone(), 0) == Key(value.clone(), 0) => {
+                    tie + 1
+                }
+                _ => 0,
+            };
+            previous = Some(value);
             self.entries
-                .entry(Key(value.clone()))
+                .entry(Key(value.clone(), tie))
                 .or_insert_with(|| (value.clone(), 0))
                 .1 += count;
             self.total += count;
         }
         self.entries.len() != distinct
+    }
+
+    /// Two values of the multiset that compare equal but that Java does not fold: entries
+    /// of a `BigDecimal` laid out side by side.
+    fn split(&self) -> Option<(Scalar, Scalar)> {
+        let (later, (value, _)) = self.entries.iter().find(|(key, _)| key.1 > 0)?;
+        let (_, (first, _)) = self.entries.get_key_value(&Key(later.0.clone(), 0))?;
+        Some((first.clone(), value.clone()))
+    }
+
+    /// Two values that make Java's insertion of `runs` depend on its sorted set's layout:
+    /// one of a [split](Multiset::split) multiset, two of the runs or one of the runs and
+    /// an entry that compare equal and are not folded. None when the multiset is empty and
+    /// `fresh`, where the runs are laid out as they come.
+    fn conflict(&self, runs: &[(Scalar, u64)], fresh: bool) -> Option<(Scalar, Scalar)> {
+        if self.entries.is_empty() && fresh {
+            return None;
+        }
+        if let Some(pair) = self.split() {
+            return Some(pair);
+        }
+        let mut previous: Option<&Scalar> = None;
+        for (value, _) in runs {
+            if let Some(previous) = previous {
+                if Key(previous.clone(), 0) == Key(value.clone(), 0) {
+                    return Some((previous.clone(), value.clone()));
+                }
+            }
+            previous = Some(value);
+            if let Some((held, _)) = self.entries.get(&Key(value.clone(), 0)) {
+                if !folds(value, held) {
+                    return Some((held.clone(), value.clone()));
+                }
+            }
+        }
+        None
     }
 
     /// Behavior: io.deephaven.engine.table.impl.ssms.DoubleSegmentedSortedMultiset#remove
@@ -115,7 +189,7 @@ impl Multiset {
     fn remove(&mut self, runs: &[(Scalar, u64)]) -> bool {
         let distinct = self.entries.len();
         for (value, count) in runs {
-            let key = Key(value.clone());
+            let key = Key(value.clone(), 0);
             let entry = self
                 .entries
                 .get_mut(&key)
@@ -151,18 +225,28 @@ impl Multiset {
 /// Values with how many times each occurs.
 type Counted = Vec<(Scalar, u64)>;
 
+/// A value as Java's compaction of modifications tells values apart: by the ordering, and a
+/// `BigDecimal` also by its scale (`ObjectComparisons#eq`).
+fn net_key(value: &Scalar) -> (Key, i64) {
+    let scale = match value {
+        Scalar::Decimal(decimal) => i64::from(decimal.scale),
+        _ => 0,
+    };
+    (Key(value.clone(), 0), scale)
+}
+
 /// The net change of a modification: what the old values have that the new ones do not,
 /// and the reverse, with the values they share cancelled.
 ///
 /// Behavior: io.deephaven.engine.table.impl.by.ssmcountdistinct.compactmodifications.DoubleCompactModifications#compactAndCountModifications
 fn net(old: Counted, new: Counted) -> (Counted, Counted) {
-    let mut added: BTreeMap<Key, (Scalar, u64)> = new
+    let mut added: BTreeMap<(Key, i64), (Scalar, u64)> = new
         .into_iter()
-        .map(|(value, count)| (Key(value.clone()), (value, count)))
+        .map(|(value, count)| (net_key(&value), (value, count)))
         .collect();
     let mut removed = Vec::new();
     for (value, count) in old {
-        match added.get_mut(&Key(value.clone())) {
+        match added.get_mut(&net_key(&value)) {
             Some(entry) => {
                 let shared = entry.1.min(count);
                 entry.1 -= shared;
@@ -221,6 +305,27 @@ pub struct SortedValues {
     /// For [`SetMode::Distinct`]: whether Java has a set for the group, which is what
     /// tells an empty vector from a null.
     present: Vec<bool>,
+    /// Why the result fails: a group of `BigDecimal`s whose answer Java leaves to the
+    /// layout of its sorted set. Once set, the sets are no longer changed.
+    failure: Option<TableFailure>,
+    failed: bool,
+}
+
+/// The refusal of a group of `BigDecimal`s that holds, or is given, `a` and `b`.
+fn split_failure(a: &Scalar, b: &Scalar) -> TableFailure {
+    let text = |value: &Scalar| match value {
+        Scalar::Decimal(decimal) => decimal.text(),
+        _ => format!("{value:?}"),
+    };
+    TableFailure {
+        message: format!(
+            "unported: io.deephaven.engine.table.impl.ssms.ObjectSegmentedSortedMultiset: a \
+             group that holds BigDecimals of one value and different scales ({} and {}) \
+             once more rows come or go, where Java's sorted set answers by its layout",
+            text(a),
+            text(b)
+        ),
+    }
 }
 
 /// What a group's set amounts to for [`SetMode::Unique`].
@@ -292,6 +397,47 @@ impl SortedValues {
             nans,
             sets: Vec::new(),
             present: Vec::new(),
+            failure: None,
+            failed: false,
+        }
+    }
+
+    /// Whether the change of `slot` may go ahead: always, but for a group of `BigDecimal`s
+    /// where Java's answer depends on its sorted set's layout (see the module's
+    /// documentation), which fails the result. `added` are the runs to insert, after the
+    /// removal of `removed`; `fresh` says whether runs given to an empty set are laid out
+    /// as they come.
+    fn allowed(&mut self, slot: usize, removed: &[(Scalar, u64)], added: &[(Scalar, u64)], fresh: bool) -> bool {
+        if self.failed {
+            return false;
+        }
+        if self.column_type != ColumnType::BigDecimal {
+            return true;
+        }
+        let set = &self.sets[slot];
+        let pair = if removed.is_empty() {
+            None
+        } else {
+            set.split()
+        };
+        let pair = pair.or_else(|| {
+            if added.is_empty() {
+                return None;
+            }
+            if removed.is_empty() {
+                return set.conflict(added, fresh);
+            }
+            let mut after = set.clone();
+            after.remove(removed);
+            after.conflict(added, fresh)
+        });
+        match pair {
+            None => true,
+            Some((a, b)) => {
+                self.failure = Some(split_failure(&a, &b));
+                self.failed = true;
+                false
+            }
         }
     }
 
@@ -312,7 +458,7 @@ impl SortedValues {
     ///
     /// Behavior: DoubleChunkedUniqueOperator#addToState, #removeFromState, #finishFromSsm
     fn unique_step(&self, slot: usize, before: &UniqueState, non_unique: &Scalar) -> bool {
-        let equal = |a: &Scalar, b: &Scalar| Key(a.clone()) == Key(b.clone());
+        let equal = |a: &Scalar, b: &Scalar| folds(a, b);
         match (before, self.unique_state(slot)) {
             (UniqueState::Empty, UniqueState::Empty) => false,
             (UniqueState::Empty, _) | (_, UniqueState::Empty) => true,
@@ -480,6 +626,9 @@ impl AggOperator for SortedValues {
 
     fn add(&mut self, slot: usize, run: &Run<'_>) -> Effect {
         let runs = self.runs(run);
+        if !self.allowed(slot, &[], &runs, true) {
+            return Effect::UNCHANGED;
+        }
         match &self.mode {
             // Java reports the group modified only for a value it did not have. Without
             // keys a group that had no set gets one, which shows as an empty vector where
@@ -508,7 +657,7 @@ impl AggOperator for SortedValues {
 
     fn remove(&mut self, slot: usize, run: &Run<'_>) -> Effect {
         let runs = self.runs(run);
-        if runs.is_empty() {
+        if runs.is_empty() || !self.allowed(slot, &runs, &[], true) {
             return Effect::UNCHANGED;
         }
         match &self.mode {
@@ -539,23 +688,27 @@ impl AggOperator for SortedValues {
     /// DoubleChunkedDistinctOperator#modifyChunk, DoubleChunkedUniqueOperator#modifyChunk
     /// and #modifyState, SsmChunkedPercentileOperator#modifyChunk
     fn modify(&mut self, slot: usize, old: &Run<'_>, new: &Run<'_>) -> Effect {
+        let (removed, added) = match &self.mode {
+            SetMode::Percentile { .. } => (self.runs(old), self.runs(new)),
+            _ => net(self.runs(old), self.runs(new)),
+        };
+        if !self.allowed(slot, &removed, &added, false) {
+            return Effect::UNCHANGED;
+        }
         match &self.mode {
             SetMode::Percentile { .. } => {
                 let before = self.value(slot);
-                let (removed, added) = (self.runs(old), self.runs(new));
                 self.sets[slot].remove(&removed);
                 self.sets[slot].insert(&added);
                 Effect::modified_if(!before.same(&self.value(slot)))
             }
             SetMode::CountDistinct => {
                 let before = self.value(slot);
-                let (removed, added) = net(self.runs(old), self.runs(new));
                 self.sets[slot].remove(&removed);
                 self.sets[slot].insert(&added);
                 Effect::modified_if(!before.same(&self.value(slot)))
             }
             SetMode::Distinct { .. } => {
-                let (removed, added) = net(self.runs(old), self.runs(new));
                 if removed.is_empty() && added.is_empty() {
                     return Effect::UNCHANGED;
                 }
@@ -567,7 +720,6 @@ impl AggOperator for SortedValues {
                 Effect::modified_if(lost || gained)
             }
             SetMode::Unique { non_unique } => {
-                let (removed, added) = net(self.runs(old), self.runs(new));
                 let before = self.unique_state(slot);
                 if matches!(before, UniqueState::NonUnique) {
                     self.sets[slot].remove(&removed);
@@ -587,6 +739,10 @@ impl AggOperator for SortedValues {
                 Effect::modified_if(changed)
             }
         }
+    }
+
+    fn take_failure(&mut self) -> Option<TableFailure> {
+        self.failure.take()
     }
 
     fn results(&self, slots: &[usize]) -> ArrayRef {
