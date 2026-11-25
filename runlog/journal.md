@@ -1567,3 +1567,5 @@ A corpus of five console scripts with an Oxhaven server as the remote, recorded 
 - 2026-11-25 02:22 UTC: PR 193 (README refresh) merged on green as f4c03b24.
 
 - 2026-11-25 05:08 UTC: Josh chose "Refusals, docs, Docker and HTTPS". Tasks 15.2 to 15.6 written. Started 15.2 (big-number formulas) and 15.6 (HTTPS serving) on Opus; 15.3 (needs 15.2), 15.4 and 15.5 follow as builders free up.
+
+- 2026-11-25 05:56 UTC: container restarted at about 05:50 and stopped 15.2 and 15.6 (15.6 was in its final gate); both resumed from their transcripts, nothing lost but the running builds.
