@@ -46,6 +46,8 @@ mod values;
 mod window;
 
 #[cfg(test)]
+mod big_tests;
+#[cfg(test)]
 mod corpus;
 #[cfg(test)]
 mod oracle_corpus;
