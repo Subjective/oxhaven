@@ -649,3 +649,85 @@ fn static_select_copies_the_columns_of_a_merge_and_of_a_reversed_table() {
     ));
     assert_eq!(values(&*result, "B2"), ["2", "1"]);
 }
+
+/// The `toString` texts of a column of `BigDecimal` or `BigInteger` cells.
+fn big_texts(table: &dyn Table, name: &str) -> Vec<String> {
+    use oxhaven_column::java_values::{big_decimal_parts, big_decimal_text, big_integer_text};
+    let index = table.definition().index_of(name).expect("a column");
+    let decimal = table.definition().columns()[index].column_type == ColumnType::BigDecimal;
+    let array = table
+        .column(index)
+        .chunk(&table.row_set())
+        .expect("a readable column");
+    array
+        .as_binary::<i32>()
+        .iter()
+        .map(|cell| match cell {
+            None => "null".to_string(),
+            Some(cell) if decimal => {
+                let (scale, unscaled) = big_decimal_parts(cell).expect("a BigDecimal cell");
+                big_decimal_text(scale, unscaled)
+            }
+            Some(cell) => big_integer_text(cell),
+        })
+        .collect()
+}
+
+/// A formula's `BigDecimal` and `BigInteger` results are columns of their own type, with
+/// the scale Java gives them (seen on Java 42.9: `oxhaven-expr`'s
+/// `tests/data/java_big_numbers.json` has these forms), and a failure in one row fails
+/// the operation.
+#[test]
+fn formulas_give_big_number_columns_with_their_scale() {
+    use oxhaven_column::java_values::{big_decimal_cell, big_integer_cell};
+    let def = definition(&[
+        ("BD", ColumnType::BigDecimal),
+        ("BI", ColumnType::BigInteger),
+    ]);
+    let decimals: ArrayRef = Arc::new(arrow::array::BinaryArray::from_iter([
+        None,
+        Some(big_decimal_cell(2, &big_integer_cell(150))),
+        Some(big_decimal_cell(3, &big_integer_cell(-2345))),
+    ]));
+    let integers: ArrayRef = Arc::new(arrow::array::BinaryArray::from_iter([
+        Some(big_integer_cell(7)),
+        None,
+        Some(big_integer_cell(-7)),
+    ]));
+    let rows = RowSet::from_keys([0, 1, 2]);
+    let parent: Arc<dyn Table> = ReferenceTable::new_static(def, rows, vec![decimals, integers]);
+    let formulas = [
+        "R = BD + 1",
+        "Q = BD / 3",
+        "N = BI * 2",
+        "T = BD + ``",
+        "W = (int) BI",
+    ];
+    for result in [
+        update(&parent, &formulas, &Compiler).unwrap(),
+        update_view(&parent, &formulas, &Compiler).unwrap(),
+    ] {
+        let types: Vec<ColumnType> = ["R", "Q", "N"]
+            .iter()
+            .map(|name| column(&result, name).column_type().clone())
+            .collect();
+        assert_eq!(
+            types,
+            [
+                ColumnType::BigDecimal,
+                ColumnType::BigDecimal,
+                ColumnType::BigInteger
+            ]
+        );
+        assert_eq!(big_texts(&*result, "R"), ["null", "2.50", "-1.345"]);
+        assert_eq!(
+            big_texts(&*result, "Q"),
+            ["null", "0.50000000", "-0.78166667"]
+        );
+        assert_eq!(big_texts(&*result, "N"), ["14", "null", "-14"]);
+        assert_eq!(values(&*result, "T"), ["null", "1.50", "-2.345"]);
+        assert_eq!(values(&*result, "W"), ["7", "null", "-7"]);
+    }
+    let failed = update(&parent, &["R = BD.scale()"], &Compiler);
+    assert!(failed.is_err(), "a method of a null BigDecimal throws");
+}
