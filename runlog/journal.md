@@ -1593,3 +1593,5 @@ A corpus of five console scripts with an Oxhaven server as the remote, recorded 
 - 2026-11-25 10:05 UTC: 15.3b reported with the full gate green; opened PR 199 (oracle-change). Owner question 8.3 written.
 
 - 2026-11-25 10:15 UTC: PR 199 (15.3b, big-number update_by) merged on green as 22b2508c. The 15.x batch Josh chose on 25 Nov is complete. Open owner items: Docker publishing card, review-items-2 8.1 to 8.3.
+
+- 2026-11-25 23:41 UTC: Josh chose "Keep it build-only" for the Docker image: it is not published to any registry.
