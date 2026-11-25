@@ -5,6 +5,7 @@
 //! ([`types`]), and the typed tree is evaluated over Arrow arrays ([`eval`]).
 
 pub mod calendar;
+mod decimal;
 mod eval;
 mod external;
 mod functions;

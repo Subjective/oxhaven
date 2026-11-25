@@ -407,7 +407,7 @@ pub(super) fn ours(table: &TestTable, formula: &str, filter: bool) -> Ours {
 
 /// [`ours`] with the compiler named: [`Compiler`] for a recording made by scripts of the
 /// console.
-fn ours_with(
+pub(super) fn ours_with(
     compiler: &dyn FormulaCompiler,
     table: &TestTable,
     formula: &str,

@@ -7,6 +7,7 @@
 
 mod arithmetic;
 mod arrays;
+mod big_numbers;
 mod boxed;
 mod color;
 mod comparison;

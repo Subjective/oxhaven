@@ -1,0 +1,47 @@
+java-accepts	all	(Object) BD	a value of type BigDecimal as a java.lang.Object
+java-accepts	all	(Number) BD	cast to Number
+java-accepts	all	(Comparable) BD	cast to Comparable
+java-rejects	all	(BigDecimal) BD	cast to BigDecimal
+java-fails	all	BD.divide(BD2, java.math.MathContext.DECIMAL64)	java.math.BigDecimal.divide() with a java.math.MathContext
+java-fails	all	BD.intValueExact()	method java.math.BigDecimal.intValueExact()
+java-fails	all	BD.toBigIntegerExact()	method java.math.BigDecimal.toBigIntegerExact()
+java-fails	all	BD.toEngineeringString()	method java.math.BigDecimal.toEngineeringString()
+java-fails	all	BD.hashCode()	method java.math.BigDecimal.hashCode()
+java-fails	all	BD.round(java.math.MathContext.DECIMAL32)	java.math.BigDecimal.round() with a java.math.MathContext
+java-fails	all	BD.sqrt(java.math.MathContext.DECIMAL64)	java.math.BigDecimal.sqrt() with a java.math.MathContext
+java-fails	all	BD.add(BD2, java.math.MathContext.DECIMAL32)	java.math.BigDecimal.add() with a java.math.MathContext
+java-fails	all	BI.longValueExact()	method java.math.BigInteger.longValueExact()
+java-fails	all	BI.sqrt()	method java.math.BigInteger.sqrt()
+java-fails	all	BI.modPow(BI2, BI)	method java.math.BigInteger.modPow()
+java-fails	all	BI.isProbablePrime(10)	method java.math.BigInteger.isProbablePrime()
+java-fails	all	BI.hashCode()	method java.math.BigInteger.hashCode()
+java-fails	all	BI.divideAndRemainder(BI2)	method java.math.BigInteger.divideAndRemainder()
+java-rejects	all	BigDecimal.ONE	field access .ONE
+java-accepts	all	java.math.RoundingMode.HALF_UP	java.math.RoundingMode.HALF_UP other than as an argument of a method
+java-accepts	all	inObj(BD, BD2)	function inObj() with a BigDecimal or BigInteger argument
+java-fails	all	inRange(BD, BD2, BD2)	function inRange() with a BigDecimal or BigInteger argument
+java-accepts	all	countObj(BD, BD2)	function countObj() with a BigDecimal or BigInteger argument
+java-accepts	all	firstObj(BD, BD2)	function firstObj() with a BigDecimal or BigInteger argument
+java-accepts	all	sortObj(BD, BD2)	function sortObj() with a BigDecimal or BigInteger argument
+java-accepts	all	countDistinctObj(BD, BD2)	function countDistinctObj() with a BigDecimal or BigInteger argument
+java-accepts	all	distinctObj(BD, BD2)	function distinctObj() with a BigDecimal or BigInteger argument
+java-accepts	all	vecObj(BD, BD2)	function vecObj() with a BigDecimal or BigInteger argument
+java-accepts	all	String.valueOf(BD)	static method call String.valueOf() with these arguments
+java-accepts	all	java.util.Objects.equals(BD, BD2)	static method call java.util.Objects.equals()
+java-accepts	all	Objects.equals(BD, BD2)	static method call Objects.equals()
+java-accepts	all	(Object) BI	a value of type BigInteger as a java.lang.Object
+java-accepts	nonnull	BD.divide(BD2, java.math.MathContext.DECIMAL64)	java.math.BigDecimal.divide() with a java.math.MathContext
+java-fails	nonnull	BD.intValueExact()	method java.math.BigDecimal.intValueExact()
+java-fails	nonnull	BD.toBigIntegerExact()	method java.math.BigDecimal.toBigIntegerExact()
+java-accepts	nonnull	BD.toEngineeringString()	method java.math.BigDecimal.toEngineeringString()
+java-accepts	nonnull	BD.hashCode()	method java.math.BigDecimal.hashCode()
+java-accepts	nonnull	BD.round(java.math.MathContext.DECIMAL32)	java.math.BigDecimal.round() with a java.math.MathContext
+java-fails	nonnull	BD.sqrt(java.math.MathContext.DECIMAL64)	java.math.BigDecimal.sqrt() with a java.math.MathContext
+java-accepts	nonnull	BD.add(BD2, java.math.MathContext.DECIMAL32)	java.math.BigDecimal.add() with a java.math.MathContext
+java-fails	nonnull	BI.longValueExact()	method java.math.BigInteger.longValueExact()
+java-fails	nonnull	BI.sqrt()	method java.math.BigInteger.sqrt()
+java-fails	nonnull	BI.modPow(BI2, BI)	method java.math.BigInteger.modPow()
+java-accepts	nonnull	BI.isProbablePrime(10)	method java.math.BigInteger.isProbablePrime()
+java-accepts	nonnull	BI.hashCode()	method java.math.BigInteger.hashCode()
+java-accepts	nonnull	BI.divideAndRemainder(BI2)	method java.math.BigInteger.divideAndRemainder()
+java-accepts	nonnull	BD.getClass()	method java.math.BigDecimal.getClass()
