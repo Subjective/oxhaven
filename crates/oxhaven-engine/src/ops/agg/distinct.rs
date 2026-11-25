@@ -407,7 +407,13 @@ impl SortedValues {
     /// documentation), which fails the result. `added` are the runs to insert, after the
     /// removal of `removed`; `fresh` says whether runs given to an empty set are laid out
     /// as they come.
-    fn allowed(&mut self, slot: usize, removed: &[(Scalar, u64)], added: &[(Scalar, u64)], fresh: bool) -> bool {
+    fn allowed(
+        &mut self,
+        slot: usize,
+        removed: &[(Scalar, u64)],
+        added: &[(Scalar, u64)],
+        fresh: bool,
+    ) -> bool {
         if self.failed {
             return false;
         }

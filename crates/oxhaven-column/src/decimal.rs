@@ -5,10 +5,10 @@
 //! and `java.math.RoundingMode` and checked against values Java 42.9 computed
 //! (`oxhaven-expr`'s `tests/formulas/big_numbers.rs`); the JDK's source was not used.
 
+use crate::java_values;
 use num_bigint::{BigInt, Sign};
 use num_integer::Integer;
 use num_traits::{One, Signed, Zero};
-use crate::java_values;
 use std::cmp::Ordering;
 
 /// The most decimal digits a power of ten that an operation needs may have. Java computes

@@ -126,10 +126,9 @@ impl Values {
             Shape::Cells if *column_type == ColumnType::ZonedDateTime => {
                 Values::Cells(zoned_cells(array)?)
             }
-            Shape::Cells if *column_type != ColumnType::Period => Values::Cells(big_cells(
-                array,
-                *column_type == ColumnType::BigDecimal,
-            )?),
+            Shape::Cells if *column_type != ColumnType::Period => {
+                Values::Cells(big_cells(array, *column_type == ColumnType::BigDecimal)?)
+            }
             Shape::Cells => Values::Cells(period_cells(array)?),
         })
     }

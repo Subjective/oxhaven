@@ -428,7 +428,12 @@ impl BigVar {
     /// The running sums of `slot` with `partial` added, or subtracted for `negate`.
     ///
     /// Behavior: BigDecimalChunkedVarOperator#plus, which makes two nulls `ZERO`
-    fn moved(&self, slot: usize, partial: &Partial, negate: bool) -> Result<(Decimal, Decimal), String> {
+    fn moved(
+        &self,
+        slot: usize,
+        partial: &Partial,
+        negate: bool,
+    ) -> Result<(Decimal, Decimal), String> {
         let (sum, sum2) = if negate {
             (partial.sum.negate(), partial.sum2.negate())
         } else {

@@ -10,8 +10,8 @@ use super::big_numbers::{columns, decimals, integers, texts};
 use super::incremental::Fixture;
 use super::*;
 use crate::graph::SteppedUpdateGraph;
-use arrow::array::Int32Array;
 use crate::ops::select::update_view;
+use arrow::array::Int32Array;
 use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::rowset::RowSet;
 use oxhaven_testkit::{test_seeds, ConsistencyChecker, RandomUpdates, ScriptedTable, TableChange};
@@ -163,7 +163,12 @@ fn a_running_sum_keeps_the_largest_scale_it_was_given() {
         agg(AggSpec::Var, &["Var = B"]),
         agg(AggSpec::Std, &["Std = B"]),
     ];
-    let initial = columns(&[1, 1], &[0, 0], &[Some("1.00"), Some("2.0")], &[None, None]);
+    let initial = columns(
+        &[1, 1],
+        &[0, 0],
+        &[Some("1.00"), Some("2.0")],
+        &[None, None],
+    );
     let fixture = Fixture::with(&initial, &[0, 1], aggregations, &["K"], false, false);
     let shown = || texts(&*fixture.result);
     assert_eq!(shown(), ["1|3.00|3.00|1.50|0.5000|0.7071067812"]);
@@ -284,7 +289,10 @@ fn a_ticking_group_of_one_value_at_two_scales_fails() {
     let fixture = Fixture::with(
         &initial,
         &[0, 1],
-        vec![agg(AggSpec::Min, &["Min = B"]), agg(AggSpec::Max, &["Max = B"])],
+        vec![
+            agg(AggSpec::Min, &["Min = B"]),
+            agg(AggSpec::Max, &["Max = B"]),
+        ],
         &["K"],
         false,
         true,
@@ -322,7 +330,8 @@ fn a_ticking_group_of_one_value_at_two_scales_fails() {
         TableChange::new().add([3], rows_of(&[1], &[Some("1.00")])),
     );
     assert!(
-        message.starts_with("unported: io.deephaven.engine.table.impl.ssa.ObjectSegmentedSortedArray")
+        message
+            .starts_with("unported: io.deephaven.engine.table.impl.ssa.ObjectSegmentedSortedArray")
             && message.contains("([1.0] and [1.00])"),
         "{message}"
     );
@@ -445,7 +454,8 @@ fn random_updates_of_big_numbers_of_one_scale() {
         .expect("the big number columns");
         let result = agg_by(&parent, &aggregations, &["K"]);
         let recompute = {
-            let (parent, result, aggregations) = (parent.clone(), result.clone(), aggregations.clone());
+            let (parent, result, aggregations) =
+                (parent.clone(), result.clone(), aggregations.clone());
             move || {
                 let from_scratch = agg_by(&static_copy(&*parent), &aggregations, &["K"]);
                 in_order_of(&*from_scratch, &*result, 1)
@@ -483,9 +493,7 @@ fn integers_beyond_a_long_are_summed_exactly() {
     );
     assert_eq!(
         texts(&*result),
-        [
-            "0|340282366920938463463374607431768211454|170141183460469231731687303715884105727|0"
-        ]
+        ["0|340282366920938463463374607431768211454|170141183460469231731687303715884105727|0"]
     );
 }
 
