@@ -1,0 +1,66 @@
+{
+  "format": 2,
+  "scenario": "formula_big_numbers",
+  "scenario_sha256": "076e0a742a28687f31e7250073b9199f065daafe2e632b5af6513d2279a5c03d",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "operators",
+      "file": "step000.operators.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "casts",
+      "file": "step000.casts.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "methods",
+      "file": "step000.methods.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "functions",
+      "file": "step000.functions.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "remainder_by_zero",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "method_of_null",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "no_bitwise",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "no_null_operand",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "ordered",
+      "file": "step000.ordered.arrow",
+      "rows": 4
+    }
+  ]
+}

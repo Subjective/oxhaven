@@ -24,6 +24,7 @@
   "exact_join": {"state": "clean"},
   "filter_structured": {"state": "clean"},
   "flatten_reverse": {"state": "clean"},
+  "formula_big_numbers": {"state": "clean"},
   "group_by_ungroup": {"state": "clean"},
   "head_by_tail_by": {"state": "clean"},
   "head_tail": {"state": "clean"},
