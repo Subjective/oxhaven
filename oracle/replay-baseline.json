@@ -83,6 +83,7 @@
   "ticking_sort_absolute_descending": {"state": "clean"},
   "ticking_time_table": {"state": "clean"},
   "ticking_update_by_append": {"state": "clean"},
+  "ticking_update_by_big_numbers": {"state": "clean"},
   "ticking_update_by_full": {"state": "clean"},
   "ticking_where_sort": {"state": "clean"},
   "time_types": {"state": "clean"},
