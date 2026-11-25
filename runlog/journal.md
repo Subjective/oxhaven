@@ -1585,3 +1585,5 @@ A corpus of five console scripts with an Oxhaven server as the remote, recorded 
 - 2026-11-25 08:05 UTC: 15.4 reported with the full gate green; opened PR 197 (oracle-change). Freed about 4 GB of old scratch builds and the pip cache. Resumed 15.3 with rollup.rs added to its owned paths, for a refusal only.
 
 - 2026-11-25 07:58 UTC: PR 197 (15.4, vectors of vectors and backtracking regex) merged on green as af55e141.
+
+- 2026-11-25 08:40 UTC: 15.3 reported with the full gate green; I merged main into its branch (Cargo.lock conflict only) and opened PR 198.
