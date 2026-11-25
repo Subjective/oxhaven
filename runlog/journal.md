@@ -1563,3 +1563,5 @@ A corpus of five console scripts with an Oxhaven server as the remote, recorded 
 - 2026-11-21 06:42 UTC: PR 192 (14.5, A27 extended to date, time and duration vectors) merged on green as dec36f27. All owner answers of 21 November carried out; 4.3 (Kafka CDC decimals) stays queued with the remaining refusals.
 
 - 2026-11-25 02:13 UTC: Josh asked what is left. The approved list is done; review item 4.3 (Kafka CDC decimals) was already lifted by task 11.5 on 18 November (the 21 November note calling it queued was wrong). Remaining work needs his go-ahead (decision card: refusals needing new dependencies, Docker image, HTTPS serving). Opened PR 193 (README refresh) and removed 21 stale worktrees of merged tasks.
+
+- 2026-11-25 02:22 UTC: PR 193 (README refresh) merged on green as f4c03b24.
