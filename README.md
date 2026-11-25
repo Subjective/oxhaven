@@ -28,9 +28,11 @@ IDE keeps notebooks and layouts in, and `oxhaven-server --help` lists the other 
 before the server accepts clients, as Java's application mode does (`docs/CONSOLE.md`,
 "Applications defined by scripts").
 
-Build features of `oxhaven-server`: `python` (the console, off by default) and `mimalloc`
-(on by default), which makes mimalloc the binary's memory allocator; build with
-`--no-default-features` (and `--features python` if wanted) for the system allocator.
+Build features of `oxhaven-server`: `python` (the console, off by default), `tls` (serving
+over HTTPS and TLS connections of the Barrage client through the system's OpenSSL 3, off by
+default, turned on by `python`; `docs/TLS.md`) and `mimalloc` (on by default), which makes
+mimalloc the binary's memory allocator; build with `--no-default-features` (and `--features
+python` if wanted) for the system allocator.
 `docs/BENCHMARK.md`, "After task 9.13", has the measurements behind it.
 
 What works in the IDE, as `oracle/ide/ide-test.js` tests it: the console, tables in the grid
@@ -48,8 +50,8 @@ and tables of other servers through `deephaven.uri` and `deephaven.barrage`, ove
 
 What does not: Groovy, SQL, Iceberg, S3 and JDBC (out of scope), calls to Java classes
 through `jpy` beyond the few the console carries out (`docs/CONSOLE.md`, "The jpy module"),
-`deephaven.ui` (untried), and serving over HTTPS: the server speaks plain HTTP and checks a
-pre-shared key. A call that is not ported answers `UNIMPLEMENTED` or raises, naming the Java
+`deephaven.ui` (untried). The server speaks plain HTTP unless it is given a certificate
+(`--tls-cert`, `--tls-key`; `docs/TLS.md`), and checks a pre-shared key. A call that is not ported answers `UNIMPLEMENTED` or raises, naming the Java
 method. The differences from Deephaven that are allowed are listed in `PARITY.md`. After the
 server restarts the IDE has to be loaded again, as with Java.
 

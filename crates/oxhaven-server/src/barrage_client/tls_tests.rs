@@ -14,11 +14,8 @@ use oxhaven_testkit::{
 
 use super::tests::{caught_up, empty_of, publish, random_types, PROMPT};
 use super::*;
+use crate::test_support::tls::{tls_relay, Authority};
 use crate::test_support::{TestServer, PSK};
-
-#[path = "../../tests/tls/support.rs"]
-mod support;
-use support::{tls_relay, Authority};
 
 fn tls_config(host: &str, port: u16, roots: Option<&[u8]>) -> ClientConfig {
     let mut config = ClientConfig::new(host, port).with_psk(PSK);

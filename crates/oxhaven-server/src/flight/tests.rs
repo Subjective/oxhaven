@@ -1571,7 +1571,7 @@ async fn a_browser_upload_is_the_upload_of_its_messages_in_order() {
     let sent = server.do_get(id).await.unwrap();
     assert_do_get_matches(case, &sent, &java_schema);
 
-    // a call without the headers of a stream, and the streams that are not ported
+    // a call without the headers of a stream, and the stream that is not ported
     let status = client()
         .open_do_put(server.authorized(FlightData::default()))
         .await
@@ -1582,7 +1582,7 @@ async fn a_browser_upload_is_the_upload_of_its_messages_in_order() {
         "no x-deephaven-stream headers, cannot handle open request"
     );
     let status = client()
-        .open_do_exchange(call(FlightData::default(), 0, false))
+        .open_handshake(server.authorized(Default::default()))
         .await
         .unwrap_err();
     assert_eq!(status.code(), tonic::Code::Unimplemented);
@@ -1592,4 +1592,110 @@ async fn a_browser_upload_is_the_upload_of_its_messages_in_order() {
         ),
         "{status:?}"
     );
+}
+
+/// A browser on an `https://` page subscribes with `OpenDoExchange`, which carries the
+/// first request, and changes the subscription with `NextDoExchange`: it is sent what a
+/// `DoExchange` call with the same requests is sent, message for message. Its half close
+/// ends the call; a client that gives up the `Open` call ends the stream, and a later
+/// message is refused.
+#[tokio::test]
+async fn a_browser_exchange_is_sent_what_a_native_exchange_is() {
+    use crate::barrage::tests::{subscription, Call};
+    use oxhaven_proto::browser_flight::browser_flight_service_client::BrowserFlightServiceClient;
+
+    let server = Server::start().await;
+    let values: ArrayRef = Arc::new(Int32Array::from((0..100).collect::<Vec<i32>>()));
+    let schema = Arc::new(Schema::new(vec![Field::new("In", DataType::Int32, true)]));
+    let batch = RecordBatch::try_new(schema, vec![values]).unwrap();
+    let definition = TableDefinition::new(vec![ColumnDefinition::new("In", ColumnType::Int)]);
+    let table = in_memory_table(definition.unwrap(), &[batch]).unwrap();
+    server.export(7, table);
+    let ticket = export_id_to_bytes(7);
+    let requests = [
+        subscription(Some(&ticket), Some(&RowSet::from_range(0, 9))),
+        subscription(Some(&ticket), Some(&RowSet::from_range(40, 44))),
+    ];
+
+    let mut native = Call::open(&server).await;
+    let mut expected = Vec::new();
+    for request in &requests {
+        native.send(request.clone());
+        expected.push(native.collect().await);
+    }
+    native.close().await;
+    assert!(expected.iter().all(|messages| !messages.is_empty()));
+
+    let client = || BrowserFlightServiceClient::new(server.channel.clone());
+    let call = |stream: i32, message: FlightData, sequence: i32, half_close: bool| {
+        let mut request = server.authorized(message);
+        let metadata = request.metadata_mut();
+        metadata.insert("x-deephaven-stream-ticket", stream.into());
+        metadata.insert("x-deephaven-stream-sequence", sequence.into());
+        if half_close {
+            metadata.insert("x-deephaven-stream-halfclose", "1".parse().unwrap());
+        }
+        request
+    };
+    let mut responses = client()
+        .open_do_exchange(call(901, requests[0].clone(), 0, false))
+        .await
+        .unwrap()
+        .into_inner();
+    /// What arrives until the call is quiet for a while, and whether it ended.
+    async fn collect(responses: &mut tonic::Streaming<FlightData>) -> (Vec<FlightData>, bool) {
+        let mut messages = Vec::new();
+        while let Ok(message) =
+            tokio::time::timeout(Duration::from_millis(600), responses.message()).await
+        {
+            match message.unwrap() {
+                Some(message) => messages.push(message),
+                None => return (messages, true),
+            }
+        }
+        (messages, false)
+    }
+    let (first, ended) = collect(&mut responses).await;
+    assert!(!ended);
+    client()
+        .next_do_exchange(call(901, requests[1].clone(), 1, false))
+        .await
+        .unwrap();
+    let (second, ended) = collect(&mut responses).await;
+    assert!(!ended);
+    for (ours, theirs) in [first, second].iter().zip(&expected) {
+        assert_eq!(ours.len(), theirs.len());
+        for (ours, theirs) in ours.iter().zip(theirs) {
+            assert_eq!(ours.data_header, theirs.data_header);
+            assert_eq!(ours.app_metadata, theirs.app_metadata);
+            assert_eq!(ours.data_body, theirs.data_body);
+        }
+    }
+    client()
+        .next_do_exchange(call(901, FlightData::default(), 2, true))
+        .await
+        .unwrap();
+    let (rest, ended) = collect(&mut responses).await;
+    assert!(rest.is_empty() && ended);
+
+    // the client gives up its open call
+    let responses = client()
+        .open_do_exchange(call(902, requests[0].clone(), 0, false))
+        .await
+        .unwrap()
+        .into_inner();
+    drop(responses);
+    let mut refused = None;
+    for sequence in 1..50 {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        if let Err(status) = client()
+            .next_do_exchange(call(902, requests[1].clone(), sequence, false))
+            .await
+        {
+            refused = Some(status);
+            break;
+        }
+    }
+    let refused = refused.expect("a message after the open call was given up is refused");
+    assert_eq!(refused.code(), tonic::Code::Cancelled, "{refused:?}");
 }
