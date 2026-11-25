@@ -1,0 +1,381 @@
+{
+ "format": 1,
+ "name": "filter_regex_backtracking",
+ "description": "Regular expression match filters that need a backtracking engine: back references by number and name, lookahead and lookbehind, atomic groups and possessive quantifiers, with and without case, inverted, over strings and a null.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    }
+   ],
+   "rows": [
+    [
+     0,
+     "aa"
+    ],
+    [
+     1,
+     "ab"
+    ],
+    [
+     2,
+     "aab"
+    ],
+    [
+     3,
+     "abab"
+    ],
+    [
+     4,
+     "abc"
+    ],
+    [
+     5,
+     "a1"
+    ],
+    [
+     6,
+     "aa1"
+    ],
+    [
+     7,
+     "xyx"
+    ],
+    [
+     8,
+     "abba"
+    ],
+    [
+     9,
+     ""
+    ],
+    [
+     10,
+     null
+    ],
+    [
+     11,
+     "AbAb"
+    ],
+    [
+     12,
+     "a\nb"
+    ],
+    [
+     13,
+     "foofoo"
+    ],
+    [
+     14,
+     "foobar"
+    ],
+    [
+     15,
+     "2024-01-2024"
+    ],
+    [
+     16,
+     "2024-01-2025"
+    ],
+    [
+     17,
+     "aaab"
+    ],
+    [
+     18,
+     "Hello"
+    ],
+    [
+     19,
+     "hellohello"
+    ]
+   ]
+  }
+ ],
+ "operations": [
+  {
+   "name": "doubled",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "matches": {
+      "column": "S",
+      "text": "(\\w+)\\1"
+     }
+    }
+   ]
+  },
+  {
+   "name": "doubled_not",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "matches": {
+      "column": "S",
+      "text": "(.+)\\1",
+      "inverted": true
+     }
+    }
+   ]
+  },
+  {
+   "name": "palindrome4",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "matches": {
+      "column": "S",
+      "text": "(.)(.)\\2\\1"
+     }
+    }
+   ]
+  },
+  {
+   "name": "named_year",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "matches": {
+      "column": "S",
+      "text": "(?<y>\\d{4})-\\d{2}-\\k<y>"
+     }
+    }
+   ]
+  },
+  {
+   "name": "has_digit",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "matches": {
+      "column": "S",
+      "text": "(?=.*\\d).*"
+     }
+    }
+   ]
+  },
+  {
+   "name": "not_foo",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "matches": {
+      "column": "S",
+      "text": "(?!foo).*"
+     }
+    }
+   ]
+  },
+  {
+   "name": "not_bar_end",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "matches": {
+      "column": "S",
+      "text": ".*(?<!bar)"
+     }
+    }
+   ]
+  },
+  {
+   "name": "after_a",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "matches": {
+      "column": "S",
+      "text": ".*(?<=a)b"
+     }
+    }
+   ]
+  },
+  {
+   "name": "possessive",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "matches": {
+      "column": "S",
+      "text": "a*+b"
+     }
+    }
+   ]
+  },
+  {
+   "name": "possessive_none",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "matches": {
+      "column": "S",
+      "text": "a*+ab"
+     }
+    }
+   ]
+  },
+  {
+   "name": "atomic",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "matches": {
+      "column": "S",
+      "text": "(?>a|ab)c"
+     }
+    }
+   ]
+  },
+  {
+   "name": "atomic_long",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "matches": {
+      "column": "S",
+      "text": "(?>ab|a)c"
+     }
+    }
+   ]
+  },
+  {
+   "name": "lookahead_case",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "matches": {
+      "column": "S",
+      "text": "(?=.*B).*",
+      "ignore_case": true
+     }
+    }
+   ]
+  },
+  {
+   "name": "lookbehind_case",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "matches": {
+      "column": "S",
+      "text": "\\w*(?<=H\\w)\\w*",
+      "ignore_case": true
+     }
+    }
+   ]
+  },
+  {
+   "name": "group_case",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "matches": {
+      "column": "S",
+      "text": "((?i)a)\\1"
+     }
+    }
+   ]
+  },
+  {
+   "name": "missing_group",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "matches": {
+      "column": "S",
+      "text": "(a)\\2|xyx"
+     }
+    }
+   ]
+  },
+  {
+   "name": "line",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "matches": {
+      "column": "S",
+      "text": "a(?=\\n).*"
+     }
+    }
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "doubled"
+  },
+  {
+   "table": "doubled_not"
+  },
+  {
+   "table": "palindrome4"
+  },
+  {
+   "table": "named_year"
+  },
+  {
+   "table": "has_digit"
+  },
+  {
+   "table": "not_foo"
+  },
+  {
+   "table": "not_bar_end"
+  },
+  {
+   "table": "after_a"
+  },
+  {
+   "table": "possessive"
+  },
+  {
+   "table": "possessive_none"
+  },
+  {
+   "table": "atomic"
+  },
+  {
+   "table": "atomic_long"
+  },
+  {
+   "table": "lookahead_case"
+  },
+  {
+   "table": "lookbehind_case"
+  },
+  {
+   "table": "group_case"
+  },
+  {
+   "table": "missing_group"
+  },
+  {
+   "table": "line"
+  }
+ ]
+}

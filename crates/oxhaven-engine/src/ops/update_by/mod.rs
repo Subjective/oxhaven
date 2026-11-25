@@ -765,6 +765,22 @@ impl Plan {
                     // Java keeps the one its ring buffer's layout favours: allowed
                     // difference A20 of PARITY.md (owner item 7.10).
                 }
+                // Seen on Java 42.9: the forward fill of a vector of vectors (a `group_by` of
+                // a vector column) is a column of `ObjectVector` of `Object`, whose elements
+                // a client receives as the strings of the inner vectors (`[0,6]`). Allowed
+                // difference A27 of PARITY.md names vectors of objects, not of vectors.
+                if let (Kernel::Cumulative(Cumulative::ForwardFill), ColumnType::Vector(element)) =
+                    (kernel, &input_type)
+                {
+                    if element.list_element().is_some() {
+                        oxhaven_contracts::unported!(
+                            "io.deephaven.engine.table.impl.updateby.fill.ObjectFillByOperator",
+                            "forward fill of vector column {input_name} of type {input_type:?}: \
+                             Java gives the result column the element type Object (a client \
+                             receives the inner vectors as strings)"
+                        );
+                    }
+                }
                 // Behavior: UpdateByOperatorFactory.OperationVisitor#makeRollingWAvgOperator,
                 // which looks at the weight column before the input column
                 let weight = match &operation.spec {

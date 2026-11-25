@@ -1,0 +1,110 @@
+{
+  "format": 2,
+  "scenario": "filter_regex_backtracking",
+  "scenario_sha256": "4227c507dce75ddffa8eb95c398d5966b8cad3dc04752ce6c35d9510a9a9641e",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "doubled",
+      "file": "step000.doubled.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "doubled_not",
+      "file": "step000.doubled_not.arrow",
+      "rows": 14
+    },
+    {
+      "step": 0,
+      "table": "palindrome4",
+      "file": "step000.palindrome4.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "named_year",
+      "file": "step000.named_year.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "has_digit",
+      "file": "step000.has_digit.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "not_foo",
+      "file": "step000.not_foo.arrow",
+      "rows": 17
+    },
+    {
+      "step": 0,
+      "table": "not_bar_end",
+      "file": "step000.not_bar_end.arrow",
+      "rows": 18
+    },
+    {
+      "step": 0,
+      "table": "after_a",
+      "file": "step000.after_a.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "possessive",
+      "file": "step000.possessive.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "possessive_none",
+      "file": "step000.possessive_none.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "atomic",
+      "file": "step000.atomic.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "atomic_long",
+      "file": "step000.atomic_long.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "lookahead_case",
+      "file": "step000.lookahead_case.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "lookbehind_case",
+      "file": "step000.lookbehind_case.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "group_case",
+      "file": "step000.group_case.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "missing_group",
+      "file": "step000.missing_group.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "line",
+      "file": "step000.line.arrow",
+      "rows": 1
+    }
+  ]
+}

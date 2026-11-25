@@ -482,7 +482,7 @@ fn replay(name: &str, scenario: &Value, outcome: &mut Outcome) {
 fn results_match_the_ones_recorded_from_java() {
     let mut outcome = Outcome::default();
     let scenarios = scenarios();
-    assert_eq!(scenarios.len(), 95);
+    assert_eq!(scenarios.len(), 98);
     for (name, scenario) in &scenarios {
         replay(name, scenario, &mut outcome);
     }
@@ -615,10 +615,32 @@ fn results_match_the_ones_recorded_from_java() {
             "error_unknown_column.after_bad_sort: sort",
             "formula_big_numbers.methods: where",
             "formula_big_numbers.ordered: where",
+            "nested_vectors.indexed: group_by",
+            "nested_vectors.viewed: group_by",
+            "nested_vectors.selected: group_by",
+            "nested_vectors.outside_fails: group_by",
+            "nested_vectors.with_nulls: group_by",
+            "nested_vectors.null_fails: group_by",
+            "nested_vectors.null_size_fails: group_by",
+            "nested_vectors.ungrouped: ungroup",
+            "nested_vectors.ungrouped_twice: ungroup",
+            "nested_vectors.grouped: agg_by",
+            "nested_vectors.rolled: update_by",
+            "nested_vectors.bucketed: update_by",
+            "nested_vectors.w_null: where",
+            "nested_vectors.w_not_null: where",
+            "nested_vectors.w_len: where",
+            "nested_vectors.w_is_null: where",
+            "nested_vectors.searched: filter",
             "pipeline.priced: where",
             "pipeline.slim: natural_join",
             "ticking_column_arrays.blink_before: blink input",
             "ticking_column_arrays.blink_whole: blink input",
+            "ticking_nested_vectors.n: group_by",
+            "ticking_nested_vectors.indexed: group_by",
+            "ticking_nested_vectors.m: group_by",
+            "ticking_nested_vectors.rolled: update_by",
+            "ticking_nested_vectors.w_len: where",
             "ticking_time_table.numbered: head",
             "time_types.base: column D of type LocalDate, sent in another form",
             "time_types.sort_d: sort",

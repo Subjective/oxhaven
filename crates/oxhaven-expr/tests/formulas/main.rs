@@ -16,6 +16,7 @@ mod external;
 mod formula;
 mod gaps;
 mod logic;
+mod nested;
 mod objects;
 mod pieces;
 mod recorded;

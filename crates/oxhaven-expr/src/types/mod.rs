@@ -17,6 +17,7 @@ use crate::external::{ExternalArgument, ExternalFunctions};
 use crate::functions::java_time;
 use crate::functions::random;
 use crate::functions::range::{self, RangeFn};
+use crate::functions::vectors::VectorFn;
 use crate::functions::{self, vectors, Kernel, Resolved};
 use methods::Parameter;
 pub(crate) use methods::StringMethod;
@@ -396,6 +397,7 @@ pub(crate) fn check(
     };
     let root = checker.check(expr)?;
     refuse_object_column_array(&root)?;
+    refuse_vector_of_vectors(&root)?;
     Ok(Checked {
         root,
         columns: checker.columns,
@@ -404,6 +406,23 @@ pub(crate) fn check(
         keys: checker.keys,
         refused_to_clients: checker.refused_to_clients,
     })
+}
+
+/// Refuses a formula whose value is a vector of vectors or arrays.
+///
+/// Java declares such a value as a raw `ObjectVector`, whose elements it sends as
+/// strings: seen on Java 42.9 for `view("Z = (X)")` of a vector of `IntVector`s and for
+/// the formula aggregation `each` of one, where the copy `Y = X` keeps the `IntVector`s.
+fn refuse_vector_of_vectors(root: &Typed) -> Result<(), FormulaError> {
+    match &root.column_type {
+        ColumnType::Vector(element) if element.list_element().is_some() => {
+            Err(unsupported(format!(
+                "a formula whose value is a vector of {element:?}, which Java gives as an \
+                 ObjectVector of java.lang.Object"
+            )))
+        }
+        _ => Ok(()),
+    }
 }
 
 fn type_error(message: impl Into<String>) -> FormulaError {
@@ -468,6 +487,34 @@ fn typed(column_type: ColumnType, node: Node) -> Typed {
 /// Whether the value is a vector or an array.
 fn is_list(value: &Typed) -> bool {
     value.column_type.list_element().is_some()
+}
+
+/// Refuses an element of `value` when `value` is itself an element of a vector of
+/// `ObjectVector`s (`S[0]` of a vector of vectors of strings, or `firstObj(S)`), which
+/// Java declares as a raw `ObjectVector`: seen on Java 42.9, `S[0][1]` is a
+/// `java.lang.Object`, sent as text.
+fn refuse_element_of_raw_vector(value: &Typed) -> Result<(), FormulaError> {
+    let Node::Call {
+        kernel: Kernel::Vector(VectorFn::Get | VectorFn::First | VectorFn::Last),
+        arguments,
+    } = &value.node
+    else {
+        return Ok(());
+    };
+    let raw = arguments.first().is_some_and(|outer| {
+        matches!(
+            &outer.column_type,
+            ColumnType::Vector(element)
+                if matches!(&**element, ColumnType::Vector(inner) if Numeric::of(inner).is_none())
+        )
+    });
+    if raw {
+        return Err(unsupported(
+            "an element of an element of a vector of ObjectVectors, which Java declares as \
+             java.lang.Object",
+        ));
+    }
+    Ok(())
 }
 
 fn is_null_literal(expr: &Expr) -> bool {
@@ -2164,6 +2211,9 @@ impl Checker<'_> {
             .map(|argument| argument.column_type.clone())
             .collect();
         let column_array = matches!(checked[0].node, Node::ColumnArray(_));
+        if matches!(method, "get" | crate::parse::INDEX_METHOD) {
+            refuse_element_of_raw_vector(&checked[0])?;
+        }
         match vectors::resolve_method(&checked[0].column_type, method, &types, column_array)? {
             Resolved::Call(call) => Ok(library_call(call, checked)),
             _ => unreachable!("a method of a vector is a call"),
@@ -2705,6 +2755,9 @@ impl Checker<'_> {
             .iter()
             .map(|argument| argument.as_ref().map(|typed| typed.column_type.clone()))
             .collect();
+        if let ("firstObj" | "lastObj", Some(Some(first))) = (function, checked.first()) {
+            refuse_element_of_raw_vector(first)?;
+        }
         let resolved = match functions::resolve(function, &types) {
             Ok(resolved) => resolved,
             // Behavior: `QueryLanguageParser#getMethod`: when no static import takes the

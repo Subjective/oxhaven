@@ -650,7 +650,7 @@ pub(crate) fn replay_all(ours: &[&str], define: Define) -> Tally {
         }
     }
     paths.sort();
-    assert_eq!(paths.len(), 95, "the scenarios of the oracle");
+    assert_eq!(paths.len(), 98, "the scenarios of the oracle");
     let mut tally = Tally::default();
     for path in &paths {
         run(path, ours, define, &mut tally);

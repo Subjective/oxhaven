@@ -696,6 +696,26 @@ fn a_minimum_of_vectors_of_zones_is_unported() {
     let _ = update_by(&source, &[op(UpdateBySpec::CumMin, &[])], &[] as &[&str]);
 }
 
+/// Seen on Java 42.9: the forward fill of a vector of `int` vectors is a column of
+/// `ObjectVector` of `Object`, whose elements a client receives as strings.
+#[test]
+#[should_panic(
+    expected = "unported: io.deephaven.engine.table.impl.updateby.fill.ObjectFillByOperator: \
+                forward fill of vector column N of type Vector(Vector(Int))"
+)]
+fn a_forward_fill_of_a_vector_of_vectors_is_unported() {
+    let inner = ColumnType::vector(ColumnType::Int);
+    let column_type = ColumnType::vector(inner.clone());
+    let elements = list_of(&inner, [Some(1)], Arc::new(Int32Array::from(vec![0])));
+    let column = list_of(&column_type, [Some(1), None], elements);
+    let source = static_table(&[("N", column_type, column)]);
+    let _ = update_by(
+        &source,
+        &[op(UpdateBySpec::ForwardFill, &[])],
+        &[] as &[&str],
+    );
+}
+
 /// The cumulative minimum and maximum of vectors of `LocalDate`s keep the element type
 /// (A27 of `PARITY.md`) and order the vectors element by element, a null element first.
 /// Java's answers for such vectors are in `oracle/corpus/agg_object_vectors`.

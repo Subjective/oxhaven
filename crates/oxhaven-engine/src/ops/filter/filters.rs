@@ -20,7 +20,7 @@ use arrow::datatypes::{
 };
 use oxhaven_column::parallel;
 use oxhaven_column::sentinel::sentinels_to_nulls;
-use oxhaven_contracts::expr::{Formula, FormulaCompiler, FormulaError};
+use oxhaven_contracts::expr::{Expr, Formula, FormulaCompiler, FormulaError};
 use oxhaven_contracts::rowset::{RowKey, RowRange, RowSet};
 use oxhaven_contracts::schema::{ColumnType, TableClass, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, Table, TableFailure};
@@ -200,6 +200,14 @@ fn resolve_condition(
     let formula = compiler
         .compile(&expr, definition)
         .map_err(|e| e.to_string())?;
+    if let Some(column) = element_of_nested_vector(&expr, definition) {
+        oxhaven_contracts::unported!(
+            "io.deephaven.engine.table.impl.select.ConditionFilter#init",
+            "the filter {text}, which reads an element of the vector of vectors {column}: \
+             Java declares the column without its element type in a filter, so the element \
+             is a java.lang.Object there"
+        );
+    }
     if *formula.result_type() != ColumnType::Boolean {
         return Err(format!(
             "Invalid condition filter expression type: boolean required. Formula: {text}, \
@@ -211,6 +219,61 @@ fn resolve_condition(
         formula,
         text: text.to_string(),
     })
+}
+
+/// The first column of vectors of vectors whose element `expr` reads: `X[0]`, `X.get(i)`,
+/// `firstObj(X)` or `lastObj(X)`.
+///
+/// Seen on Java 42.9 after two `group_by`s: in a filter such an element is an `Object`, so
+/// `X[0] == null`, `isNull(X[0])` and `firstObj(X) == null` filter, `len(X[0]) > 1`,
+/// `X[0].size() > 1` and `X[0][0] > 2` do not compile, where a formula column has an
+/// `IntVector` and computes all of them. The formulas here are compiled the formula
+/// column's way, so a filter that reads such an element is refused.
+fn element_of_nested_vector<'a>(expr: &'a Expr, definition: &TableDefinition) -> Option<&'a str> {
+    let nested = |e: &'a Expr| match e {
+        Expr::Column(name) => definition
+            .index_of(name)
+            .map(|index| &definition.columns()[index].column_type)
+            .and_then(ColumnType::list_element)
+            .is_some_and(|element| element.list_element().is_some())
+            .then_some(name.as_str()),
+        _ => None,
+    };
+    let found = match expr {
+        Expr::MethodCall {
+            receiver, method, ..
+        } if method == "get" || method == "[]" => nested(receiver),
+        Expr::Call {
+            function,
+            arguments,
+        } if function == "firstObj" || function == "lastObj" => arguments.first().and_then(nested),
+        _ => None,
+    };
+    if found.is_some() {
+        return found;
+    }
+    let children: Vec<&'a Expr> = match expr {
+        Expr::Unary { operand, .. } | Expr::Cast { operand, .. } => vec![operand],
+        Expr::Binary { left, right, .. } => vec![left, right],
+        Expr::Ternary {
+            condition,
+            if_true,
+            if_false,
+        } => vec![condition, if_true, if_false],
+        Expr::Call { arguments, .. } => arguments.iter().collect(),
+        Expr::MethodCall {
+            receiver,
+            arguments,
+            ..
+        } => std::iter::once(&**receiver).chain(arguments).collect(),
+        Expr::ColumnArrayAccess { position, .. } => vec![position],
+        Expr::Column(_) | Expr::Literal(_) | Expr::RowVariable(_) | Expr::ColumnVector(_) => {
+            Vec::new()
+        }
+    };
+    children
+        .into_iter()
+        .find_map(|child| element_of_nested_vector(child, definition))
 }
 
 /// A simple filter that does not fit the table becomes its formula, if it has one and the
