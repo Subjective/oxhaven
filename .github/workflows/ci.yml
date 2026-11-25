@@ -184,20 +184,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: crates/oxhaven-kafka/tests/broker.sh
 
-  docker:
-    # Builds the image of docker/Dockerfile (a release build of the server with its console,
-    # the web IDE's files from the deephaven-server wheel, the console's environment) and
-    # starts it once with docker/smoke.sh. The image is not pushed: no registry, no login,
-    # no secret. See docker/README.md.
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build the image
-        run: docker build -f docker/Dockerfile -t oxhaven .
-      - name: Start it and check that it serves
-        run: docker/smoke.sh oxhaven
-
   rules:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'

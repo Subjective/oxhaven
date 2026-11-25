@@ -83,8 +83,11 @@ packages), crates.io and `sh.rustup.rs`. The cargo build uses every core;
 on an image that trusts the proxy's certificate: `--build-arg PYTHON_IMAGE=<image>`, an image
 made `FROM python:3.13-slim-bookworm` that adds it.
 
-The `docker` job of `.github/workflows/ci.yml` builds the image on every pull request and
-runs `docker/smoke.sh` against it; nothing is pushed anywhere.
+The workflow `.github/workflows/docker.yml` builds the image and runs `docker/smoke.sh`
+against it when a pull request or a push to `main` changes what makes the image (this
+directory, `.dockerignore`, `scripts/extract-web-root.sh`, `rust-toolchain.toml`, the
+workflow), every Monday, and on demand; nothing is pushed anywhere. It is not part of the
+checks of every pull request.
 
 ## Licences
 
