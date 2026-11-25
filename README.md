@@ -40,9 +40,18 @@ rename, move, delete), the Log panel and Command History. From Python: `empty_ta
 `sort`, the joins, `agg_by` and the dedicated aggregations, `update_by`, Python functions in
 formulas, reading CSV and Parquet, and conversion to and from pandas and numpy.
 
-What does not: plots (`deephaven.plot`), `deephaven.ui`, `partition_by`, `rollup` and `tree`,
-Groovy and https. A call that is not ported answers `UNIMPLEMENTED` or raises, naming the
-Java method. After the server restarts the IDE has to be loaded again, as with Java.
+Also served: plots, from `deephaven.plot` and from the `deephaven-plugin-plotly-express`
+package (`docs/FIGURES.md`), partitioned tables (`docs/PARTITIONED.md`), rollups and trees
+(`docs/HIERARCHICAL.md`), Kafka consumers and producers (`docs/KAFKA.md`), business calendars,
+and tables of other servers through `deephaven.uri` and `deephaven.barrage`, over TLS too
+(`docs/CONSOLE.md`).
+
+What does not: Groovy, SQL, Iceberg, S3 and JDBC (out of scope), calls to Java classes
+through `jpy` beyond the few the console carries out (`docs/CONSOLE.md`, "The jpy module"),
+`deephaven.ui` (untried), and serving over HTTPS: the server speaks plain HTTP and checks a
+pre-shared key. A call that is not ported answers `UNIMPLEMENTED` or raises, naming the Java
+method. The differences from Deephaven that are allowed are listed in `PARITY.md`. After the
+server restarts the IDE has to be loaded again, as with Java.
 
 Contributors, human or agent, start with `AGENTS.md`.
 
