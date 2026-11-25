@@ -1031,34 +1031,48 @@ mod tests {
     /// and possessive quantifiers, picked and drawn at random, on short strings. A pattern
     /// Java compiles is matched as Java matches it or is `unported!`; one Java refuses is an
     /// error or is `unported!`.
+    /// A pattern of `java_backtracking.txt`, whether Java compiles it, and its answers.
+    struct Recorded {
+        pattern: String,
+        ignore_case: bool,
+        compiles: bool,
+        answers: Vec<(String, bool)>,
+    }
+
     #[test]
     fn backtracking_patterns_answer_as_java_regular_expressions_answer() {
-        let mut patterns: Vec<(String, bool, Option<bool>, Vec<(String, bool)>)> = Vec::new();
+        let mut patterns: Vec<Recorded> = Vec::new();
         for line in include_str!("java_backtracking.txt").lines() {
             let fields: Vec<&str> = line.split(' ').collect();
             let (ignore_case, pattern) = (fields[1] == "1", unhex(fields[2]));
             let known = patterns
                 .last()
-                .is_some_and(|(p, i, _, _)| *p == pattern && *i == ignore_case);
+                .is_some_and(|last| last.pattern == pattern && last.ignore_case == ignore_case);
             if !known {
-                patterns.push((pattern, ignore_case, Some(fields[0] == "M"), Vec::new()));
+                patterns.push(Recorded {
+                    pattern,
+                    ignore_case,
+                    compiles: fields[0] == "M",
+                    answers: Vec::new(),
+                });
             }
             if fields[0] == "M" {
-                let value = (unhex(fields[3]), fields[4] == "1");
-                patterns.last_mut().unwrap().3.push(value);
+                let answer = (unhex(fields[3]), fields[4] == "1");
+                patterns.last_mut().unwrap().answers.push(answer);
             }
         }
         let (mut matched, mut refused, mut errors) = (0, Vec::new(), 0);
-        for (pattern, ignore_case, compiles, values) in &patterns {
-            match compiled(pattern, *ignore_case) {
+        for recorded in &patterns {
+            let (pattern, ignore_case) = (&recorded.pattern, recorded.ignore_case);
+            match compiled(pattern, ignore_case) {
                 None => refused.push(pattern.as_str()),
                 Some(Err(error)) => {
-                    assert_eq!(*compiles, Some(false), "{pattern:?}: {error}");
+                    assert!(!recorded.compiles, "{pattern:?}: {error}");
                     errors += 1;
                 }
                 Some(Ok(matcher)) => {
-                    assert_eq!(*compiles, Some(true), "{pattern:?} compiles");
-                    for (value, answer) in values {
+                    assert!(recorded.compiles, "{pattern:?} compiles");
+                    for (value, answer) in &recorded.answers {
                         assert_eq!(
                             matcher.test(value),
                             *answer,
