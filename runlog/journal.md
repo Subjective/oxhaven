@@ -1565,3 +1565,5 @@ A corpus of five console scripts with an Oxhaven server as the remote, recorded 
 - 2026-11-25 02:13 UTC: Josh asked what is left. The approved list is done; review item 4.3 (Kafka CDC decimals) was already lifted by task 11.5 on 18 November (the 21 November note calling it queued was wrong). Remaining work needs his go-ahead (decision card: refusals needing new dependencies, Docker image, HTTPS serving). Opened PR 193 (README refresh) and removed 21 stale worktrees of merged tasks.
 
 - 2026-11-25 02:22 UTC: PR 193 (README refresh) merged on green as f4c03b24.
+
+- 2026-11-25 05:08 UTC: Josh chose "Refusals, docs, Docker and HTTPS". Tasks 15.2 to 15.6 written. Started 15.2 (big-number formulas) and 15.6 (HTTPS serving) on Opus; 15.3 (needs 15.2), 15.4 and 15.5 follow as builders free up.
