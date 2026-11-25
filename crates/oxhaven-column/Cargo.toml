@@ -11,3 +11,6 @@ workspace = true
 [dependencies]
 arrow.workspace = true
 oxhaven-contracts = { path = "../oxhaven-contracts" }
+num-bigint.workspace = true
+num-integer.workspace = true
+num-traits.workspace = true

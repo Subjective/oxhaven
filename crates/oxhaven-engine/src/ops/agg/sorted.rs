@@ -87,6 +87,9 @@ pub struct SortedFirstLast {
     value: Vec<Scalar>,
     /// For a blink parent, the rows each group was given in this cycle, in row order.
     arrived: Vec<Vec<RowKey>>,
+    /// Whether a group whose rows have sort keys that compare equal and are not `equals`
+    /// fails the result: see [`SortedFirstLast::split_keys`].
+    refuse_split: bool,
 }
 
 impl SortedFirstLast {
@@ -107,7 +110,61 @@ impl SortedFirstLast {
             best: Vec::new(),
             value: Vec::new(),
             arrived: Vec::new(),
+            refuse_split: false,
         }
+    }
+
+    /// The operator for a parent that removes rows and is not a blink table, where Java
+    /// keeps a sorted array of each group's sort keys and row keys. That array orders by
+    /// `compareTo` and then by row key, but merges and finds entries by `equals`, so a
+    /// `BigDecimal` sort column whose group holds `1.0` and `1.00` leaves the answer to the
+    /// array's layout; that fails the result instead.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.ssa.ObjectSegmentedSortedArray#insert,
+    /// whose merge takes the row key into account only for values that are `equals`
+    pub fn of_refreshing(mut self) -> SortedFirstLast {
+        self.refuse_split = self
+            .sort
+            .iter()
+            .any(|column| column.column_type == ColumnType::BigDecimal);
+        self
+    }
+
+    /// The failure of a group whose rows `rows` have two sort keys that compare equal and
+    /// are not `equals`, for an operator that [refuses them](SortedFirstLast::of_refreshing).
+    fn split_keys(&self, rows: &RowSet) -> Result<(), TableFailure> {
+        if !self.refuse_split || rows.size() < 2 {
+            return Ok(());
+        }
+        let mut keys = self.keys(rows)?;
+        keys.sort_by(|a, b| compare_keys(a, b, self.boxed));
+        for pair in keys.windows(2) {
+            if compare_keys(&pair[0], &pair[1], self.boxed) == Ordering::Equal
+                && !pair[0].iter().zip(&pair[1]).all(|(a, b)| a.same(b))
+            {
+                let text = |key: &SortKey| {
+                    key.iter()
+                        .map(|value| match value {
+                            Scalar::Decimal(decimal) => decimal.text(),
+                            Scalar::Null => "null".to_string(),
+                            other => format!("{other:?}"),
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                };
+                return Err(TableFailure {
+                    message: format!(
+                        "unported: io.deephaven.engine.table.impl.ssa.ObjectSegmentedSortedArray: \
+                         sorted first or last of a group of a refreshing table whose sort keys \
+                         hold BigDecimals of one value and different scales ([{}] and [{}]), \
+                         where Java's sorted array answers by its layout",
+                        text(&pair[0]),
+                        text(&pair[1])
+                    ),
+                });
+            }
+        }
+        Ok(())
     }
 
     /// The type the output column's cells are read and written as: a cell of a column of
@@ -308,7 +365,9 @@ impl AggOperator for SortedFirstLast {
         }
         let mut row_keys = Vec::with_capacity(slots.len());
         for &slot in slots {
-            self.best[slot] = self.best_of(&groups.rows(slot))?;
+            let rows = groups.rows(slot);
+            self.split_keys(&rows)?;
+            self.best[slot] = self.best_of(&rows)?;
             row_keys.push(self.best[slot].0);
         }
         let values = Values::decode(

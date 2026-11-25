@@ -1,5 +1,6 @@
 //! Tests of aggregation.
 
+mod big_aggregations;
 mod big_numbers;
 mod by_rows;
 mod corpus;

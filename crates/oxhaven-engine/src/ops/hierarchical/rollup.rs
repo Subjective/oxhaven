@@ -173,6 +173,53 @@ fn check_reaggregation(
     Ok(())
 }
 
+/// Refuses as not ported a rollup of a refreshing source, with group-by columns, that
+/// computes or orders `BigDecimal` or `BigInteger` values: anything but a first, last,
+/// group or formula of them.
+///
+/// Java makes each coarser level from the level below it: it adds up the hidden running
+/// sums of that level for an average or a variance, and merges the sorted sets of that
+/// level for a minimum, maximum or distinct value. The running scale of a sum and the
+/// sorted sets of big numbers depend on the history of a ticking table (task 15.3), and
+/// here every level is computed from the source. Whether the two agree after updates is
+/// not checked, so the case is refused.
+///
+/// Behavior: io.deephaven.engine.table.impl.by.AggregationProcessor.RollupReaggregatedConverter
+/// (#reaggregateAsSum, #reaggregateAvgOperator, #reaggregateStdOrVarOperators,
+/// #reaggregateMinOrMaxOperators, #reaggregateSsmBackedOperator,
+/// #reaggregateSortedFirstOrLastOperator)
+fn check_big_numbers(source: &dyn Table, aggregations: &[Aggregation]) {
+    let definition = source.definition();
+    let big = |name: &str| {
+        definition
+            .index_of(name)
+            .map(|index| &definition.columns()[index].column_type)
+            .filter(|column_type| {
+                matches!(column_type, ColumnType::BigDecimal | ColumnType::BigInteger)
+            })
+    };
+    for aggregation in aggregations {
+        let Aggregation::Columns { spec, pairs } = aggregation else {
+            continue;
+        };
+        let column = match spec {
+            AggSpec::First | AggSpec::Last | AggSpec::Group | AggSpec::Formula { .. } => None,
+            AggSpec::SortedFirst { columns } | AggSpec::SortedLast { columns } => columns
+                .iter()
+                .find_map(|name| big(name).map(|ty| (name, ty))),
+            _ => pairs
+                .iter()
+                .find_map(|pair| big(&pair.input).map(|ty| (&pair.input, ty))),
+        };
+        if let Some((name, column_type)) = column {
+            oxhaven_contracts::unported!(
+                "io.deephaven.engine.table.impl.by.AggregationProcessor.RollupReaggregatedConverter",
+                "a rollup of a refreshing table that reaggregates {name} of type {column_type:?} ({spec:?})"
+            );
+        }
+    }
+}
+
 /// Java's text for what a blink table does not support.
 ///
 /// Behavior: io.deephaven.engine.table.impl.by.AggregationProcessor.Converter#unsupportedForBlinkTables
@@ -491,6 +538,9 @@ pub fn rollup(
     check_group_users(aggregations);
     if !group_by.is_empty() {
         check_reaggregation(aggregations, group_by)?;
+        if source.is_refreshing() {
+            check_big_numbers(source.as_ref(), aggregations);
+        }
         check_formulas(source, aggregations, group_by, compiler)?;
     }
     let finest = build_levels(
@@ -1375,5 +1425,169 @@ impl Hierarchy for RollupTable {
             node_column - all_keys + keys
         };
         Ok(table.column(in_level).chunk(rows)?)
+    }
+}
+
+#[cfg(test)]
+mod big_number_tests {
+    use super::*;
+    use crate::graph::SteppedUpdateGraph;
+    use crate::ops::agg::Pair;
+    use arrow::array::BinaryArray;
+    use oxhaven_column::decimal::{self, Decimal};
+    use oxhaven_contracts::graph::UpdateGraph;
+    use oxhaven_testkit::{definition, ints, strings, ReferenceTable};
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+
+    /// Two groups of a `BigDecimal` column `B`, a `BigInteger` column `G` and an int `O`.
+    fn source(refreshing: bool) -> Arc<dyn Table> {
+        let texts = ["1.0", "2.50", "3", "1.00"];
+        let decimals: Vec<Vec<u8>> = texts
+            .iter()
+            .map(|text| Decimal::parse(text).expect("a decimal").cell())
+            .collect();
+        let integers: Vec<Vec<u8>> = [1i64, 2, 3, 1]
+            .iter()
+            .map(|value| decimal::integer_bytes(&(*value).into()))
+            .collect();
+        let binary = |cells: &[Vec<u8>]| -> ArrayRef {
+            Arc::new(
+                cells
+                    .iter()
+                    .map(|cell| Some(cell.as_slice()))
+                    .collect::<BinaryArray>(),
+            )
+        };
+        let definition = definition(&[
+            ("K", ColumnType::String),
+            ("B", ColumnType::BigDecimal),
+            ("G", ColumnType::BigInteger),
+            ("O", ColumnType::Int),
+        ]);
+        let columns = vec![
+            strings(["k0", "k1", "k0", "k1"]),
+            binary(&decimals),
+            binary(&integers),
+            ints([4, 3, 2, 1]),
+        ];
+        if refreshing {
+            let graph: Arc<dyn UpdateGraph> = SteppedUpdateGraph::new();
+            ReferenceTable::new_refreshing(graph, definition, RowSet::flat(4), columns)
+        } else {
+            ReferenceTable::new_static(definition, RowSet::flat(4), columns)
+        }
+    }
+
+    /// The panic of the rollup of `source` by `by` with `aggregation`, or `None` when it is
+    /// made.
+    fn refusal(source: &Arc<dyn Table>, aggregation: Aggregation, by: &[&str]) -> Option<String> {
+        let made = catch_unwind(AssertUnwindSafe(|| {
+            rollup(source, &[aggregation], false, by, None).is_ok()
+        }));
+        match made {
+            Ok(made) => {
+                assert!(made, "the rollup failed with an error");
+                None
+            }
+            Err(panic) => Some(
+                panic
+                    .downcast::<String>()
+                    .map(|text| *text)
+                    .unwrap_or_default(),
+            ),
+        }
+    }
+
+    #[test]
+    fn a_reaggregation_of_big_numbers_of_a_refreshing_table_is_unported() {
+        let refreshing = source(true);
+        let computed = [
+            AggSpec::Sum,
+            AggSpec::AbsSum,
+            AggSpec::Avg,
+            AggSpec::Var,
+            AggSpec::Std,
+            AggSpec::Min,
+            AggSpec::Max,
+            AggSpec::CountDistinct { count_nulls: false },
+            AggSpec::Distinct {
+                include_nulls: false,
+            },
+            AggSpec::Unique {
+                include_nulls: false,
+                non_unique: crate::ops::agg::Sentinel::Null,
+            },
+        ];
+        for spec in computed {
+            for input in ["B", "G"] {
+                let aggregation = Aggregation::columns(spec.clone(), [Pair::new("R", input)]);
+                let message = refusal(&refreshing, aggregation, &["K"])
+                    .unwrap_or_else(|| panic!("{spec:?} of {input} was not refused"));
+                assert!(
+                    message.starts_with(
+                        "unported: io.deephaven.engine.table.impl.by.AggregationProcessor.RollupReaggregatedConverter"
+                    ),
+                    "{spec:?} of {input}: {message}"
+                );
+            }
+        }
+        // The sort column is carried, which the check of reaggregation asks of a sorted
+        // first or last with group-by columns.
+        for column in ["B", "G"] {
+            let sorted = || vec![column.to_string()];
+            for spec in [
+                AggSpec::SortedFirst { columns: sorted() },
+                AggSpec::SortedLast { columns: sorted() },
+            ] {
+                let pairs = [Pair::of("O"), Pair::of(column)];
+                let aggregation = Aggregation::columns(spec.clone(), pairs);
+                let message = refusal(&refreshing, aggregation, &["K"])
+                    .unwrap_or_else(|| panic!("{spec:?} was not refused"));
+                assert!(
+                    message.starts_with(
+                        "unported: io.deephaven.engine.table.impl.by.AggregationProcessor.RollupReaggregatedConverter: "
+                    ),
+                    "{spec:?}: {message}"
+                );
+            }
+        }
+        // What is not reaggregated from the big numbers, or not reaggregated at all, or
+        // static, is made.
+        let served = [
+            (
+                Aggregation::columns(AggSpec::First, [Pair::new("R", "B")]),
+                true,
+                &["K"][..],
+            ),
+            (
+                Aggregation::columns(AggSpec::Last, [Pair::new("R", "G")]),
+                true,
+                &["K"],
+            ),
+            (
+                Aggregation::columns(AggSpec::Group, [Pair::new("R", "B")]),
+                true,
+                &["K"],
+            ),
+            (
+                Aggregation::columns(AggSpec::Sum, [Pair::new("R", "O")]),
+                true,
+                &["K"],
+            ),
+            (
+                Aggregation::columns(AggSpec::Sum, [Pair::new("R", "B")]),
+                true,
+                &[],
+            ),
+            (
+                Aggregation::columns(AggSpec::Min, [Pair::new("R", "B")]),
+                false,
+                &["K"],
+            ),
+        ];
+        for (aggregation, refreshing, by) in served {
+            let refused = refusal(&source(refreshing), aggregation.clone(), by);
+            assert_eq!(refused, None, "{aggregation:?} by {by:?}");
+        }
     }
 }

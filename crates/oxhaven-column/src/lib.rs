@@ -8,6 +8,7 @@
 //! - [`tables`]: the tables that the cells of a column of tables name.
 
 pub mod bits;
+pub mod decimal;
 mod flat;
 pub mod java_values;
 pub mod parallel;

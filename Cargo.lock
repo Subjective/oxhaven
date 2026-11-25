@@ -1377,6 +1377,9 @@ name = "oxhaven-column"
 version = "0.0.0"
 dependencies = [
  "arrow",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
  "oxhaven-contracts",
 ]
 
@@ -1407,6 +1410,8 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "fancy-regex",
+ "num-bigint",
+ "num-traits",
  "oxhaven-column",
  "oxhaven-contracts",
  "oxhaven-expr",

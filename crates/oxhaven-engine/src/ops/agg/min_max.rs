@@ -4,6 +4,7 @@ use super::operator::{AggOperator, Effect, Marks, Rows};
 use super::values::{build, Run, Scalar, Shape, Values};
 use arrow::array::{Array, ArrayRef};
 use oxhaven_contracts::schema::ColumnType;
+use oxhaven_contracts::table::TableFailure;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
@@ -26,6 +27,12 @@ use std::collections::BTreeMap;
 /// written only when the multiset's answer does not compare equal to what the cell holds,
 /// so a cell that shows one zero keeps it while the answer is a zero, whatever the entry.
 ///
+/// A `BigDecimal` orders by `compareTo`, under which `1.0` and `1.00` are equal, and Java's
+/// multiset tells them apart by `equals`: once a group of a parent that removes rows holds
+/// two such values, its answer depends on the layout of Java's sorted set, and the result
+/// fails instead (see `distinct`). On the other parents the first of equal values stays,
+/// as for every type.
+///
 /// Behavior: io.deephaven.engine.table.impl.by.DoubleChunkedAddOnlyMinMaxOperator (and its
 /// per-type copies) for the first case;
 /// io.deephaven.engine.table.impl.by.ssmminmax.SsmChunkedMinMaxOperator,
@@ -35,6 +42,9 @@ pub struct MinMax {
     column_type: ColumnType,
     minimum: bool,
     state: State,
+    /// Why the result fails: see [`MinMax`]. Once noted, no group changes.
+    failure: Option<TableFailure>,
+    failed: bool,
 }
 
 enum State {
@@ -118,6 +128,30 @@ impl Multiset {
         for value in values {
             *self.entries.entry(Ordered(value)).or_insert(0) += 1;
         }
+    }
+
+    /// Two values, held or given in `run`, that compare equal and are not `equals`: two
+    /// `BigDecimal`s of one value and different scales.
+    fn split(&self, run: &Run<'_>) -> Option<(Scalar, Scalar)> {
+        let mut given: BTreeMap<Ordered, Scalar> = BTreeMap::new();
+        for (_, value) in run.scalars() {
+            if value.is_null() {
+                continue;
+            }
+            let held = self
+                .entries
+                .get_key_value(&Ordered(value.clone()))
+                .map(|(held, _)| held.0.clone())
+                .or_else(|| given.get(&Ordered(value.clone())).cloned());
+            match held {
+                Some(held) if !held.same(&value) => return Some((held, value)),
+                Some(_) => {}
+                None => {
+                    given.insert(Ordered(value.clone()), value);
+                }
+            }
+        }
+        None
     }
 
     fn remove(&mut self, run: &Run<'_>) {
@@ -205,7 +239,42 @@ impl MinMax {
             column_type,
             minimum,
             state,
+            failure: None,
+            failed: false,
         }
+    }
+
+    /// Whether `run` may join `slot`: not when the result has failed, nor, for a
+    /// `BigDecimal` column of a parent that removes rows, when the group would hold two
+    /// values of one value and different scales, which fails it.
+    fn joins(&mut self, slot: usize, run: &Run<'_>) -> bool {
+        if self.failed {
+            return false;
+        }
+        let State::Retracting { values, .. } = &self.state else {
+            return true;
+        };
+        if self.column_type != ColumnType::BigDecimal {
+            return true;
+        }
+        let Some((a, b)) = values[slot].split(run) else {
+            return true;
+        };
+        let text = |value: &Scalar| match value {
+            Scalar::Decimal(decimal) => decimal.text(),
+            _ => format!("{value:?}"),
+        };
+        self.failure = Some(TableFailure {
+            message: format!(
+                "unported: io.deephaven.engine.table.impl.by.ssmminmax.SsmChunkedMinMaxOperator: \
+                 a group of a refreshing table that holds BigDecimals of one value and \
+                 different scales ({} and {}), where Java's sorted set answers by its layout",
+                text(&a),
+                text(&b)
+            ),
+        });
+        self.failed = true;
+        false
     }
 
     /// Writes the multiset's answer for `slot` into its cell, unless the cell holds a
@@ -216,8 +285,11 @@ impl MinMax {
         };
         let answer = values[slot].extreme(self.minimum);
         let cell = &mut cells[slot];
+        // Java compares the objects of a `BigDecimal` column by identity, and its multiset
+        // keeps one object for values that are `equals`.
         let equal = match (answer.is_null(), cell.is_null()) {
             (true, true) => true,
+            (false, false) if matches!(answer, Scalar::Decimal(_)) => answer.same(cell),
             (false, false) => answer.compare(cell) == Ordering::Equal,
             _ => false,
         };
@@ -342,7 +414,13 @@ impl AggOperator for MinMax {
                 }
                 Effect::modified_if(changed)
             }
-            State::Retracting { values, .. } => {
+            State::Retracting { .. } => {
+                if !self.joins(slot, run) {
+                    return Effect::UNCHANGED;
+                }
+                let State::Retracting { values, .. } = &mut self.state else {
+                    unreachable!("the state is retracting");
+                };
                 values[slot].insert(run);
                 self.write(slot)
             }
@@ -355,6 +433,7 @@ impl AggOperator for MinMax {
             State::Growing { .. } | State::GrowingLongs(_) | State::GrowingDoubles { .. } => {
                 Effect::UNCHANGED
             }
+            State::Retracting { .. } if self.failed => Effect::UNCHANGED,
             State::Retracting { values, .. } => {
                 values[slot].remove(run);
                 self.write(slot)
@@ -371,12 +450,23 @@ impl AggOperator for MinMax {
             State::Growing { .. } | State::GrowingLongs(_) | State::GrowingDoubles { .. } => {
                 Effect::UNCHANGED
             }
+            State::Retracting { .. } if self.failed => Effect::UNCHANGED,
             State::Retracting { values, .. } => {
                 values[slot].remove(old);
+                if !self.joins(slot, new) {
+                    return Effect::UNCHANGED;
+                }
+                let State::Retracting { values, .. } = &mut self.state else {
+                    unreachable!("the state is retracting");
+                };
                 values[slot].insert(new);
                 self.write(slot)
             }
         }
+    }
+
+    fn take_failure(&mut self) -> Option<TableFailure> {
+        self.failure.take()
     }
 
     fn results(&self, slots: &[usize]) -> ArrayRef {

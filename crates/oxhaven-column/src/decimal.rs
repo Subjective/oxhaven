@@ -3,12 +3,12 @@
 //!
 //! Written from the documented behaviour of `java.math.BigDecimal`, `java.math.BigInteger`
 //! and `java.math.RoundingMode` and checked against values Java 42.9 computed
-//! (`tests/formulas/big_numbers.rs`); the JDK's source was not used.
+//! (`oxhaven-expr`'s `tests/formulas/big_numbers.rs`); the JDK's source was not used.
 
+use crate::java_values;
 use num_bigint::{BigInt, Sign};
 use num_integer::Integer;
 use num_traits::{One, Signed, Zero};
-use oxhaven_column::java_values;
 use std::cmp::Ordering;
 
 /// The most decimal digits a power of ten that an operation needs may have. Java computes
@@ -17,7 +17,7 @@ use std::cmp::Ordering;
 const MAX_POWER: u64 = 1_000_000;
 
 /// Why an operation on big numbers fails: the text of the Java exception it throws.
-pub(crate) type Failure = String;
+pub type Failure = String;
 
 fn arithmetic(message: &str) -> Failure {
     format!("java.lang.ArithmeticException: {message}")
@@ -26,15 +26,15 @@ fn arithmetic(message: &str) -> Failure {
 /// A `java.math.BigDecimal`: `unscaled × 10^-scale`. Two of one value and different scales
 /// are different decimals, as `BigDecimal#equals` says.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Decimal {
-    pub(crate) unscaled: BigInt,
-    pub(crate) scale: i32,
+pub struct Decimal {
+    pub unscaled: BigInt,
+    pub scale: i32,
 }
 
 /// `java.math.RoundingMode`, by the number its constant has in `BigDecimal` (`ROUND_UP` is
 /// 0, `ROUND_UNNECESSARY` 7), which is also its ordinal.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Rounding {
+pub enum Rounding {
     Up,
     Down,
     Ceiling,
@@ -48,7 +48,7 @@ pub(crate) enum Rounding {
 impl Rounding {
     /// Behavior: `java.math.RoundingMode#valueOf(int)`, which `BigDecimal#setScale(int, int)`
     /// and `#divide(BigDecimal, int, int)` call: "Invalid rounding mode" for any other number.
-    pub(crate) fn of_number(number: i64) -> Result<Rounding, Failure> {
+    pub fn of_number(number: i64) -> Result<Rounding, Failure> {
         Ok(match number {
             0 => Rounding::Up,
             1 => Rounding::Down,
@@ -65,7 +65,7 @@ impl Rounding {
     }
 
     /// The constant of `java.math.RoundingMode` named `name`, as its number.
-    pub(crate) fn number_of_name(name: &str) -> Option<i32> {
+    pub fn number_of_name(name: &str) -> Option<i32> {
         let number = match name {
             "UP" => 0,
             "DOWN" => 1,
@@ -168,34 +168,18 @@ fn nearest_float(unscaled: &BigInt, scale: i32) -> f32 {
 }
 
 impl Decimal {
-    pub(crate) fn new(unscaled: BigInt, scale: i32) -> Decimal {
+    pub fn new(unscaled: BigInt, scale: i32) -> Decimal {
         Decimal { unscaled, scale }
     }
 
     /// Behavior: `java.math.BigDecimal#valueOf(long)`
-    pub(crate) fn of_long(value: i64) -> Decimal {
+    pub fn of_long(value: i64) -> Decimal {
         Decimal::new(BigInt::from(value), 0)
     }
 
     /// Behavior: `java.math.BigDecimal#BigDecimal(BigInteger)`
-    pub(crate) fn of_integer(value: BigInt) -> Decimal {
+    pub fn of_integer(value: BigInt) -> Decimal {
         Decimal::new(value, 0)
-    }
-
-    /// The number of the text `Double#toString` gives for `value`, which is not the
-    /// double's exact value (`0.1` is one tenth, with scale 1); NaN and the infinities have
-    /// no number.
-    ///
-    /// Behavior: `java.math.BigDecimal#valueOf(double)`
-    pub(crate) fn of_double(value: f64) -> Result<Decimal, Failure> {
-        let text = crate::eval::double_to_string(value);
-        Decimal::parse(&text).ok_or_else(|| {
-            format!(
-                "java.lang.NumberFormatException: Character {} is neither a decimal digit \
-                 number, decimal point, nor \"e\" notation exponential mark.",
-                text.trim_start_matches('-').chars().next().unwrap_or('?')
-            )
-        })
     }
 
     /// The exact value of `value`, a finite double: `m × 2^e` is `m × 5^-e × 10^e` for a
@@ -203,7 +187,7 @@ impl Decimal {
     ///
     /// Behavior: `java.math.BigDecimal#BigDecimal(double)`, which throws for NaN and the
     /// infinities ("Infinite or NaN").
-    pub(crate) fn of_double_exactly(value: f64) -> Result<Decimal, Failure> {
+    pub fn of_double_exactly(value: f64) -> Result<Decimal, Failure> {
         if !value.is_finite() {
             return Err("java.lang.NumberFormatException: Infinite or NaN".into());
         }
@@ -243,7 +227,7 @@ impl Decimal {
     /// Java reads too (`Character#digit`) and this parser does not.
     ///
     /// Behavior: `java.math.BigDecimal#BigDecimal(String)`
-    pub(crate) fn parse(text: &str) -> Option<Decimal> {
+    pub fn parse(text: &str) -> Option<Decimal> {
         let (mantissa, exponent) = match text.find(['e', 'E']) {
             Some(at) => (&text[..at], Some(&text[at + 1..])),
             None => (text, None),
@@ -280,13 +264,13 @@ impl Decimal {
     }
 
     /// The decimal of a `BigDecimal` cell (`ColumnType::BigDecimal`).
-    pub(crate) fn of_cell(cell: &[u8]) -> Option<Decimal> {
+    pub fn of_cell(cell: &[u8]) -> Option<Decimal> {
         let (scale, unscaled) = java_values::big_decimal_parts(cell)?;
         Some(Decimal::new(BigInt::from_signed_bytes_be(unscaled), scale))
     }
 
     /// The `BigDecimal` cell of this decimal.
-    pub(crate) fn cell(&self) -> Vec<u8> {
+    pub fn cell(&self) -> Vec<u8> {
         java_values::big_decimal_cell(self.scale, &integer_bytes(&self.unscaled))
     }
 
@@ -297,7 +281,7 @@ impl Decimal {
     }
 
     /// Behavior: `java.math.BigDecimal#add`: exact, with the larger scale.
-    pub(crate) fn add(&self, other: &Decimal) -> Result<Decimal, Failure> {
+    pub fn add(&self, other: &Decimal) -> Result<Decimal, Failure> {
         let scale = self.scale.max(other.scale);
         Ok(Decimal::new(
             self.widened(scale)? + other.widened(scale)?,
@@ -306,28 +290,28 @@ impl Decimal {
     }
 
     /// Behavior: `java.math.BigDecimal#subtract`: exact, with the larger scale.
-    pub(crate) fn subtract(&self, other: &Decimal) -> Result<Decimal, Failure> {
+    pub fn subtract(&self, other: &Decimal) -> Result<Decimal, Failure> {
         self.add(&other.negate())
     }
 
     /// Behavior: `java.math.BigDecimal#multiply`: exact, with the sum of the scales.
-    pub(crate) fn multiply(&self, other: &Decimal) -> Result<Decimal, Failure> {
+    pub fn multiply(&self, other: &Decimal) -> Result<Decimal, Failure> {
         let scale = scale_of(i64::from(self.scale) + i64::from(other.scale))?;
         Ok(Decimal::new(&self.unscaled * &other.unscaled, scale))
     }
 
     /// Behavior: `java.math.BigDecimal#negate`
-    pub(crate) fn negate(&self) -> Decimal {
+    pub fn negate(&self) -> Decimal {
         Decimal::new(-&self.unscaled, self.scale)
     }
 
     /// Behavior: `java.math.BigDecimal#abs`
-    pub(crate) fn abs(&self) -> Decimal {
+    pub fn abs(&self) -> Decimal {
         Decimal::new(self.unscaled.abs(), self.scale)
     }
 
     /// Behavior: `java.math.BigDecimal#signum`
-    pub(crate) fn signum(&self) -> i32 {
+    pub fn signum(&self) -> i32 {
         match self.unscaled.sign() {
             Sign::Minus => -1,
             Sign::NoSign => 0,
@@ -337,7 +321,7 @@ impl Decimal {
 
     /// Behavior: `java.math.BigDecimal#precision`: the digits of the unscaled value, one for
     /// zero.
-    pub(crate) fn precision(&self) -> i32 {
+    pub fn precision(&self) -> i32 {
         digits(&self.unscaled) as i32
     }
 
@@ -357,7 +341,7 @@ impl Decimal {
     /// `self / divisor` rounded to `scale`.
     ///
     /// Behavior: `java.math.BigDecimal#divide(BigDecimal, int, RoundingMode)`
-    pub(crate) fn divide_to_scale(
+    pub fn divide_to_scale(
         &self,
         divisor: &Decimal,
         scale: i32,
@@ -395,7 +379,7 @@ impl Decimal {
     /// holds it; "Non-terminating decimal expansion" when no scale does.
     ///
     /// Behavior: `java.math.BigDecimal#divide(BigDecimal)`
-    pub(crate) fn divide_exactly(&self, divisor: &Decimal) -> Result<Decimal, Failure> {
+    pub fn divide_exactly(&self, divisor: &Decimal) -> Result<Decimal, Failure> {
         self.check_divisor(divisor)?;
         let preferred = i64::from(self.scale) - i64::from(divisor.scale);
         if self.unscaled.is_zero() {
@@ -452,7 +436,7 @@ impl Decimal {
     /// otherwise no lower than the zeros at the end of the integer allow.
     ///
     /// Behavior: `java.math.BigDecimal#divideToIntegralValue(BigDecimal)`
-    pub(crate) fn divide_to_integral(&self, divisor: &Decimal) -> Result<Decimal, Failure> {
+    pub fn divide_to_integral(&self, divisor: &Decimal) -> Result<Decimal, Failure> {
         self.check_divisor(divisor)?;
         let preferred = i64::from(self.scale) - i64::from(divisor.scale);
         let integer = self.divide_to_scale(divisor, 0, Rounding::Down)?.unscaled;
@@ -472,13 +456,13 @@ impl Decimal {
     /// `self - self.divideToIntegralValue(divisor) × divisor`.
     ///
     /// Behavior: `java.math.BigDecimal#remainder(BigDecimal)`
-    pub(crate) fn remainder(&self, divisor: &Decimal) -> Result<Decimal, Failure> {
+    pub fn remainder(&self, divisor: &Decimal) -> Result<Decimal, Failure> {
         let integral = self.divide_to_integral(divisor)?;
         self.subtract(&integral.multiply(divisor)?)
     }
 
     /// Behavior: `java.math.BigDecimal#setScale(int, RoundingMode)`
-    pub(crate) fn set_scale(&self, scale: i32, rounding: Rounding) -> Result<Decimal, Failure> {
+    pub fn set_scale(&self, scale: i32, rounding: Rounding) -> Result<Decimal, Failure> {
         if scale >= self.scale {
             return Ok(Decimal::new(self.widened(scale)?, scale));
         }
@@ -486,7 +470,7 @@ impl Decimal {
     }
 
     /// Behavior: `java.math.BigDecimal#stripTrailingZeros`: zero is `0` with scale 0.
-    pub(crate) fn strip_trailing_zeros(&self) -> Decimal {
+    pub fn strip_trailing_zeros(&self) -> Decimal {
         if self.unscaled.is_zero() {
             return Decimal::of_long(0);
         }
@@ -495,7 +479,7 @@ impl Decimal {
 
     /// Behavior: `java.math.BigDecimal#movePointLeft`: the scale grows by `places`, and is
     /// then at least zero.
-    pub(crate) fn move_point_left(&self, places: i32) -> Result<Decimal, Failure> {
+    pub fn move_point_left(&self, places: i32) -> Result<Decimal, Failure> {
         let moved = Decimal::new(
             self.unscaled.clone(),
             scale_of(i64::from(self.scale) + i64::from(places))?,
@@ -508,7 +492,7 @@ impl Decimal {
 
     /// Behavior: `java.math.BigDecimal#movePointRight`: the scale shrinks by `places`, and is
     /// then at least zero.
-    pub(crate) fn move_point_right(&self, places: i32) -> Result<Decimal, Failure> {
+    pub fn move_point_right(&self, places: i32) -> Result<Decimal, Failure> {
         let moved = Decimal::new(
             self.unscaled.clone(),
             scale_of(i64::from(self.scale) - i64::from(places))?,
@@ -520,7 +504,7 @@ impl Decimal {
     }
 
     /// Behavior: `java.math.BigDecimal#scaleByPowerOfTen`
-    pub(crate) fn scale_by_power_of_ten(&self, places: i32) -> Result<Decimal, Failure> {
+    pub fn scale_by_power_of_ten(&self, places: i32) -> Result<Decimal, Failure> {
         Ok(Decimal::new(
             self.unscaled.clone(),
             scale_of(i64::from(self.scale) - i64::from(places))?,
@@ -528,13 +512,13 @@ impl Decimal {
     }
 
     /// Behavior: `java.math.BigDecimal#ulp`: one unit of the last place, at this scale.
-    pub(crate) fn ulp(&self) -> Decimal {
+    pub fn ulp(&self) -> Decimal {
         Decimal::new(BigInt::one(), self.scale)
     }
 
     /// Behavior: `java.math.BigDecimal#pow(int)`: exact, with `exponent` times the scale;
     /// "Invalid operation" for an exponent outside 0 to 999999999.
-    pub(crate) fn pow(&self, exponent: i32) -> Result<Decimal, Failure> {
+    pub fn pow(&self, exponent: i32) -> Result<Decimal, Failure> {
         if !(0..=999_999_999).contains(&exponent) {
             return Err(arithmetic("Invalid operation"));
         }
@@ -543,7 +527,7 @@ impl Decimal {
     }
 
     /// Behavior: `java.math.BigDecimal#compareTo`: by value, whatever the scales.
-    pub(crate) fn compare(&self, other: &Decimal) -> Ordering {
+    pub fn compare(&self, other: &Decimal) -> Ordering {
         let (a, b) = (self.signum(), other.signum());
         if a != b || a == 0 {
             return a.cmp(&b);
@@ -566,7 +550,7 @@ impl Decimal {
     /// The integer part, rounded toward zero.
     ///
     /// Behavior: `java.math.BigDecimal#toBigInteger`
-    pub(crate) fn to_integer(&self) -> Result<BigInt, Failure> {
+    pub fn to_integer(&self) -> Result<BigInt, Failure> {
         if self.scale <= 0 {
             return Ok(&self.unscaled * ten_to(-i64::from(self.scale) as u64)?);
         }
@@ -580,7 +564,7 @@ impl Decimal {
     ///
     /// Behavior: `java.math.BigDecimal#longValue`, `#intValue`, and `Number#shortValue`
     /// and `#byteValue`, which narrow `intValue`.
-    pub(crate) fn low_bits(&self) -> i64 {
+    pub fn low_bits(&self) -> i64 {
         // 10^k is a multiple of 2^64 from k = 64 on: those low bits are zero.
         if self.scale <= -64 {
             return 0;
@@ -591,23 +575,23 @@ impl Decimal {
     }
 
     /// Behavior: `java.math.BigDecimal#doubleValue`: the nearest `double`.
-    pub(crate) fn to_double(&self) -> f64 {
+    pub fn to_double(&self) -> f64 {
         nearest_double(&self.unscaled, self.scale)
     }
 
     /// Behavior: `java.math.BigDecimal#floatValue`: the nearest `float`.
-    pub(crate) fn to_float(&self) -> f32 {
+    pub fn to_float(&self) -> f32 {
         nearest_float(&self.unscaled, self.scale)
     }
 
     /// Behavior: `java.math.BigDecimal#toString`
-    pub(crate) fn text(&self) -> String {
+    pub fn text(&self) -> String {
         java_values::big_decimal_text(self.scale, &integer_bytes(&self.unscaled))
     }
 
     /// Behavior: `java.math.BigDecimal#toPlainString`: no exponent; a negative scale is
     /// zeros at the end, a positive one places after the point.
-    pub(crate) fn plain_text(&self) -> String {
+    pub fn plain_text(&self) -> String {
         let digits = self.unscaled.magnitude().to_str_radix(10);
         let sign = if self.unscaled.is_negative() { "-" } else { "" };
         match self.scale.cmp(&0) {
@@ -636,12 +620,12 @@ impl Decimal {
 
 /// The bytes of `value` as `BigInteger#toByteArray` gives them: two's complement, most
 /// significant first, in the fewest bytes, `[0]` for zero.
-pub(crate) fn integer_bytes(value: &BigInt) -> Vec<u8> {
+pub fn integer_bytes(value: &BigInt) -> Vec<u8> {
     java_values::minimal(&value.to_signed_bytes_be()).to_vec()
 }
 
 /// The integer of a `BigInteger` cell.
-pub(crate) fn integer_of_cell(cell: &[u8]) -> BigInt {
+pub fn integer_of_cell(cell: &[u8]) -> BigInt {
     BigInt::from_signed_bytes_be(cell)
 }
 
@@ -658,11 +642,11 @@ fn integer_pow(value: &BigInt, exponent: i32) -> Result<BigInt, Failure> {
 }
 
 /// The methods of `java.math.BigInteger` that compute with integers.
-pub(crate) mod integer {
+pub mod integer {
     use super::*;
 
     /// Behavior: `java.math.BigInteger#divide`: rounded toward zero.
-    pub(crate) fn divide(a: &BigInt, b: &BigInt) -> Result<BigInt, Failure> {
+    pub fn divide(a: &BigInt, b: &BigInt) -> Result<BigInt, Failure> {
         if b.is_zero() {
             return Err(arithmetic("BigInteger divide by zero"));
         }
@@ -670,7 +654,7 @@ pub(crate) mod integer {
     }
 
     /// Behavior: `java.math.BigInteger#remainder`: the sign of the dividend.
-    pub(crate) fn remainder(a: &BigInt, b: &BigInt) -> Result<BigInt, Failure> {
+    pub fn remainder(a: &BigInt, b: &BigInt) -> Result<BigInt, Failure> {
         if b.is_zero() {
             return Err(arithmetic("BigInteger divide by zero"));
         }
@@ -679,7 +663,7 @@ pub(crate) mod integer {
 
     /// Behavior: `java.math.BigInteger#mod`: never negative; "BigInteger: modulus not
     /// positive" for a modulus that is not above zero.
-    pub(crate) fn modulo(a: &BigInt, m: &BigInt) -> Result<BigInt, Failure> {
+    pub fn modulo(a: &BigInt, m: &BigInt) -> Result<BigInt, Failure> {
         if !m.is_positive() {
             return Err(arithmetic("BigInteger: modulus not positive"));
         }
@@ -687,7 +671,7 @@ pub(crate) mod integer {
     }
 
     /// Behavior: `java.math.BigInteger#pow`: "Negative exponent" below zero.
-    pub(crate) fn pow(a: &BigInt, exponent: i32) -> Result<BigInt, Failure> {
+    pub fn pow(a: &BigInt, exponent: i32) -> Result<BigInt, Failure> {
         if exponent < 0 {
             return Err(arithmetic("Negative exponent"));
         }
@@ -695,13 +679,13 @@ pub(crate) mod integer {
     }
 
     /// Behavior: `java.math.BigInteger#gcd`: never negative, zero for two zeros.
-    pub(crate) fn gcd(a: &BigInt, b: &BigInt) -> BigInt {
+    pub fn gcd(a: &BigInt, b: &BigInt) -> BigInt {
         a.gcd(b)
     }
 
     /// Behavior: `java.math.BigInteger#bitLength`: the bits of the shortest two's complement
     /// form without the sign bit.
-    pub(crate) fn bit_length(a: &BigInt) -> i32 {
+    pub fn bit_length(a: &BigInt) -> i32 {
         let magnitude = if a.is_negative() {
             (-a) - 1u32
         } else {
@@ -711,7 +695,7 @@ pub(crate) mod integer {
     }
 
     /// Behavior: `java.math.BigInteger#signum`
-    pub(crate) fn signum(a: &BigInt) -> i32 {
+    pub fn signum(a: &BigInt) -> i32 {
         match a.sign() {
             Sign::Minus => -1,
             Sign::NoSign => 0,
@@ -721,17 +705,17 @@ pub(crate) mod integer {
 
     /// Behavior: `java.math.BigInteger#longValue`, `#intValue`, and `Number#shortValue` and
     /// `#byteValue`: the low bits.
-    pub(crate) fn low_bits(a: &BigInt) -> i64 {
+    pub fn low_bits(a: &BigInt) -> i64 {
         super::low_bits(a)
     }
 
     /// Behavior: `java.math.BigInteger#doubleValue`: the nearest `double`.
-    pub(crate) fn to_double(a: &BigInt) -> f64 {
+    pub fn to_double(a: &BigInt) -> f64 {
         nearest_double(a, 0)
     }
 
     /// Behavior: `java.math.BigInteger#floatValue`: the nearest `float`.
-    pub(crate) fn to_float(a: &BigInt) -> f32 {
+    pub fn to_float(a: &BigInt) -> f32 {
         nearest_float(a, 0)
     }
 
@@ -739,7 +723,7 @@ pub(crate) mod integer {
     /// other text, and for digits that are not ASCII, which Java reads too.
     ///
     /// Behavior: `java.math.BigInteger#BigInteger(String)`
-    pub(crate) fn parse(text: &str) -> Option<BigInt> {
+    pub fn parse(text: &str) -> Option<BigInt> {
         let digits = text.strip_prefix(['+', '-']).unwrap_or(text);
         if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
             return None;
@@ -779,20 +763,7 @@ mod tests {
     }
 
     #[test]
-    fn a_double_is_the_number_of_its_java_text() {
-        assert_eq!(Decimal::of_double(0.1).unwrap(), d("0.1"));
-        assert_eq!(Decimal::of_double(1e20).unwrap(), d("1.0E+20"));
-        assert_eq!(Decimal::of_double(3.0).unwrap(), d("3.0"));
-        assert_eq!(
-            Decimal::of_double(f64::from(0.1f32)).unwrap(),
-            d("0.10000000149011612")
-        );
-        assert!(Decimal::of_double(f64::NAN)
-            .unwrap_err()
-            .contains("Character N"));
-        assert!(Decimal::of_double(f64::INFINITY)
-            .unwrap_err()
-            .contains("Character I"));
+    fn a_double_is_its_exact_value() {
         assert_eq!(
             Decimal::of_double_exactly(0.1).unwrap().text(),
             "0.1000000000000000055511151231257827021181583404541015625"
