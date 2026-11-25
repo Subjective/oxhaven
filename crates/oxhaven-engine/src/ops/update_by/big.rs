@@ -222,12 +222,12 @@ impl MathContext {
         })
     }
 
-    /// The square root, rounded to the precision; when the root has no more digits than
-    /// that, exactly, with the scale nearest half the scale of `a`. Without a precision the
-    /// root must be exact.
+    /// The square root, rounded to the precision, then with the scale nearest half the
+    /// scale of `a` that keeps its value, whether the root is exact or rounded. Without a
+    /// precision the root must be exact.
     ///
     /// Behavior: java.math.BigDecimal#sqrt(MathContext), observed on OpenJDK 21 for the
-    /// rounding modes and the scale of exact roots (the tests below)
+    /// rounding modes and the scale of exact and rounded roots (the tests below)
     pub(super) fn sqrt(&self, a: &Decimal) -> Result<Decimal, Failure> {
         match a.signum() {
             -1 => return Err(arithmetic("Attempted square root of negative BigDecimal")),
@@ -285,11 +285,9 @@ impl MathContext {
         if self.precision > 0 && i64::from(result.precision()) > precision {
             result = result.set_scale(scale_of(scale - 1)?, Rounding::Unnecessary)?;
         }
-        Ok(if exact {
-            stripped_to(result, preferred)
-        } else {
-            result
-        })
+        // Exact or not, the root then gives up the zeros at its end down to the preferred
+        // scale.
+        Ok(stripped_to(result, preferred))
     }
 }
 
@@ -916,7 +914,7 @@ mod tests {
             (m.add(&d("9999999999999999"), &d("1")), "1.000000000000000E+16 s=-1"),
             (m.add(&d("99999999999999999"), &d("1")), "1.000000000000000E+17 s=-2"),
             (m.add(&d("0E+3"), &d("0E-2")), "0.00 s=2"),
-            (m.add(&d("12345678901234567890"), &d("0.00")), "1.234567890123457E+19 s=-3"),
+            (m.add(&d("12345678901234567890"), &d("0.00")), "1.234567890123457E+19 s=-4"),
             (m.add(&d("1.23E+5"), &d("0.00")), "123000.00 s=2"),
             (m.subtract(&d("1.5"), &d("1.5")), "0.0 s=1"),
             (
@@ -968,6 +966,13 @@ mod tests {
             (m.sqrt(&d("123456789012345678")), "351364182.8820144 s=7"),
             (m.sqrt(&d("1E-400")), "1E-200 s=200"),
             (m.sqrt(&d("1E-401")), "3.162277660168379E-201 s=216"),
+            (m.sqrt(&d("5E+30")), "2.23606797749979E+15 s=-1"),
+            (m.sqrt(&d("1.1E+31")), "3.3166247903554E+15 s=-2"),
+            (m.sqrt(&d("2E+29")), "447213595499957.9 s=1"),
+            (
+                m.sqrt(&d("5.000000000000000000000000000000000000000")),
+                "2.236067977499790 s=15",
+            ),
             (
                 m.sqrt(&d("-1")),
                 "java.lang.ArithmeticException: Attempted square root of negative BigDecimal",
