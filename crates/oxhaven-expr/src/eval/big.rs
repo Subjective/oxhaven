@@ -59,7 +59,7 @@ pub(crate) fn values(
                     value
                         .map(|v| match v.is_nan() {
                             true => Ok(BigValue::NaN),
-                            false => Decimal::of_double(v).map(BigValue::Number).map_err(failure),
+                            false => decimal_of_double(v).map(BigValue::Number).map_err(failure),
                         })
                         .transpose()
                 })
@@ -307,7 +307,7 @@ fn as_decimal(value: &Value) -> Result<Decimal, Failure> {
         Value::Decimal(d) => d.clone(),
         Value::Integer(i) => Decimal::of_integer(i.clone()),
         Value::Long(v) => Decimal::of_long(*v),
-        Value::Double(v) => Decimal::of_double(*v)?,
+        Value::Double(v) => decimal_of_double(*v)?,
         _ => return Err("a big number operator of a value that is no number".into()),
     })
 }
@@ -403,7 +403,7 @@ fn compute(function: &BigFn, column_type: &ColumnType, args: &[Value]) -> Result
         // Behavior: `java.math.BigDecimal#valueOf(long)`, `#valueOf(double)`,
         // `java.math.BigInteger#valueOf(long)`
         BigFn::ValueOf => Ok(match (&args[0], column_type) {
-            (Value::Double(v), _) => Value::Decimal(Decimal::of_double(*v)?),
+            (Value::Double(v), _) => Value::Decimal(decimal_of_double(*v)?),
             (value, ColumnType::BigInteger) => Value::Integer(BigInt::from(as_long(value))),
             (value, _) => Value::Decimal(Decimal::of_long(as_long(value))),
         }),
@@ -752,6 +752,21 @@ fn integer_method<'a>(
     }
 }
 
+/// The number of the text `Double#toString` gives for `value`, which is not the double's
+/// exact value (`0.1` is one tenth, with scale 1); NaN and the infinities have no number.
+///
+/// Behavior: `java.math.BigDecimal#valueOf(double)`
+pub(crate) fn decimal_of_double(value: f64) -> Result<Decimal, Failure> {
+    let text = super::double_to_string(value);
+    Decimal::parse(&text).ok_or_else(|| {
+        format!(
+            "java.lang.NumberFormatException: Character {} is neither a decimal digit \
+             number, decimal point, nor \"e\" notation exponential mark.",
+            text.trim_start_matches('-').chars().next().unwrap_or('?')
+        )
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -763,7 +778,7 @@ mod tests {
 
     #[test]
     fn a_double_is_the_number_of_its_java_text() {
-        let of = |v: f64| Decimal::of_double(v).unwrap();
+        let of = |v: f64| decimal_of_double(v).unwrap();
         assert_eq!(of(0.1).compare(&d("0.1")), Ordering::Equal);
         assert_eq!(of(1e20).compare(&d("1E+20")), Ordering::Equal);
         assert_eq!(of(-0.0).compare(&d("0")), Ordering::Equal);
@@ -779,6 +794,14 @@ mod tests {
             widened.compare(&d("0.1000000014901161193847656250")),
             Ordering::Greater
         );
+        assert_eq!(of(3.0), d("3.0"));
+        assert_eq!(of(1e20), d("1.0E+20"));
+        assert!(decimal_of_double(f64::NAN)
+            .unwrap_err()
+            .contains("Character N"));
+        assert!(decimal_of_double(f64::INFINITY)
+            .unwrap_err()
+            .contains("Character I"));
     }
 
     #[test]

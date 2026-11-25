@@ -1351,6 +1351,9 @@ name = "oxhaven-column"
 version = "0.0.0"
 dependencies = [
  "arrow",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
  "oxhaven-contracts",
 ]
 
