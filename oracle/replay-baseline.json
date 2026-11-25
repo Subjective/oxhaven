@@ -22,6 +22,7 @@
   "error_types_and_matches": {"state": "clean"},
   "error_unknown_column": {"state": "clean"},
   "exact_join": {"state": "clean"},
+  "filter_regex_backtracking": {"state": "clean"},
   "filter_structured": {"state": "clean"},
   "flatten_reverse": {"state": "clean"},
   "formula_big_numbers": {"state": "clean"},
