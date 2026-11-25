@@ -865,6 +865,53 @@ fn a_window_product_of_a_zero_of_scale_zero_is_zero() {
     assert_eq!(texts(&*result, "RI"), ["0", "0", "6", "0", "0", "20", "0"]);
 }
 
+/// Seen on Deephaven 42.9 over `1.00 null 2 3.0 null null 4`: a window sum forgets its
+/// scale when its window holds no value, and starts again from the next value as it is.
+#[test]
+fn a_window_sum_starts_again_after_a_window_of_nulls() {
+    let values = [
+        Some("1.00"),
+        None,
+        Some("2"),
+        Some("3.0"),
+        None,
+        None,
+        Some("4"),
+    ];
+    let source = static_table(&[("B", ColumnType::BigDecimal, decimals(&values))]);
+    let result = update_by(
+        &source,
+        &[
+            op(
+                UpdateBySpec::RollingSum(RollingWindow::ticks(1, 0)),
+                &["S = B"],
+            ),
+            op(
+                UpdateBySpec::RollingAvg(RollingWindow::ticks(2, 0)),
+                &["A = B"],
+            ),
+            op(
+                UpdateBySpec::RollingSum(RollingWindow::ticks(2, 0)),
+                &["S2 = B"],
+            ),
+        ],
+        &[] as &[&str],
+    )
+    .unwrap();
+    assert_eq!(
+        texts(&*result, "S"),
+        ["1.00", "null", "2", "3.0", "null", "null", "4"]
+    );
+    assert_eq!(
+        texts(&*result, "A"),
+        ["1.00", "1.00", "2.00", "2.50", "3.00", "null", "4"]
+    );
+    assert_eq!(
+        texts(&*result, "S2"),
+        ["1.00", "1.00", "2.00", "5.00", "3.00", "null", "4"]
+    );
+}
+
 /// Seen on Deephaven 42.9 over `2.0 2 2.00 3 2.000`: a rolling minimum of two rows and a
 /// rolling maximum of three show which of equal values of other scales each keeps.
 #[test]
