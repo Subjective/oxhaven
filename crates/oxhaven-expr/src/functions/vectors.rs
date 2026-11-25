@@ -125,11 +125,46 @@ fn is_floating(element: &ColumnType) -> bool {
 }
 
 /// Whether a column of this type can be read by a formula: a vector or array of a type
-/// that is not itself a vector or array.
+/// that is not itself a vector or array, or a vector of such vectors (a `group_by` of a
+/// vector column), at any depth. A vector of arrays is not read.
 pub(crate) fn is_supported_list(column_type: &ColumnType) -> bool {
-    column_type
-        .list_element()
-        .is_some_and(|element| element.list_element().is_none())
+    match column_type.list_element() {
+        None => false,
+        Some(element) if element.list_element().is_none() => true,
+        Some(element) => {
+            matches!(column_type, ColumnType::Vector(_))
+                && matches!(element, ColumnType::Vector(_))
+                && is_supported_list(element)
+        }
+    }
+}
+
+/// Whether Java knows the type of an element of a vector of `element`s when that element
+/// is itself a vector: an `ObjectVector` of `IntVector`s (and the other typed vectors) or
+/// of `ObjectVector`s of `String`s gives its elements with their class. An `ObjectVector`
+/// of `ObjectVector`s of other objects gives vectors whose elements a client receives as
+/// strings, and one of deeper vectors gives raw `ObjectVector`s.
+///
+/// Seen on Java 42.9 after two `group_by`s: `X[0]`, `X.get(1)`, `firstObj(X)` and
+/// `lastObj(X)` of a vector of `IntVector`s are `IntVector`s, and of a vector of
+/// `ObjectVector`s of strings `ObjectVector`s of `String`; of `Boolean`s, vectors of the
+/// strings `true` and `false`.
+fn typed_inner_vector(element: &ColumnType) -> bool {
+    match element {
+        ColumnType::Vector(inner) => is_primitive(inner) || **inner == ColumnType::String,
+        _ => true,
+    }
+}
+
+/// Refuses a call that gives an element of a vector of vectors whose class Java does not
+/// keep ([`typed_inner_vector`]).
+fn refuse_untyped_inner(list: &ColumnType) -> Result<(), FormulaError> {
+    match list {
+        ColumnType::Vector(element) if !typed_inner_vector(element) => Err(unsupported(format!(
+            "an element of a vector of {element:?}, which Java gives without its element type"
+        ))),
+        _ => Ok(()),
+    }
 }
 
 fn call(function: VectorFn, parameters: Vec<ColumnType>, result: ColumnType) -> Resolved {
@@ -291,6 +326,7 @@ pub(crate) fn resolve(name: &str, types: &[ColumnType]) -> Result<Resolved, Form
     };
     if matches!(function, VectorFn::First | VectorFn::Last) {
         refuse_boolean_element(&result)?;
+        refuse_untyped_inner(list)?;
     }
     Ok(call(function, types.to_vec(), result))
 }
@@ -372,6 +408,7 @@ pub(crate) fn resolve_method(
     };
     if matches!(function, VectorFn::Get | VectorFn::ArrayGet) && !column_array {
         refuse_boolean_element(&result)?;
+        refuse_untyped_inner(receiver)?;
     }
     Ok(call(function, parameters, result))
 }

@@ -586,20 +586,68 @@ fn a_list_column_is_copied_by_name_and_read_by_a_formula() {
     let keys = TableSnapshot::current(&*kept).unwrap().columns[0].clone();
     assert_eq!(keys.to_data(), ints([2]).to_data());
 
-    // A vector of vectors is not read yet.
+    // A vector of vectors is read: seen on Java 42.9 after two `group_by`s, `N[0]` is the
+    // inner `IntVector` and `len(N)` the number of inner vectors.
     let nested = ColumnType::vector(vector.clone());
     let cells = list_of(&nested, [Some(1)], list_of(&vector, [Some(1)], ints([1])));
     let fields = vec![Field::new("N", nested.arrow_type(), true)];
     let batch = RecordBatch::try_new(Arc::new(Schema::new(fields)), vec![cells]).unwrap();
     let table: Arc<dyn Table> = in_memory_table(definition(&[("N", nested)]), &[batch]).unwrap();
-    let refused = update(&table, &["X = len(N)"], &Compiler);
-    let message = refused.err().map(|error| error.to_string());
-    assert!(
-        message
-            .as_deref()
-            .is_some_and(|message| message.contains("column N of type Vector(Vector(Int))")),
-        "{message:?}"
-    );
+    let read = update(
+        &table,
+        &["X = len(N)", "Y = N[0]", "Z = N[0][0]"],
+        &Compiler,
+    )
+    .unwrap();
+    assert_eq!(read.definition().columns()[2].column_type, vector);
+    let cells = TableSnapshot::current(&*read).unwrap().columns;
+    assert_eq!(cells[1].to_data(), longs([1]).to_data());
+    assert_eq!(cells[3].to_data(), ints([1]).to_data());
+    let inner = list_of(&vector, [Some(1)], ints([1]));
+    assert_eq!(cells[2].to_data(), inner.to_data());
+}
+
+/// Seen on Java 42.9: in a filter, an element of a vector of vectors is an `Object`
+/// (`len(X[0]) > 1` and `X[0][0] > 2` do not compile), where a formula column has the
+/// inner vector. The formula language here compiles the formula column's way, so such a
+/// filter is refused; one that reads only sizes and nulls is served.
+#[test]
+fn a_filter_that_reads_an_element_of_a_vector_of_vectors_is_not_ported() {
+    let vector = ColumnType::vector(ColumnType::Int);
+    let nested = ColumnType::vector(vector.clone());
+    let inner = list_of(&vector, [Some(1), Some(2)], ints([1, 2, 3]));
+    let cells = list_of(&nested, [Some(2), None], inner);
+    let fields = vec![Field::new("N", nested.arrow_type(), true)];
+    let batch = RecordBatch::try_new(Arc::new(Schema::new(fields)), vec![cells]).unwrap();
+    let table: Arc<dyn Table> = in_memory_table(definition(&[("N", nested)]), &[batch]).unwrap();
+    let size = |filter: &str| {
+        unstructured_filter(&table, &[filter], &Compiler)
+            .unwrap()
+            .row_set()
+            .size()
+    };
+    assert_eq!(size("len(N) == 2"), 1);
+    assert_eq!(size("N == null"), 1);
+    assert_eq!(size("countObj(N) > 1"), 1);
+    for filter in [
+        "len(N[0]) > 1",
+        "N[0][0] > 0",
+        "N.get(1) == null",
+        "isNull(firstObj(N))",
+        "N == null || lastObj(N).size() > 1",
+    ] {
+        let table = std::panic::AssertUnwindSafe(table.clone());
+        let message = panic_of(move || {
+            let table = table;
+            let _ = unstructured_filter(&table.0, &[filter], &Compiler);
+        });
+        assert!(
+            message.starts_with(
+                "unported: io.deephaven.engine.table.impl.select.ConditionFilter#init"
+            ),
+            "{filter}: {message}"
+        );
+    }
 }
 
 /// Behavior: io.deephaven.engine.table.impl.select.MatchFilter.ColumnTypeConvertorFactory#getConvertor,
@@ -1015,4 +1063,122 @@ fn typed_vectors_of_other_objects_tick_as_they_are_made_again() {
         }
     }
     assert_eq!(compared, test_seeds(0..10).count() * 12 * operations.len());
+}
+
+/// A ticking table with a vector of `int` vectors `X` and of string vectors `S`, one row
+/// per `A`, made from `t` (with columns `K` and `X`) by two `group_by`s, as in the scenario
+/// `ticking_nested_vectors`, sorted by `A` so that a table made again lists the rows in the
+/// same order.
+fn vectors_of_vectors(t: &Arc<dyn Table>) -> Arc<dyn Table> {
+    let made = update(t, &["A = K % 3", "B = K % 2", "S = `s` + X"], &Compiler).unwrap();
+    let grouped = crate::ops::agg::group_by(&made, &["A", "B"]).unwrap();
+    // The rows of an aggregation tick in the order their groups were first made, which a
+    // table made again does not know; sorted, the inner vectors are in the order of `B`.
+    let grouped = sort(&grouped, &[SortColumn::ascending("B")]).unwrap();
+    let grouped = crate::ops::agg::group_by(&grouped, &["A"]).unwrap();
+    sort(&grouped, &[SortColumn::ascending("A")]).unwrap()
+}
+
+/// Formulas that index and iterate [`vectors_of_vectors`].
+fn nested_formulas(t: &Arc<dyn Table>) -> Arc<dyn Table> {
+    let formulas = [
+        "First = X[0]",
+        "Inner = X[0][0]",
+        "Size = X.size()",
+        "Last = lastObj(X)",
+        "Count = countObj(X)",
+        "Sum = sum(X[1])",
+        "Strings = S[1]",
+        "Lengths = len(S[0]) + len(X)",
+    ];
+    let made = update(&vectors_of_vectors(t), &formulas, &Compiler).unwrap();
+    drop_columns(&made, &["X", "S", "K", "B"]).unwrap()
+}
+
+/// One level of [`vectors_of_vectors`] ungrouped.
+fn nested_ungrouped(t: &Arc<dyn Table>) -> Arc<dyn Table> {
+    let columns = ["X".to_string(), "K".to_string()];
+    let ungrouped = ungroup(&vectors_of_vectors(t), false, &columns).unwrap();
+    drop_columns(&ungrouped, &["S", "B"]).unwrap()
+}
+
+/// Aggregations that do not order the inner vectors, by the parity of `A`.
+fn nested_aggregations(t: &Arc<dyn Table>) -> Arc<dyn Table> {
+    let nested = update(&vectors_of_vectors(t), &["Bit = A % 2"], &Compiler).unwrap();
+    let aggregations = [
+        Aggregation::columns(AggSpec::First, [Pair::new("FirstX", "X")]),
+        Aggregation::columns(AggSpec::Last, [Pair::new("LastS", "S")]),
+        Aggregation::count("C"),
+    ];
+    let made = aggregate(&nested, &aggregations, false, &["Bit"]).unwrap();
+    sort(&made, &[SortColumn::ascending("Bit")]).unwrap()
+}
+
+/// `update_by` operators that do not order the inner vectors.
+fn nested_update_by(t: &Arc<dyn Table>) -> Arc<dyn Table> {
+    let window = RollingWindow::ticks(2, 0);
+    let count_where = UpdateBySpec::CumCountWhere {
+        result_column: "CW".into(),
+        filters: vec!["len(X) > 1".into()],
+    };
+    let operations = [
+        UpdateByOperation::new(UpdateBySpec::RollingCount(window), &["CX = X"]),
+        UpdateByOperation::new(count_where, &[] as &[&str]),
+    ];
+    let nested = vectors_of_vectors(t);
+    crate::ops::update_by::update_by_with(&nested, &operations, &[] as &[&str], &Compiler).unwrap()
+}
+
+/// Formulas, ungroup, aggregations and `update_by` operators on a ticking vector of
+/// vectors: each result is the one made again from its source's rows after every cycle.
+#[test]
+fn vectors_of_vectors_tick_as_they_are_made_again() {
+    let columns = [("K", ColumnType::Int), ("X", ColumnType::Int)];
+    type Operation = fn(&Arc<dyn Table>) -> Arc<dyn Table>;
+    let operations: [(&str, Operation); 4] = [
+        ("formulas", nested_formulas),
+        ("ungroup", nested_ungrouped),
+        ("aggregations", nested_aggregations),
+        ("update_by", nested_update_by),
+    ];
+    let mut compared = 0;
+    for seed in test_seeds(0..20) {
+        let graph = graph();
+        let mut random = RandomUpdates::new(seed);
+        let values = columns
+            .iter()
+            .map(|(_, column_type)| random.values(column_type, 16))
+            .collect();
+        let script = ScriptedTable::new(
+            graph.clone(),
+            definition(&columns),
+            RowSet::from_keys((0..16).map(|k| 2 * k)),
+            values,
+        );
+        let source: Arc<dyn Table> = script.table();
+        let checkers: Vec<_> = operations
+            .iter()
+            .map(|(name, operation)| {
+                let operation = *operation;
+                let result = operation(&source);
+                let again = source.clone();
+                let recompute = move || operation(&frozen(&*again));
+                (
+                    *name,
+                    ConsistencyChecker::attach_with_recompute(result, recompute),
+                )
+            })
+            .collect();
+        for step in 0..12 {
+            script.push(random.next_change(&*script.table(), 6));
+            graph.run_cycle();
+            for (name, checker) in &checkers {
+                if let Err(error) = checker.verify() {
+                    panic!("{name}, seed {seed}, step {step}: {error}");
+                }
+                compared += 1;
+            }
+        }
+    }
+    assert_eq!(compared, test_seeds(0..20).count() * 12 * operations.len());
 }

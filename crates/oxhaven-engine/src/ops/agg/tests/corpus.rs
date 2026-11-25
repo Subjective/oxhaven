@@ -25,7 +25,7 @@ use std::fs::File;
 use std::path::PathBuf;
 
 /// The `agg_by` operations that are not run, as `scenario.operation: why`.
-const NOT_RUN: [&str; 62] = [
+const NOT_RUN: [&str; 71] = [
     "agg_by_no_keys.all_d: the source is made by where",
     "agg_by_sets.by_key: the source is made by update_view",
     "agg_by_sets.no_key: the source is made by update_view",
@@ -64,6 +64,12 @@ const NOT_RUN: [&str; 62] = [
     "agg_typed_vectors.formulas: no aggregation formula",
     "agg_typed_vectors.kept_types: the source is made by group_by",
     "agg_typed_vectors.nested: the source is made by group_by",
+    "nested_vectors.n: the source is made by group_by",
+    "nested_vectors.nn: the source is made by update",
+    "nested_vectors.m: the source is made by update",
+    "nested_vectors.kept_nested: the source is made by group_by",
+    "nested_vectors.kept_by_nested: the source is made by group_by",
+    "nested_vectors.grouped_nested: the source is made by group_by",
     "partitioned_tables.seeded: it has initial groups",
     "partitioned_tables.seeded_kept: it has initial groups",
     "pipeline.by_region: the source is made by natural_join",
@@ -85,6 +91,9 @@ const NOT_RUN: [&str; 62] = [
     "ticking_blink_sort_head_tail.seen_bottom_one: the source is made by tail",
     "ticking_blink_sort_head_tail.seen_rev: the source is made by reverse",
     "ticking_blink_sort_head_tail.seen_big_by_s: the source is made by where",
+    "ticking_nested_vectors.n_nested: the source is made by group_by",
+    "ticking_nested_vectors.m_nested: the source is made by group_by",
+    "ticking_nested_vectors.kept_nested: the source is made by group_by",
     "ticking_script_operations.seeded: it has initial groups",
     "ticking_snapshot_when.count_snapshots: the source is made by snapshot_when",
     "ticking_time_table.first_day_count: the source is made by where",
@@ -688,7 +697,7 @@ fn aggregations_match_the_recorded_java_results() {
         }
     }
     assert!(scenarios > 0);
-    assert_eq!(scenarios, 95);
+    assert_eq!(scenarios, 98);
     assert_eq!(tally.not_run, NOT_RUN);
     assert_eq!(tally.agg_all_by, AGG_ALL_BY);
     let compared: Vec<String> = tally

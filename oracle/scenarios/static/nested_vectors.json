@@ -1,0 +1,713 @@
+{
+ "format": 1,
+ "name": "nested_vectors",
+ "description": "Vectors of vectors, made by a group_by of a table that group_by made: formulas that index them (X[0], X[0][1], X.get(1), firstObj, lastObj), their sizes and counts, an element of a vector of string vectors, an index outside the vector (null) and into a null inner vector (fails), ungroup of one level and of two (where Java gives the strings of a vector of string vectors as java.lang.Object, which is not compared), the aggregations and update_by operators that do not order them (first, last, count, formula, count_where, group, rolling count and count where), a vector of vectors as an aggregation and update_by key, match and formula filters that read only sizes and nulls, select_distinct, and the search box, which has no filter for the elements of a vector of vectors.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "A",
+     "type": "int32"
+    },
+    {
+     "name": "B",
+     "type": "int32"
+    },
+    {
+     "name": "X",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     0,
+     0,
+     0,
+     "s0",
+     0.0
+    ],
+    [
+     1,
+     1,
+     1,
+     "s1",
+     0.25
+    ],
+    [
+     0,
+     2,
+     2,
+     "s2",
+     0.5
+    ],
+    [
+     1,
+     3,
+     3,
+     "s3",
+     0.75
+    ],
+    [
+     0,
+     4,
+     4,
+     "s4",
+     1.0
+    ],
+    [
+     1,
+     0,
+     5,
+     "s5",
+     1.25
+    ],
+    [
+     0,
+     1,
+     6,
+     "s6",
+     1.5
+    ],
+    [
+     1,
+     2,
+     7,
+     "s7",
+     1.75
+    ],
+    [
+     0,
+     3,
+     8,
+     "s8",
+     2.0
+    ],
+    [
+     1,
+     4,
+     9,
+     "s9",
+     2.25
+    ],
+    [
+     0,
+     0,
+     10,
+     "s10",
+     2.5
+    ],
+    [
+     1,
+     1,
+     11,
+     "s11",
+     2.75
+    ],
+    [
+     0,
+     2,
+     12,
+     "s12",
+     3.0
+    ],
+    [
+     1,
+     3,
+     13,
+     "s13",
+     3.25
+    ],
+    [
+     0,
+     4,
+     14,
+     "s14",
+     3.5
+    ],
+    [
+     1,
+     0,
+     15,
+     "s15",
+     3.75
+    ],
+    [
+     0,
+     1,
+     16,
+     "s16",
+     4.0
+    ],
+    [
+     1,
+     2,
+     17,
+     "s17",
+     4.25
+    ],
+    [
+     0,
+     3,
+     18,
+     "s18",
+     4.5
+    ],
+    [
+     1,
+     4,
+     19,
+     "s19",
+     4.75
+    ]
+   ]
+  }
+ ],
+ "operations": [
+  {
+   "name": "v",
+   "op": "group_by",
+   "source": "t",
+   "by": [
+    "A",
+    "B"
+   ]
+  },
+  {
+   "name": "n",
+   "op": "group_by",
+   "source": "v",
+   "by": [
+    "A"
+   ]
+  },
+  {
+   "name": "indexed_nested",
+   "op": "update",
+   "source": "n",
+   "formulas": [
+    "First = X[0]",
+    "Inner = X[0][1]",
+    "Size = X.size()",
+    "Len = len(X)",
+    "InnerSize = X[0].size()",
+    "Got = X.get(1)",
+    "Outside = X[7]",
+    "Count = countObj(X)",
+    "FirstObj = firstObj(X)",
+    "LastObj = lastObj(X)",
+    "Sum = sum(X[0])",
+    "IsNull = X == null",
+    "Empty = X.isEmpty()",
+    "ByRow = X[i]",
+    "Negative = X[0][-1]",
+    "Plus = X[0] + 1",
+    "Doubles = D[1][0]",
+    "Max = max(X[0])",
+    "Strings = S[1]",
+    "StringsLen = len(S[0])",
+    "FirstS = firstObj(S)",
+    "InnerLen = len(X[2])",
+    "InnerEmpty = X[0].isEmpty()",
+    "LastInner = lastObj(X)[0]",
+    "Arr = array(X[1])",
+    "Avg = avg(lastObj(D))",
+    "Sub = X[1].subVector(0, 2)"
+   ]
+  },
+  {
+   "name": "indexed",
+   "op": "drop_columns",
+   "source": "indexed_nested",
+   "columns": [
+    "X",
+    "S",
+    "D"
+   ]
+  },
+  {
+   "name": "viewed",
+   "op": "view",
+   "source": "n",
+   "formulas": [
+    "A",
+    "Y = X[1][0] * 10",
+    "Z = len(X) + X[2].size()"
+   ]
+  },
+  {
+   "name": "selected",
+   "op": "select",
+   "source": "n",
+   "formulas": [
+    "A",
+    "Y = X[1]",
+    "W = Y[0]"
+   ]
+  },
+  {
+   "name": "outside_fails",
+   "op": "update",
+   "source": "n",
+   "formulas": [
+    "L = X[7][0]"
+   ]
+  },
+  {
+   "name": "nv",
+   "op": "update",
+   "source": "v",
+   "formulas": [
+    "X = B == 3 ? null : X"
+   ]
+  },
+  {
+   "name": "nn",
+   "op": "group_by",
+   "source": "nv",
+   "by": [
+    "A"
+   ]
+  },
+  {
+   "name": "with_nulls_nested",
+   "op": "update",
+   "source": "nn",
+   "formulas": [
+    "NLen = len(X[1])",
+    "NIsNull = isNull(X[1])",
+    "NCount = countObj(X)",
+    "NGot = X[1]",
+    "NSum = sum(X[1])",
+    "NFirst = X[i % 3]",
+    "NOutside = X[0][9]"
+   ]
+  },
+  {
+   "name": "with_nulls",
+   "op": "drop_columns",
+   "source": "with_nulls_nested",
+   "columns": [
+    "X",
+    "S",
+    "D"
+   ]
+  },
+  {
+   "name": "null_fails",
+   "op": "update",
+   "source": "nn",
+   "formulas": [
+    "L = X[1][0]"
+   ]
+  },
+  {
+   "name": "null_size_fails",
+   "op": "update",
+   "source": "nn",
+   "formulas": [
+    "L = X[1].size()"
+   ]
+  },
+  {
+   "name": "ungrouped_nested",
+   "op": "ungroup",
+   "source": "nn",
+   "columns": [
+    "X",
+    "S"
+   ]
+  },
+  {
+   "name": "ungrouped",
+   "op": "drop_columns",
+   "source": "ungrouped_nested",
+   "columns": [
+    "D"
+   ]
+  },
+  {
+   "name": "ungrouped_all",
+   "op": "ungroup",
+   "source": "nn"
+  },
+  {
+   "name": "ungrouped_twice_nested",
+   "op": "ungroup",
+   "source": "ungrouped_all"
+  },
+  {
+   "name": "ungrouped_twice",
+   "op": "drop_columns",
+   "source": "ungrouped_twice_nested",
+   "columns": [
+    "S"
+   ]
+  },
+  {
+   "name": "m",
+   "op": "group_by",
+   "source": "nv",
+   "by": [
+    "B"
+   ]
+  },
+  {
+   "name": "kept_nested",
+   "op": "agg_by",
+   "source": "m",
+   "by": [],
+   "aggs": [
+    {
+     "agg": "first",
+     "columns": [
+      "FirstX = X",
+      "FirstS = S"
+     ]
+    },
+    {
+     "agg": "last",
+     "columns": [
+      "LastX = X",
+      "LastD = D"
+     ]
+    },
+    {
+     "agg": "count",
+     "column": "C"
+    },
+    {
+     "agg": "formula",
+     "columns": [
+      "Lens = X"
+     ],
+     "args": {
+      "formula": "len(each)",
+      "formula_param": "each"
+     }
+    },
+    {
+     "agg": "count_where",
+     "column": "Long",
+     "args": {
+      "filters": [
+       "len(X) > 1"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "kept",
+   "op": "ungroup",
+   "source": "kept_nested",
+   "columns": [
+    "FirstX",
+    "FirstS",
+    "LastX",
+    "LastD"
+   ]
+  },
+  {
+   "name": "kept_by_nested",
+   "op": "agg_by",
+   "source": "nn",
+   "by": [
+    "X"
+   ],
+   "aggs": [
+    {
+     "agg": "count",
+     "column": "C"
+    }
+   ]
+  },
+  {
+   "name": "kept_by",
+   "op": "ungroup",
+   "source": "kept_by_nested",
+   "columns": [
+    "X"
+   ]
+  },
+  {
+   "name": "grouped_nested",
+   "op": "agg_by",
+   "source": "m",
+   "by": [],
+   "aggs": [
+    {
+     "agg": "group",
+     "columns": [
+      "X"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "grouped",
+   "op": "view",
+   "source": "grouped_nested",
+   "formulas": [
+    "Len = len(X)",
+    "Count = countObj(X)",
+    "Size = X.size()"
+   ]
+  },
+  {
+   "name": "rolled_nested",
+   "op": "update_by",
+   "source": "m",
+   "by": [],
+   "ops": [
+    {
+     "op": "rolling_count_tick",
+     "columns": [
+      "CX = X"
+     ],
+     "args": {
+      "rev_ticks": 2
+     }
+    },
+    {
+     "op": "cum_count_where",
+     "columns": [
+      "CW"
+     ],
+     "args": {
+      "filters": "countObj(X) > 1"
+     }
+    },
+    {
+     "op": "rolling_count_where_tick",
+     "columns": [
+      "RW"
+     ],
+     "args": {
+      "filters": "len(X) > 1",
+      "rev_ticks": 2
+     }
+    }
+   ]
+  },
+  {
+   "name": "rolled",
+   "op": "drop_columns",
+   "source": "rolled_nested",
+   "columns": [
+    "X",
+    "S",
+    "D"
+   ]
+  },
+  {
+   "name": "bucketed_nested",
+   "op": "update_by",
+   "source": "nn",
+   "by": [
+    "X"
+   ],
+   "ops": [
+    {
+     "op": "cum_sum",
+     "columns": [
+      "CA = A"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "bucketed",
+   "op": "drop_columns",
+   "source": "bucketed_nested",
+   "columns": [
+    "X",
+    "S",
+    "D"
+   ]
+  },
+  {
+   "name": "w_null_nested",
+   "op": "where",
+   "source": "nn",
+   "filters": [
+    "X == null"
+   ]
+  },
+  {
+   "name": "w_null",
+   "op": "drop_columns",
+   "source": "w_null_nested",
+   "columns": [
+    "X",
+    "S",
+    "D"
+   ]
+  },
+  {
+   "name": "w_not_null_nested",
+   "op": "where",
+   "source": "nn",
+   "filters": [
+    "X != null"
+   ]
+  },
+  {
+   "name": "w_not_null",
+   "op": "drop_columns",
+   "source": "w_not_null_nested",
+   "columns": [
+    "X",
+    "S",
+    "D"
+   ]
+  },
+  {
+   "name": "w_len_nested",
+   "op": "where",
+   "source": "m",
+   "filters": [
+    "countObj(X) > 1"
+   ]
+  },
+  {
+   "name": "w_len",
+   "op": "drop_columns",
+   "source": "w_len_nested",
+   "columns": [
+    "X",
+    "S",
+    "D"
+   ]
+  },
+  {
+   "name": "w_is_null_nested",
+   "op": "where",
+   "source": "m",
+   "filters": [
+    "!isNull(X) && len(X) == 2"
+   ]
+  },
+  {
+   "name": "w_is_null",
+   "op": "drop_columns",
+   "source": "w_is_null_nested",
+   "columns": [
+    "X",
+    "S",
+    "D"
+   ]
+  },
+  {
+   "name": "distinct_nested",
+   "op": "select_distinct",
+   "source": "nn",
+   "columns": [
+    "X"
+   ]
+  },
+  {
+   "name": "distinct",
+   "op": "ungroup",
+   "source": "distinct_nested",
+   "columns": [
+    "X"
+   ]
+  },
+  {
+   "name": "searched_nested",
+   "op": "filter",
+   "source": "n",
+   "conditions": [
+    {
+     "search": {
+      "text": "2"
+     }
+    }
+   ]
+  },
+  {
+   "name": "searched",
+   "op": "drop_columns",
+   "source": "searched_nested",
+   "columns": [
+    "X",
+    "S",
+    "D"
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "indexed"
+  },
+  {
+   "table": "viewed"
+  },
+  {
+   "table": "selected"
+  },
+  {
+   "table": "outside_fails"
+  },
+  {
+   "table": "with_nulls"
+  },
+  {
+   "table": "null_fails"
+  },
+  {
+   "table": "null_size_fails"
+  },
+  {
+   "table": "ungrouped"
+  },
+  {
+   "table": "ungrouped_all"
+  },
+  {
+   "table": "ungrouped_twice"
+  },
+  {
+   "table": "kept"
+  },
+  {
+   "table": "kept_by"
+  },
+  {
+   "table": "grouped"
+  },
+  {
+   "table": "rolled"
+  },
+  {
+   "table": "bucketed"
+  },
+  {
+   "table": "w_null"
+  },
+  {
+   "table": "w_not_null"
+  },
+  {
+   "table": "w_len"
+  },
+  {
+   "table": "w_is_null"
+  },
+  {
+   "table": "distinct"
+  },
+  {
+   "table": "searched"
+  }
+ ]
+}

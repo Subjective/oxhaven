@@ -19,6 +19,7 @@ oxhaven-rowset = { path = "../oxhaven-rowset" }
 num-bigint.workspace = true
 num-traits.workspace = true
 regex.workspace = true
+fancy-regex.workspace = true
 
 [dev-dependencies]
 oxhaven-expr = { path = "../oxhaven-expr" }
