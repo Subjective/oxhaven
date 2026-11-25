@@ -1587,3 +1587,5 @@ A corpus of five console scripts with an Oxhaven server as the remote, recorded 
 - 2026-11-25 07:58 UTC: PR 197 (15.4, vectors of vectors and backtracking regex) merged on green as af55e141.
 
 - 2026-11-25 08:40 UTC: 15.3 reported with the full gate green; I merged main into its branch (Cargo.lock conflict only) and opened PR 198.
+
+- 2026-11-25 08:40 UTC: PR 198 (15.3, big-number aggregations) merged on green as ffbc31bc. Added task 15.3b (update_by and joins of big numbers) and started it on Opus.
