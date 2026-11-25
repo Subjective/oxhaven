@@ -286,8 +286,9 @@ scheduled at the interval after the last.
 **Uploads from a browser.** The web client uploads the key table with
 `BrowserFlightService/OpenDoPut` and `NextDoPut`, whatever its transport, so the first
 slice has these two calls (`flight/browser.rs`, on the browser streams the console
-already had). `OpenHandshake`, `NextHandshake`, `OpenDoExchange` and `NextDoExchange`
-are refused as not ported; the web client makes those calls on the Flight service.
+already had). `OpenDoExchange` and `NextDoExchange`, with which the web client
+subscribes on an `https://` page, came with task 15.6; `OpenHandshake` and `NextHandshake`
+are refused as not ported, as the web client makes that call on the Flight service.
 
 ## Python
 

@@ -25,7 +25,8 @@ use oxhaven_proto::barrage::{
 use oxhaven_proto::flight::FlightData;
 use tokio::runtime::Handle;
 use tokio::sync::mpsc;
-use tonic::{Status, Streaming};
+use tokio_stream::{Stream, StreamExt};
+use tonic::Status;
 
 use super::codec::{decode_row_set, ColumnSet};
 use super::producer::{nullable_columns, Job, Listener, Producer, Scheduler, SubscriptionId};
@@ -598,14 +599,15 @@ impl Barrage {
     }
 
     /// Serves one `DoExchange` call: reads `requests` until the client closes its side,
-    /// and answers on the returned stream.
+    /// and answers on the returned stream. The requests are the call's stream, or for a
+    /// browser the messages of its `OpenDoExchange` and `NextDoExchange` calls.
     ///
     /// Behavior: `io.deephaven.server.arrow.FlightServiceGrpcImpl#doExchangeCustom`
     pub fn exchange(
         self: &Arc<Self>,
         session: Arc<Session>,
         router: Arc<TicketRouter>,
-        mut requests: Streaming<FlightData>,
+        mut requests: impl Stream<Item = Result<FlightData, Status>> + Send + Unpin + 'static,
     ) -> Result<mpsc::UnboundedReceiver<Result<FlightData, Status>>, Status> {
         let (sender, receiver) = mpsc::unbounded_channel();
         let exchange = Arc::new(Exchange {
@@ -641,18 +643,18 @@ impl Barrage {
         tokio::spawn(async move {
             let mut first = true;
             loop {
-                match requests.message().await {
-                    Ok(Some(message)) => {
+                match requests.next().await {
+                    Some(Ok(message)) => {
                         if let Err(status) = exchange.on_message(&message, &mut first) {
                             exchange.listener.on_error(status);
                             break;
                         }
                     }
                     // Behavior: DoExchangeMarshaller#onCompleted
-                    Ok(None) => break,
+                    None => break,
                     // the client cancelled, or the connection broke
                     // Behavior: DoExchangeMarshaller#onError, #onCancel
-                    Err(status) => {
+                    Some(Err(status)) => {
                         exchange.listener.on_error(status);
                         break;
                     }

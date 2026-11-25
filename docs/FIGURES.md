@@ -381,4 +381,4 @@ The server starts with calendars of the three names Deephaven ships, written for
 
 - What the trials above list as failing.
 - `deephaven.configuration`: Java's property system behind a mapping.
-- `OpenDoExchange` and `OpenHandshake` of `BrowserFlightService`.
+- `OpenHandshake` of `BrowserFlightService` (`OpenDoExchange` came with task 15.6).

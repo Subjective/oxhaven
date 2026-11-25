@@ -3,8 +3,10 @@
 //! make a stream). The web client uploads a table this way whatever its transport, and
 //! the key table of a hierarchical table's view is such an upload.
 //!
-//! The browser forms of `Handshake` and `DoExchange` are not ported; the web client
-//! makes those calls on the Flight service itself.
+//! `DoExchange` for a browser, the same way: on an `https://` page the web client has no
+//! websocket and subscribes with `OpenDoExchange` and `NextDoExchange`. The browser form
+//! of `Handshake` is not ported; the web client makes that call on the Flight service
+//! itself.
 //!
 //! Behavior: `io.deephaven.server.arrow.BrowserFlightServiceGrpcBinding#bindService`
 
@@ -19,7 +21,8 @@ use tokio_stream::{Stream, StreamExt};
 use tonic::{Request, Response, Status};
 
 use super::service::put_stream;
-use crate::console::browser::{stream_data, BrowserStream};
+use crate::barrage::Barrage;
+use crate::console::browser::{self, stream_data, BrowserStream};
 use crate::session::{current_session, is_terminal, ExportError, ExportValue, Reply, TicketRouter};
 
 type BoxStream<T> = Pin<Box<dyn Stream<Item = Result<T, Status>> + Send>>;
@@ -33,11 +36,42 @@ fn not_ported<T>(method: &str) -> Result<T, Status> {
 
 pub struct BrowserFlightGrpc {
     router: Arc<TicketRouter>,
+    barrage: Arc<Barrage>,
 }
 
 impl BrowserFlightGrpc {
+    /// Must be called inside a tokio runtime: Barrage sends updates from its blocking
+    /// threads.
     pub fn new(router: Arc<TicketRouter>) -> Self {
-        Self { router }
+        Self {
+            router,
+            barrage: Barrage::on_runtime(tokio::runtime::Handle::current()),
+        }
+    }
+}
+
+/// The responses of a browser's `OpenDoExchange` call. When the call ends, answered to its
+/// end or given up by the client, the browser stream is told, which ends it: a later
+/// `NextDoExchange` for it is refused.
+struct ExchangeResponses {
+    responses: UnboundedReceiverStream<Result<FlightData, Status>>,
+    stream: Arc<BrowserStream<FlightData>>,
+}
+
+impl Stream for ExchangeResponses {
+    type Item = Result<FlightData, Status>;
+
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        context: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        Pin::new(&mut self.responses).poll_next(context)
+    }
+}
+
+impl Drop for ExchangeResponses {
+    fn drop(&mut self) {
+        self.stream.cancelled();
     }
 }
 
@@ -150,17 +184,33 @@ impl BrowserFlightService for BrowserFlightGrpc {
 
     type OpenDoExchangeStream = BoxStream<FlightData>;
 
+    /// Behavior: `GrpcServiceOverrideBuilder.BrowserStreamMethod#invokeOpen` around
+    /// `FlightServiceGrpcImpl#doExchangeCustom`
     async fn open_do_exchange(
         &self,
-        _request: Request<FlightData>,
+        request: Request<FlightData>,
     ) -> Result<Response<Self::OpenDoExchangeStream>, Status> {
-        not_ported("OpenDoExchange")
+        let data = browser::open_headers(stream_data(request.metadata())?)?;
+        let session = current_session(&request)?;
+        let (stream, messages) = BrowserStream::open(&session, &data)?;
+        let messages = UnboundedReceiverStream::new(messages).map(Ok);
+        let responses = self
+            .barrage
+            .exchange(session, self.router.clone(), messages)?;
+        let responses = ExchangeResponses {
+            responses: UnboundedReceiverStream::new(responses),
+            stream: stream.clone(),
+        };
+        // the first message is in order by itself, so nothing refuses it
+        stream.on_message(request.into_inner(), &data)?;
+        Ok(Response::new(Box::pin(responses)))
     }
 
+    /// Behavior: `GrpcServiceOverrideBuilder.BrowserStreamMethod#invokeNext`
     async fn next_do_exchange(
         &self,
-        _request: Request<FlightData>,
+        request: Request<FlightData>,
     ) -> Result<Response<BrowserNextResponse>, Status> {
-        not_ported("NextDoExchange")
+        browser::next(request).await
     }
 }
