@@ -79,8 +79,14 @@ fn the_results_of_the_oracle_match_java() {
         "group_by_ungroup/uneven_one: natural_join",
         "group_by_ungroup/unknown: group_by",
         "group_by_ungroup/agg_back: agg_by",
+        "nested_vectors/ungrouped_all: group_by",
+        "nested_vectors/kept: agg_by",
+        "nested_vectors/kept_by: agg_by",
+        "nested_vectors/distinct: select_distinct",
         "ticking_group_ungroup_head_by/back: group_by",
         "ticking_group_ungroup_head_by/back_ids: group_by",
+        "ticking_nested_vectors/ungrouped: group_by",
+        "ticking_nested_vectors/kept: agg_by",
     ];
     assert_eq!(tally.not_run, not_run, "not run");
 }
