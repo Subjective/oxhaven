@@ -33,7 +33,8 @@ use super::time_table::parse_duration_nanos;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_engine::ops::select::ArrayFormula;
 use oxhaven_engine::ops::update_by::{
-    update_by_with, BadDataBehavior, DeltaControl, EmSpec, RollingWindow, UpdateByError,
+    update_by_controlled, BadDataBehavior, DeltaControl, EmSpec, MathContext, Rounding,
+    RollingWindow, UpdateByControl, UpdateByError,
     UpdateByOperation, UpdateBySpec, WindowScale,
 };
 use oxhaven_proto::grpc as proto;
@@ -166,20 +167,41 @@ fn java_fixed(value: f64) -> String {
 ///
 /// Behavior: `UpdateByGrpcImpl#adaptMathContext`, `UpdateByGrpcImpl#adaptRoundingMode`,
 /// `java.math.MathContext#MathContext(int, RoundingMode)`
-fn math_context(context: &proto::MathContext) -> Result<(), Refusal> {
-    match RoundingMode::try_from(context.rounding_mode) {
+fn math_context(context: &proto::MathContext) -> Result<MathContext, Refusal> {
+    let rounding = match RoundingMode::try_from(context.rounding_mode) {
         Ok(RoundingMode::NotSpecified) => {
             return Err(argument(
                 "Unexpected rounding mode: ROUNDING_MODE_NOT_SPECIFIED",
             ))
         }
-        Ok(_) => {}
+        // The message's modes are `java.math.RoundingMode`'s, from 1.
+        Ok(mode) => Rounding::of_number(i64::from(mode as i32) - 1).map_err(argument)?,
         Err(_) => return Err(argument("Unexpected rounding mode: UNRECOGNIZED")),
-    }
+    };
     if context.precision < 0 {
         return Err(argument("Digits < 0"));
     }
-    Ok(())
+    Ok(MathContext {
+        precision: context.precision as u32,
+        rounding,
+    })
+}
+
+/// The options of the request that change its results: its math context, or
+/// `DECIMAL64` when it has none.
+///
+/// Behavior: `UpdateByGrpcImpl#adaptOptions`, `UpdateByControl#mathContextOrDefault`
+fn control(request: &UpdateByRequest) -> Result<UpdateByControl, Refusal> {
+    let context = request
+        .options
+        .as_ref()
+        .and_then(|options| options.math_context.as_ref());
+    Ok(match context {
+        Some(context) => UpdateByControl {
+            math_context: math_context(context)?,
+        },
+        None => UpdateByControl::default(),
+    })
 }
 
 /// Checks the control options. An option that is not set has the default of the Java
@@ -686,11 +708,17 @@ impl TableOp for Handler {
             &*sources[0],
             &request.group_by_columns,
         )?;
-        Ok(update_by_with(
+        let control = control(request).map_err(|refusal| match refusal {
+            Refusal::Argument(message) | Refusal::Exception(message) => {
+                ExportError::Internal(message)
+            }
+        })?;
+        Ok(update_by_controlled(
             &sources[0],
             &operations,
             &request.group_by_columns,
-            context.compiler.as_ref(),
+            Some(context.compiler.as_ref()),
+            &control,
         )?)
     }
 }

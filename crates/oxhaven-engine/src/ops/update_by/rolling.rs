@@ -5,6 +5,7 @@
 //! running value across those pushes and pops, so their result for a row can depend on the
 //! rows computed before it. The kernels here are driven by the same pops and pushes.
 
+use super::big::MathContext;
 use super::failure;
 use super::values::{
     double_array, double_result, java_extreme, long_array, long_result, narrowed_floats, pick,
@@ -281,6 +282,9 @@ impl Rolling {
     /// #makeRollingWAvgOperator
     pub(super) fn output_type(self, input: &ColumnType) -> Option<ColumnType> {
         use ColumnType::*;
+        if let Some(output) = super::big::rolling_output(self, input, None) {
+            return Some(output);
+        }
         match self {
             Rolling::Sum => match input {
                 Boolean | Byte | Char | Short | Int | Long => Some(Long),
@@ -319,7 +323,12 @@ impl Rolling {
         influencers: &ArrayRef,
         weights: Option<(&ColumnType, &ArrayRef)>,
         slides: &[Slide],
+        math: &MathContext,
     ) -> Result<ArrayRef, TableFailure> {
+        let big = super::big::is_big(input) || weights.is_some_and(|(t, _)| super::big::is_big(t));
+        if big && self != Rolling::Count {
+            return super::big::rolling(self, input, influencers, weights, slides, math);
+        }
         let output = self
             .output_type(input)
             .ok_or_else(|| failure("no rolling operator for this column type"))?;
@@ -331,7 +340,11 @@ impl Rolling {
             // it with its first row.
             return Err(failure(super::BOOLEAN_AS_OBJECTS));
         }
-        let values = if self == Rolling::Count && *input == ColumnType::String {
+        let values = if self == Rolling::Count
+            && matches!(
+                input,
+                ColumnType::String | ColumnType::BigDecimal | ColumnType::BigInteger
+            ) {
             // Only nullness matters to a count.
             Values::Int(
                 (0..influencers.len())
@@ -343,19 +356,7 @@ impl Rolling {
         } else {
             Values::read(influencers, input)?
         };
-        // Behavior: the `Assert.geq(size, count)` that opens `pop` in every rolling operator's
-        // context. A window that holds no row at all (`rev + fwd == 0`) slides its head ahead
-        // of its tail, and Java fails the operation.
-        let mut held = 0;
-        for slide in slides {
-            if slide.pop > held {
-                return Err(failure(format!(
-                    "Assertion failed: asserted windowValues.size() >= {}, instead windowValues.size() == {held}.",
-                    slide.pop
-                )));
-            }
-            held = held - slide.pop + slide.push;
-        }
+        check_held(slides, "windowValues.size()")?;
         let window = Window::over(&values, slides);
         let doubles = |values: &Values| match values {
             Values::Int(v) => Ok(v.iter().map(|v| v.map(|v| v as f64)).collect()),
@@ -414,19 +415,39 @@ impl Rolling {
     }
 }
 
+/// Fails as Java fails a window that holds no row at all (`rev + fwd == 0`): its head
+/// slides ahead of its tail, and the first `pop` that takes more values than the window
+/// holds fails the check that opens it, on the size of the buffer named `buffer`.
+///
+/// Behavior: the `Assert.geq(size, count)` that opens `pop` in every rolling operator's
+/// context
+pub(super) fn check_held(slides: &[Slide], buffer: &str) -> Result<(), TableFailure> {
+    let mut held = 0;
+    for slide in slides {
+        if slide.pop > held {
+            return Err(failure(format!(
+                "Assertion failed: asserted {buffer} >= {}, instead {buffer} == {held}.",
+                slide.pop
+            )));
+        }
+        held = held - slide.pop + slide.push;
+    }
+    Ok(())
+}
+
 /// The window before one affected row is written: the influencers `start..end`, of which
 /// `nulls` are null, after `popped` left and `pushed` entered.
-struct Step {
-    start: usize,
-    end: usize,
-    nulls: usize,
-    popped: std::ops::Range<usize>,
-    pushed: std::ops::Range<usize>,
+pub(super) struct Step {
+    pub(super) start: usize,
+    pub(super) end: usize,
+    pub(super) nulls: usize,
+    pub(super) popped: std::ops::Range<usize>,
+    pub(super) pushed: std::ops::Range<usize>,
 }
 
 /// Replays the slides of a window, counting the nulls in it as every Java rolling operator
 /// does (`nullCount`).
-struct Window<'a> {
+pub(super) struct Window<'a> {
     values: &'a Values,
     slides: std::slice::Iter<'a, Slide>,
     start: usize,
@@ -435,7 +456,7 @@ struct Window<'a> {
 }
 
 impl<'a> Window<'a> {
-    fn over(values: &'a Values, slides: &'a [Slide]) -> Self {
+    pub(super) fn over(values: &'a Values, slides: &'a [Slide]) -> Self {
         Window {
             values,
             slides: slides.iter(),
@@ -565,7 +586,7 @@ fn products(values: &[Option<f64>], window: Window) -> Vec<Option<f64>> {
 ///
 /// Behavior: io.deephaven.base.ringbuffer.AggregatingDoubleRingBuffer#evaluate,
 /// #removeUnsafe and #grow, and io.deephaven.base.ringbuffer.DoubleRingBuffer#grow
-struct PairwiseRing<T> {
+pub(super) struct PairwiseRing<T, L, R> {
     slots: Vec<T>,
     head: usize,
     tail: usize,
@@ -578,34 +599,29 @@ struct PairwiseRing<T> {
     calc_head: i64,
     calc_tail: i64,
     /// Combines two slots.
-    leaf: fn(T, T) -> T,
+    leaf: L,
     /// Combines two results.
-    tree: fn(T, T) -> T,
+    tree: R,
 }
 
-impl<T: Copy> PairwiseRing<T> {
+impl<T: Clone, L: Fn(T, T) -> T, R: Fn(T, T) -> T> PairwiseRing<T, L, R> {
     /// Behavior: `BUFFER_INITIAL_SIZE` of DoubleRollingSumOperator, FloatRollingSumOperator
     /// and DoubleRollingProductOperator, and `PAIRWISE_BUFFER_INITIAL_SIZE` of
     /// DoubleRollingAvgOperator and FloatRollingAvgOperator
     const INITIAL_CAPACITY: usize = 64;
 
-    fn new(identity: T, leaf: fn(T, T) -> T, tree: fn(T, T) -> T) -> Self {
+    fn new(identity: T, leaf: L, tree: R) -> Self {
         Self::with_capacity(Self::INITIAL_CAPACITY, identity, leaf, tree)
     }
 
     /// `capacity` is a power of two.
-    fn with_capacity(
-        capacity: usize,
-        identity: T,
-        leaf: fn(T, T) -> T,
-        tree: fn(T, T) -> T,
-    ) -> Self {
+    pub(super) fn with_capacity(capacity: usize, identity: T, leaf: L, tree: R) -> Self {
         PairwiseRing {
-            slots: vec![identity; capacity],
+            slots: vec![identity.clone(); capacity],
             head: 0,
             tail: 0,
+            tree_nodes: vec![identity.clone(); capacity],
             identity,
-            tree_nodes: vec![identity; capacity],
             calc_head: 0,
             calc_tail: 0,
             leaf,
@@ -613,25 +629,25 @@ impl<T: Copy> PairwiseRing<T> {
         }
     }
 
-    fn pop(&mut self, count: usize) {
+    pub(super) fn pop(&mut self, count: usize) {
         for _ in 0..count {
             let mask = self.slots.len() - 1;
-            self.slots[self.head & mask] = self.identity;
+            self.slots[self.head & mask] = self.identity.clone();
             self.head += 1;
         }
     }
 
-    fn push(&mut self, values: impl ExactSizeIterator<Item = T>) {
+    pub(super) fn push(&mut self, values: impl ExactSizeIterator<Item = T>) {
         let size = self.tail - self.head;
         if self.slots.len() - size < values.len() {
             let capacity = (self.slots.len() + values.len()).next_power_of_two();
             let mask = self.slots.len() - 1;
             let mut slots: Vec<T> = (self.head..self.tail)
-                .map(|at| self.slots[at & mask])
+                .map(|at| self.slots[at & mask].clone())
                 .collect();
-            slots.resize(capacity, self.identity);
+            slots.resize(capacity, self.identity.clone());
             self.slots = slots;
-            self.tree_nodes = vec![self.identity; capacity];
+            self.tree_nodes = vec![self.identity.clone(); capacity];
             self.head = 0;
             self.tail = size;
             self.calc_head = 0;
@@ -650,7 +666,7 @@ impl<T: Copy> PairwiseRing<T> {
     /// rather than recomputing the whole tree.
     ///
     /// Behavior: AggregatingDoubleRingBuffer#evaluate, line for line
-    fn evaluate(&mut self) -> T {
+    pub(super) fn evaluate(&mut self) -> T {
         let length = self.slots.len() as i64;
         let mask = length - 1;
         let (head, tail) = (self.head as i64, self.tail as i64);
@@ -697,7 +713,7 @@ impl<T: Copy> PairwiseRing<T> {
         }
         self.calc_head = head;
         self.calc_tail = tail;
-        self.tree_nodes[1]
+        self.tree_nodes[1].clone()
     }
 
     /// Behavior: AggregatingDoubleRingBuffer#fixupTree, line for line, with its fall
@@ -830,7 +846,8 @@ impl<T: Copy> PairwiseRing<T> {
         let mut left = start & !1;
         while left <= end {
             let at = left as usize;
-            self.tree_nodes[at / 2 + offset] = (self.leaf)(self.slots[at], self.slots[at + 1]);
+            self.tree_nodes[at / 2 + offset] =
+                (self.leaf)(self.slots[at].clone(), self.slots[at + 1].clone());
             left += 2;
         }
     }
@@ -840,7 +857,8 @@ impl<T: Copy> PairwiseRing<T> {
         let mut left = start & !1;
         while left <= end {
             let at = left as usize;
-            self.tree_nodes[at / 2] = (self.tree)(self.tree_nodes[at], self.tree_nodes[at + 1]);
+            self.tree_nodes[at / 2] =
+                (self.tree)(self.tree_nodes[at].clone(), self.tree_nodes[at + 1].clone());
             left += 2;
         }
     }

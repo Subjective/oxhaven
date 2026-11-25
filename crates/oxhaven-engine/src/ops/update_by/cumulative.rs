@@ -4,6 +4,7 @@
 //! at the bucket's first row it is seeded with what Java reads back for the row before the
 //! run: that row's result or, for `delta`, that row's input.
 
+use super::big::MathContext;
 use super::values::{
     double_array, double_result, long_array, long_result, narrowed_floats, narrowed_ints, pick,
     Values,
@@ -36,6 +37,10 @@ impl Cumulative {
     /// or the input's own type)
     pub(super) fn output_type(self, input: &ColumnType) -> Option<ColumnType> {
         use ColumnType::*;
+        if super::big::is_big(input) {
+            // A big number is `Comparable`, so its minimum and maximum have its type.
+            return super::big::cumulative_output(self, input).or(Some(input.clone()));
+        }
         match self {
             Cumulative::Sum => match input {
                 Boolean | Byte | Char | Short | Int | Long => Some(Long),
@@ -80,7 +85,11 @@ impl Cumulative {
         input: &ColumnType,
         values: &ArrayRef,
         seed: Option<&ArrayRef>,
+        math: &MathContext,
     ) -> Result<ArrayRef, TableFailure> {
+        if super::big::is_big(input) && super::big::cumulative_output(self, input).is_some() {
+            return super::big::cumulative(self, input, values, seed, math);
+        }
         let output = self
             .output_type(input)
             .ok_or_else(|| failure("no cumulative operator for this column type"))?;
