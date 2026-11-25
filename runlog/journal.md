@@ -1573,3 +1573,5 @@ A corpus of five console scripts with an Oxhaven server as the remote, recorded 
 - 2026-11-25 06:17 UTC: PR 194 (15.6, HTTPS serving) merged on green as 1c93b7f2.
 
 - 2026-11-25 06:22 UTC: started 15.4 (vectors of vectors, fancy-regex) and 15.5 (Docker image, build only) on Opus; 15.3 waits for PR 195.
+
+- 2026-11-25 06:34 UTC: PR 195 (15.2, big-number formulas) merged on green as 11061005. 15.3 waits for a free builder slot.
