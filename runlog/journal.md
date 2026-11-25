@@ -1579,3 +1579,5 @@ A corpus of five console scripts with an Oxhaven server as the remote, recorded 
 - 2026-11-25 06:53 UTC: 15.5 (Docker image) moved its build into its own path-filtered workflow; opened PR 196. Started 15.3 (big-number aggregations) on Opus.
 
 - 2026-11-25 07:06 UTC: PR 196 (15.5, Docker image) merged on green as 5ff3fb21. Image not published; that needs Josh.
+
+- 2026-11-25 07:45 UTC: 15.3 paused at ce483ff7 when free disk fell under 6 GB (15.4's build holds 13 GB). Aggregations served; gate not run. Owner questions 8.1 and 8.2 written. Resumes after 15.4 frees its target. update_by and joins of big numbers split off as 15.3b.
