@@ -784,6 +784,58 @@ mod tests {
     }
 
     #[test]
+    fn the_math_context_of_the_options_is_the_one_the_operators_use() {
+        let request = |context: Option<proto::MathContext>| UpdateByRequest {
+            options: Some(UpdateByOptions {
+                math_context: context,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let context = |precision, mode: RoundingMode| proto::MathContext {
+            precision,
+            rounding_mode: mode as i32,
+        };
+        // No options, or options without a math context: `DECIMAL64`.
+        let default = UpdateByControl {
+            math_context: MathContext::DECIMAL64,
+        };
+        assert_eq!(control(&UpdateByRequest::default()).unwrap(), default);
+        assert_eq!(control(&request(None)).unwrap(), default);
+        for (mode, rounding) in [
+            (RoundingMode::Up, Rounding::Up),
+            (RoundingMode::Down, Rounding::Down),
+            (RoundingMode::Ceiling, Rounding::Ceiling),
+            (RoundingMode::Floor, Rounding::Floor),
+            (RoundingMode::HalfUp, Rounding::HalfUp),
+            (RoundingMode::HalfDown, Rounding::HalfDown),
+            (RoundingMode::HalfEven, Rounding::HalfEven),
+            (RoundingMode::Unnecessary, Rounding::Unnecessary),
+        ] {
+            assert_eq!(
+                control(&request(Some(context(3, mode)))).unwrap(),
+                UpdateByControl {
+                    math_context: MathContext {
+                        precision: 3,
+                        rounding
+                    }
+                },
+                "{mode:?}"
+            );
+        }
+        assert_eq!(
+            control(&request(Some(context(0, RoundingMode::HalfUp)))).unwrap(),
+            UpdateByControl {
+                math_context: MathContext::UNLIMITED
+            }
+        );
+        assert_eq!(
+            control(&request(Some(context(-1, RoundingMode::HalfUp)))),
+            Err(argument("Digits < 0"))
+        );
+    }
+
+    #[test]
     fn a_formula_without_a_token_is_a_column_assignment() {
         // `RollingFormulaSpec.of` of the 42.9 jar
         assert_eq!(check_selectable(" X = sum(x)"), Ok(()));
